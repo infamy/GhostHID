@@ -40,7 +40,7 @@ void onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *client,
                 return;
             }
             g_processor->beginSession();
-            Serial.printf("[ws] client %u connected from %s\n",
+            Serial.printf("[ws] client %u connected from %s\r\n",
                           client->id(), client->remoteIP().toString().c_str());
             break;
 
@@ -50,7 +50,7 @@ void onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *client,
             // Immediate release on a clean close; the watchdog only has to
             // cover abrupt link loss, where no event ever arrives.
             g_processor->endSession();
-            Serial.printf("[ws] client %u disconnected - all input released\n",
+            Serial.printf("[ws] client %u disconnected - all input released\r\n",
                           client->id());
             break;
 
@@ -127,7 +127,7 @@ void onOtaBody(AsyncWebServerRequest *request, uint8_t *data, size_t len,
             return;
         }
         g_otaBegun = true;
-        Serial.printf("[ota] receiving %u bytes\n", static_cast<unsigned>(total));
+        Serial.printf("[ota] receiving %u bytes\r\n", static_cast<unsigned>(total));
     }
 
     if (g_otaError != nullptr || !g_otaBegun) return;
@@ -155,7 +155,7 @@ void onOtaDone(AsyncWebServerRequest *request) {
     if (g_otaError != nullptr) {
         if (g_otaBegun) Update.abort();
         g_processor->setLocked(false, nullptr);
-        Serial.printf("[ota] failed: %s\n", g_otaError);
+        Serial.printf("[ota] failed: %s\r\n", g_otaError);
         AsyncWebServerResponse *r = request->beginResponse(
             400, "application/json",
             String("{\"type\":\"error\",\"error\":\"") + g_otaError + "\"}");
@@ -191,7 +191,7 @@ void Network::begin() {
     // in cleartext to anyone in range, and the app-layer token is replayable.
     const bool apOk = WiFi.softAP(ssid_, config_.apPassword());
     snprintf(apIp_, sizeof(apIp_), "%s", WiFi.softAPIP().toString().c_str());
-    Serial.printf("[wifi] AP  %s : %s (%s)\n", ssid_, apOk ? "up" : "FAILED", apIp_);
+    Serial.printf("[wifi] AP  %s : %s (%s)\r\n", ssid_, apOk ? "up" : "FAILED", apIp_);
 
     if (wantStation) {
         WiFi.begin(config_.staSsid(), config_.staPassword());
@@ -202,11 +202,11 @@ void Network::begin() {
         }
         if (WiFi.status() == WL_CONNECTED) {
             snprintf(staIp_, sizeof(staIp_), "%s", WiFi.localIP().toString().c_str());
-            Serial.printf("[wifi] STA %s : up (%s)\n", config_.staSsid(), staIp_);
+            Serial.printf("[wifi] STA %s : up (%s)\r\n", config_.staSsid(), staIp_);
         } else {
             // Not fatal: the AP above is already serving.
             staIp_[0] = '\0';
-            Serial.printf("[wifi] STA %s : failed, AP still available\n",
+            Serial.printf("[wifi] STA %s : failed, AP still available\r\n",
                           config_.staSsid());
         }
     }
@@ -215,7 +215,7 @@ void Network::begin() {
     snprintf(host, sizeof(host), "%s-%s", config_.deviceName(), suffix);
     if (MDNS.begin(host)) {
         MDNS.addService("ghosthid", "tcp", 80);
-        Serial.printf("[mdns] http://%s.local/\n", host);
+        Serial.printf("[mdns] http://%s.local/\r\n", host);
     }
 
     // Serve the control UI straight out of flash, pre-gzipped. The AP has no
@@ -240,8 +240,8 @@ void Network::begin() {
     g_server.addHandler(&g_ws);
     g_server.begin();
 
-    Serial.printf("[web] http://%s/\n", apIp_);
-    if (stationConnected()) Serial.printf("[web] http://%s/\n", staIp_);
+    Serial.printf("[web] http://%s/\r\n", apIp_);
+    if (stationConnected()) Serial.printf("[web] http://%s/\r\n", staIp_);
 }
 
 bool Network::acquireClientSlot() {

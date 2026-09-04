@@ -127,7 +127,8 @@ CommandResult CommandProcessor::handleMessage(const char *json, size_t len,
     // most confusing failure this device can present.
     const bool isInput =
         strcmp(type, "key") == 0 || strcmp(type, "text") == 0 ||
-        strcmp(type, "mouse_move") == 0 || strcmp(type, "mouse_button") == 0 ||
+        strcmp(type, "mouse_move") == 0 || strcmp(type, "mouse_abs") == 0 ||
+        strcmp(type, "mouse_button") == 0 ||
         strcmp(type, "mouse_wheel") == 0;
     if (isInput && locked_) {
         reply(outResponse, outSize,
@@ -165,6 +166,19 @@ CommandResult CommandProcessor::handleMessage(const char *json, size_t len,
     if (strcmp(type, "mouse_move") == 0) {
         // Accept the full int32 range; HidDevice splits it across reports.
         hid_.mouseMove(doc["dx"] | 0, doc["dy"] | 0);
+        return CommandResult::Ok;
+    }
+
+    // Absolute positioning. x and y are fractions of the target's desktop
+    // (0..1), not pixels: the firmware cannot learn the target's resolution,
+    // and a fraction survives a resolution change.
+    if (strcmp(type, "mouse_abs") == 0) {
+        if (!doc["x"].is<float>() || !doc["y"].is<float>()) {
+            reply(outResponse, outSize,
+                  "{\"type\":\"error\",\"error\":\"mouse_abs needs numeric x and y\"}");
+            return CommandResult::BadRequest;
+        }
+        hid_.mouseMoveAbsolute(doc["x"].as<float>(), doc["y"].as<float>());
         return CommandResult::Ok;
     }
 

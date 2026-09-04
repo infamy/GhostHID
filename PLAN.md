@@ -122,8 +122,17 @@ Support:
 Relative movement is sufficient to *prove* the mouse works, and is what
 Phase 1 and Phase 3 implement.
 
-**However, absolute positioning should be added early — by Phase 5, not
-"later".** Revised from the original plan for two reasons:
+**IMPLEMENTED.** Report ID 7, a second pointer collection alongside the
+relative mouse, 16-bit axes over 0..32767. The protocol takes fractions
+(`{"type":"mouse_abs","x":0.62,"y":0.31}`) rather than pixels, because the
+firmware cannot learn the target's resolution and a fraction survives a
+resolution change. Buttons are mirrored from the relative mouse's held mask so
+the two collections never disagree.
+
+Originally deferred; promoted because three separate features turned out to be
+blocked on it — usable pointing from a phone, edge-crossing, and any
+Deskflow-style client whose wire protocol carries absolute coordinates. The
+reasoning that drove it:
 
 * Relative-only pointing over a lossy Wi-Fi link is genuinely unpleasant to
   use. Dropped or delayed packets accumulate as *permanent* pointer drift,
@@ -553,7 +562,7 @@ hello
 
 ---
 
-## Phase 3 — Mouse — **IMPLEMENTED** (relative only; absolute still outstanding)
+## Phase 3 — Mouse — **IMPLEMENTED**, relative and absolute
 
 Add:
 

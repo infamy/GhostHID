@@ -101,6 +101,21 @@ public:
     // multiple HID reports, so callers can pass any int32 value.
     void mouseMove(int32_t dx, int32_t dy);
 
+    // Absolute positioning, as a fraction of the target's desktop: (0,0) is the
+    // top-left corner, (1,1) the bottom-right. Fractions rather than pixels
+    // because the firmware has no way to learn the target's resolution, and a
+    // fraction stays correct when it changes.
+    //
+    // Unlike relative movement this is not touched by the target's pointer
+    // acceleration, so the pointer lands exactly where asked and the caller
+    // always knows where it is. Out-of-range values are clamped.
+    void mouseMoveAbsolute(float x, float y);
+
+    // Last absolute position we commanded, as a fraction. Meaningless until
+    // mouseMoveAbsolute has been called at least once.
+    float absoluteX() const { return absX_; }
+    float absoluteY() const { return absY_; }
+
     void mouseButtonDown(MouseButton button);
     void mouseButtonUp(MouseButton button);
     void mouseClick(MouseButton button, uint32_t holdMs = 20);
@@ -135,6 +150,8 @@ private:
     size_t  heldKeyCount_ = 0;
     uint8_t heldMouseButtons_ = 0;   // bitmask indexed by MouseButton
     bool    begun_ = false;
+    float   absX_ = 0.5f;
+    float   absY_ = 0.5f;
 };
 
 }  // namespace ghosthid

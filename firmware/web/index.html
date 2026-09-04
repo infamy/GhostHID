@@ -128,7 +128,17 @@ td code{white-space:nowrap}
 
     <section>
       <h2>Mouse</h2>
+      <div class="row" style="margin-bottom:8px">
+        <button id="mode_rel" class="grow on">Relative</button>
+        <button id="mode_abs" class="grow">Absolute</button>
+      </div>
       <div id="pad">Drag to move the pointer<br>tap = click · two-finger drag = scroll</div>
+      <p class="hint" id="modehint">
+        <b>Relative:</b> the pad works like a trackpad — drag to nudge the pointer.
+        <b>Absolute:</b> the pad maps directly onto the target's screen, so touching
+        the middle puts the pointer in the middle. Absolute is far easier on a phone
+        and is immune to the target's pointer acceleration.
+      </p>
       <div class="row" style="margin-top:8px">
         <button data-btn="left" class="grow">Left</button>
         <button data-btn="middle" class="grow">Middle</button>
@@ -256,6 +266,12 @@ td code{white-space:nowrap}
         <tr><td><code>{"type":"mouse_move","dx":12,"dy":-4}</code></td>
             <td>Relative. Any integer — the firmware splits values beyond ±127 across
             multiple HID reports.</td></tr>
+        <tr><td><code>{"type":"mouse_abs","x":0.62,"y":0.31}</code></td>
+            <td><b>Absolute.</b> Fractions of the target's desktop, 0..1 — not pixels,
+            because the device cannot learn the target's resolution and a fraction
+            survives a resolution change. Not affected by the target's pointer
+            acceleration, so the pointer lands exactly here and the controller always
+            knows where it is. Values outside 0..1 are clamped.</td></tr>
         <tr><td><code>{"type":"mouse_button","button":"left","pressed":true}</code></td>
             <td><code>left</code>, <code>right</code> or <code>middle</code>.</td></tr>
         <tr><td><code>{"type":"mouse_wheel","delta":-1,"pan":0}</code></td>
@@ -536,14 +552,39 @@ window.addEventListener("blur",function(){ if(capturing) send({type:"release_all
 
 // --- trackpad ---------------------------------------------------------------
 var pad=$("#pad"),tracking=false,lastX=0,lastY=0,moved=0,downAt=0,pts={},scrollAcc=0;
+var absMode=false;
+function setMode(abs){
+  absMode=abs;
+  $("#mode_abs").classList.toggle("on",abs);
+  $("#mode_rel").classList.toggle("on",!abs);
+  pad.firstChild && (pad.innerHTML = abs
+    ? "Touch anywhere — the pad maps to the whole target screen<br>tap = click"
+    : "Drag to move the pointer<br>tap = click · two-finger drag = scroll");
+}
+$("#mode_abs").onclick=function(){ setMode(true); };
+$("#mode_rel").onclick=function(){ setMode(false); };
+// Maps a pointer event onto the pad's area as a 0..1 fraction of the target
+// desktop. The pad is the screen, so the mapping is direct.
+function sendAbsFromEvent(e){
+  var r=pad.getBoundingClientRect();
+  var x=(e.clientX-r.left)/r.width, y=(e.clientY-r.top)/r.height;
+  send({type:"mouse_abs",x:Math.min(1,Math.max(0,x)),y:Math.min(1,Math.max(0,y))});
+}
 pad.addEventListener("pointerdown",function(e){
   pts[e.pointerId]=e; pad.setPointerCapture(e.pointerId);
   tracking=true; lastX=e.clientX; lastY=e.clientY; moved=0; downAt=Date.now();
   pad.classList.add("live"); e.preventDefault();
+  if(absMode) sendAbsFromEvent(e);
 });
 pad.addEventListener("pointermove",function(e){
   if(!tracking) return;
   if(!pts[e.pointerId]) return;
+  if(absMode && Object.keys(pts).length===1){
+    moved+=Math.abs(e.clientX-lastX)+Math.abs(e.clientY-lastY);
+    lastX=e.clientX; lastY=e.clientY;
+    sendAbsFromEvent(e);
+    return;
+  }
   var dx=Math.round(e.clientX-lastX), dy=Math.round(e.clientY-lastY);
   lastX=e.clientX; lastY=e.clientY;
   if(Object.keys(pts).length>1){

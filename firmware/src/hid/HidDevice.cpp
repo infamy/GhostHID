@@ -5,6 +5,8 @@
 #include <USBHIDKeyboard.h>
 #include <USBHIDMouse.h>
 
+#include "AbsoluteMouse.h"
+
 #include "board_config.h"
 
 namespace ghosthid {
@@ -41,6 +43,7 @@ namespace {
 
 USBHIDKeyboard g_keyboard;
 USBHIDMouse    g_mouse;
+AbsoluteMouse  g_absMouse;
 
 inline uint8_t mouseButtonMask(MouseButton button) {
     switch (button) {
@@ -71,6 +74,7 @@ void HidDevice::begin() {
 
     g_keyboard.begin();
     g_mouse.begin();
+    g_absMouse.begin();
 
     // NOTE: do not set VID/PID/product name here. When ARDUINO_USB_CDC_ON_BOOT=1
     // the USB stack is already running by the time setup() executes, so these
@@ -164,6 +168,22 @@ void HidDevice::mouseMove(int32_t dx, int32_t dy) {
         dx -= sx;
         dy -= sy;
     }
+}
+
+void HidDevice::mouseMoveAbsolute(float x, float y) {
+    if (!ready()) return;
+
+    if (x < 0.0f) x = 0.0f; else if (x > 1.0f) x = 1.0f;
+    if (y < 0.0f) y = 0.0f; else if (y > 1.0f) y = 1.0f;
+    absX_ = x;
+    absY_ = y;
+
+    // Buttons are mirrored from the relative mouse's held mask so the two
+    // pointer collections never report contradictory button state.
+    g_absMouse.moveTo(static_cast<uint16_t>(x * kAbsoluteAxisMax),
+                      static_cast<uint16_t>(y * kAbsoluteAxisMax),
+                      heldMouseButtons_);
+    reportGap();
 }
 
 void HidDevice::mouseButtonDown(MouseButton button) {

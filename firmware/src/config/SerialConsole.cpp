@@ -47,15 +47,15 @@ void SerialConsole::printHelp() const {
 
 void SerialConsole::printStatus() const {
     Serial.println();
-    Serial.printf("  version   %s\n", GHOSTHID_VERSION);
-    Serial.printf("  name      %s\n", config_.deviceName());
-    Serial.printf("  wifi      %s\n",
+    Serial.printf("  version   %s\r\n", GHOSTHID_VERSION);
+    Serial.printf("  name      %s\r\n", config_.deviceName());
+    Serial.printf("  wifi      %s\r\n",
                   config_.stationConfigured() ? config_.staSsid() : "(station mode disabled)");
     // Secrets are reported as set/unset only, matching the network API. Serial
     // access is physical, but terminals get logged and shoulder-surfed.
-    Serial.printf("  wifipass  %s\n", config_.staPassword()[0] ? "(set)" : "(not set)");
-    Serial.printf("  appass    (set)\n");
-    Serial.printf("  token     %s\n", config_.authToken()[0] ? "(set)" : "(auth disabled)");
+    Serial.printf("  wifipass  %s\r\n", config_.staPassword()[0] ? "(set)" : "(not set)");
+    Serial.printf("  appass    (set)\r\n");
+    Serial.printf("  token     %s\r\n", config_.authToken()[0] ? "(set)" : "(auth disabled)");
 }
 
 void SerialConsole::execute(char *line) {
@@ -71,7 +71,7 @@ void SerialConsole::execute(char *line) {
         printStatus();
     } else if (strcasecmp(line, "wifi") == 0) {
         if (config_.setStation(value, config_.staPassword())) {
-            Serial.printf("ok: wifi = %s\n", value[0] ? value : "(disabled)");
+            Serial.printf("ok: wifi = %s\r\n", value[0] ? value : "(disabled)");
         } else {
             Serial.println("error: ssid too long (max 32)");
         }
@@ -89,13 +89,13 @@ void SerialConsole::execute(char *line) {
         }
     } else if (strcasecmp(line, "token") == 0) {
         if (config_.setAuthToken(value)) {
-            Serial.printf("ok: token %s\n", value[0] ? "set" : "cleared (auth disabled)");
+            Serial.printf("ok: token %s\r\n", value[0] ? "set" : "cleared (auth disabled)");
         } else {
             Serial.println("error: token too long (max 48)");
         }
     } else if (strcasecmp(line, "name") == 0) {
         if (config_.setDeviceName(value)) {
-            Serial.printf("ok: name = %s\n", value);
+            Serial.printf("ok: name = %s\r\n", value);
         } else {
             Serial.println("error: use letters, digits and hyphens only");
         }
@@ -106,7 +106,7 @@ void SerialConsole::execute(char *line) {
         Serial.println("rebooting...");
         processor_.requestReboot();
     } else {
-        Serial.printf("unknown command '%s' - try 'help'\n", line);
+        Serial.printf("unknown command '%s' - try 'help'\r\n", line);
     }
 }
 

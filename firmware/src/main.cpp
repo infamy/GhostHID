@@ -93,14 +93,14 @@ void setup() {
     delay(500);
     Serial.println();
     Serial.println("=== GhostHID " GHOSTHID_VERSION " ===");
-    Serial.printf("USB enumerated: %s\n", enumerated ? "yes" : "no (timed out)");
+    Serial.printf("USB enumerated: %s\r\n", enumerated ? "yes" : "no (timed out)");
 
     // Networking comes up whether or not USB enumerated, so the device stays
     // reachable and diagnosable when plugged into a dumb charger or a port
     // that never configured it.
     network.begin();
 
-    Serial.printf("[auth] token %s\n",
+    Serial.printf("[auth] token %s\r\n",
                   (config.authToken()[0] == '\0') ? "disabled" : "required");
     Serial.println("Press BOOT to release all held input.");
     console.begin();

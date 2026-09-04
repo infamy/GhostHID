@@ -26,6 +26,10 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("dx", type=int)
     s.add_argument("dy", type=int)
 
+    s = sub.add_parser("moveto", help="put the pointer at a fraction of the screen (0..1)")
+    s.add_argument("x", type=float)
+    s.add_argument("y", type=float)
+
     s = sub.add_parser("click", help="click a mouse button")
     s.add_argument("button", nargs="?", default="left",
                    choices=["left", "right", "middle"])
@@ -46,6 +50,8 @@ def main(argv: list[str] | None = None) -> int:
                 g.chord(*keys) if len(keys) > 1 else g.key(keys[0])
             elif args.cmd == "move":
                 g.mouse_move(args.dx, args.dy)
+            elif args.cmd == "moveto":
+                g.mouse_move_absolute(args.x, args.y)
             elif args.cmd == "click":
                 g.click(args.button)
             elif args.cmd == "scroll":

@@ -160,6 +160,19 @@ class GhostHID:
         multiple HID reports (one report carries only -127..127)."""
         self._send({"type": "mouse_move", "dx": int(dx), "dy": int(dy)})
 
+    def mouse_move_absolute(self, x: float, y: float) -> None:
+        """Put the pointer at a fraction of the target's desktop.
+
+        (0, 0) is the top-left corner, (1, 1) the bottom-right. Fractions
+        rather than pixels because the device cannot learn the target's
+        resolution, and a fraction stays correct when it changes.
+
+        Unlike ``mouse_move`` this is not rescaled by the target's pointer
+        acceleration, so the pointer lands exactly here — which is what makes
+        it possible to know where the pointer is without seeing the screen.
+        """
+        self._send({"type": "mouse_abs", "x": float(x), "y": float(y)})
+
     def mouse_button(self, button: str, pressed: bool) -> None:
         self._send({"type": "mouse_button", "button": button, "pressed": pressed})
 
