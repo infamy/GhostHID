@@ -50,10 +50,18 @@
 // larger movement must be split across several reports. See HidDevice::mouseMove.
 #define GHOSTHID_MOUSE_MAX_STEP 127
 
-// Delay between consecutive HID reports (ms). Some targets (notably BIOS/UEFI
-// and some KVM switches) drop reports that arrive back-to-back.
+// Extra delay between consecutive HID reports (ms).
+//
+// Zero by default, and that is not an optimisation gamble: USBHID::SendReport
+// already blocks on a semaphore released by tud_hid_report_complete_cb, so the
+// USB stack provides its own backpressure and will not let us outrun the host.
+// The delay this replaced cost 2ms on every single report - per keystroke, per
+// mouse chunk - for no benefit.
+//
+// Raise it only if a specific target proves to drop back-to-back reports; some
+// BIOS/UEFI implementations and KVM switches reportedly do.
 #ifndef GHOSTHID_HID_REPORT_GAP_MS
-#define GHOSTHID_HID_REPORT_GAP_MS 2
+#define GHOSTHID_HID_REPORT_GAP_MS 0
 #endif
 
 // How long to wait after USB enumeration before the host has loaded its HID

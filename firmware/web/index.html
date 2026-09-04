@@ -535,6 +535,7 @@ function connect(){
   ws.onopen=function(){ send({type:"auth",token:$("#tok").value}); };
   ws.onmessage=function(ev){
     var m; try{ m=JSON.parse(ev.data) }catch(e){ return }
+    if(m.type==="pong") noteRtt();
     if(typeof m.usb==="boolean"){
       setUsb(m.usb);
       $("#a_usb").textContent = m.usb
@@ -571,7 +572,16 @@ function connect(){
                          retryTimer=setTimeout(connect,1200); };
   ws.onerror=function(){ setState(false,"connection error"); };
 }
-setInterval(function(){ if(ready) send({type:"ping"}); },250);
+// Heartbeat doubles as a latency probe, so the number in the bar is the real
+// browser-to-device round trip rather than a guess.
+var pingSent=0, rttMs=null;
+setInterval(function(){ if(ready){ pingSent=performance.now(); send({type:"ping"}); } },250);
+function noteRtt(){
+  if(!pingSent) return;
+  var r=performance.now()-pingSent; pingSent=0;
+  rttMs = rttMs===null ? r : rttMs*0.7 + r*0.3;   // smooth the jitter
+  if(ready) stat.textContent = "connected · "+Math.round(rttMs)+" ms";
+}
 $("#reconn").onclick=connect;
 $("#panic").onclick=function(){ send({type:"release_all"}); clearMods(); log("released all"); };
 
@@ -723,12 +733,25 @@ function setMode(abs){
 }
 $("#mode_abs").onclick=function(){ setMode(true); };
 $("#mode_rel").onclick=function(){ setMode(false); };
-// Maps a pointer event onto the pad's area as a 0..1 fraction of the target
-// desktop. The pad is the screen, so the mapping is direct.
+// Pointer events fire far faster than anyone can act on - 120Hz on a modern
+// trackpad - and sending one frame per event floods the link and queues input
+// behind stale positions. Coalesce to one send per animation frame: for
+// absolute, only the newest position matters; for relative, deltas sum.
+var pendAbs=null, pendDx=0, pendDy=0, flushQueued=false;
+function queueFlush(){
+  if(flushQueued) return;
+  flushQueued=true;
+  requestAnimationFrame(function(){
+    flushQueued=false;
+    if(pendAbs){ send({type:"mouse_abs",x:pendAbs[0],y:pendAbs[1]}); pendAbs=null; }
+    if(pendDx||pendDy){ send({type:"mouse_move",dx:pendDx,dy:pendDy}); pendDx=0; pendDy=0; }
+  });
+}
 function sendAbsFromEvent(e){
   var r=pad.getBoundingClientRect();
   var x=(e.clientX-r.left)/r.width, y=(e.clientY-r.top)/r.height;
-  send({type:"mouse_abs",x:Math.min(1,Math.max(0,x)),y:Math.min(1,Math.max(0,y))});
+  pendAbs=[Math.min(1,Math.max(0,x)),Math.min(1,Math.max(0,y))];
+  queueFlush();
 }
 pad.addEventListener("pointerdown",function(e){
   pts[e.pointerId]=e; pad.setPointerCapture(e.pointerId);
@@ -756,7 +779,7 @@ pad.addEventListener("pointermove",function(e){
     }
     return;
   }
-  if(dx||dy){ moved+=Math.abs(dx)+Math.abs(dy); send({type:"mouse_move",dx:dx,dy:dy}); }
+  if(dx||dy){ moved+=Math.abs(dx)+Math.abs(dy); pendDx+=dx; pendDy+=dy; queueFlush(); }
 });
 function endPad(e){
   delete pts[e.pointerId];

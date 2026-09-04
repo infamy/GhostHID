@@ -55,9 +55,9 @@ inline uint8_t mouseButtonMask(MouseButton button) {
 }
 
 inline void reportGap() {
-    if (GHOSTHID_HID_REPORT_GAP_MS > 0) {
-        delay(GHOSTHID_HID_REPORT_GAP_MS);
-    }
+#if GHOSTHID_HID_REPORT_GAP_MS > 0
+    delay(GHOSTHID_HID_REPORT_GAP_MS);
+#endif
 }
 
 // Clamp an int32 delta into one HID report's signed 8-bit field.

@@ -39,6 +39,10 @@ void onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *client,
                 client->close(1013, "busy");
                 return;
             }
+            // Nagle batches small writes, which is exactly wrong for a stream
+            // of tiny input events; without this each report can wait for an
+            // ACK or a 40ms coalescing timer.
+            client->client()->setNoDelay(true);
             g_processor->beginSession();
             Serial.printf("[ws] client %u connected from %s\r\n",
                           client->id(), client->remoteIP().toString().c_str());
@@ -204,6 +208,13 @@ void Network::begin() {
     // network, so the device never becomes unreachable just because the
     // infrastructure network is down or absent.
     WiFi.mode(wantStation ? WIFI_AP_STA : WIFI_AP);
+
+    // Modem sleep is the single biggest source of input lag. With it enabled
+    // the radio only wakes on DTIM beacons, so a keystroke can sit waiting
+    // ~100ms for the next wake - measured here as 6ms best case against a
+    // 154ms worst case on the same link. An input device cannot afford that.
+    // Costs steady-state current, which is acceptable on USB power.
+    WiFi.setSleep(false);
 
     char suffix[5];
     deviceSuffix(suffix);
