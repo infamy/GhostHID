@@ -1,0 +1,7 @@
+firmware/.pio/
+firmware/.venv-flash/
+__pycache__/
+.DS_Store
+firmware/ghosthid_local.ini
+# generated at build time by scripts/embed_web.py
+firmware/src/web/WebAssets.h

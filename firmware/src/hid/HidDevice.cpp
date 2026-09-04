@@ -1,0 +1,226 @@
+#include "HidDevice.h"
+
+#include <Arduino.h>
+#include <USB.h>
+#include <USBHIDKeyboard.h>
+#include <USBHIDMouse.h>
+
+#include "board_config.h"
+
+namespace ghosthid {
+
+// Pin our USB-free keycode constants to the framework's. If arduino-esp32 ever
+// remaps these, this fails to compile rather than silently typing wrong keys.
+static_assert(key::LeftCtrl   == KEY_LEFT_CTRL,   "keycode drift: LeftCtrl");
+static_assert(key::LeftShift  == KEY_LEFT_SHIFT,  "keycode drift: LeftShift");
+static_assert(key::LeftAlt    == KEY_LEFT_ALT,    "keycode drift: LeftAlt");
+static_assert(key::LeftGui    == KEY_LEFT_GUI,    "keycode drift: LeftGui");
+static_assert(key::RightCtrl  == KEY_RIGHT_CTRL,  "keycode drift: RightCtrl");
+static_assert(key::RightShift == KEY_RIGHT_SHIFT, "keycode drift: RightShift");
+static_assert(key::RightAlt   == KEY_RIGHT_ALT,   "keycode drift: RightAlt");
+static_assert(key::RightGui   == KEY_RIGHT_GUI,   "keycode drift: RightGui");
+static_assert(key::Return     == KEY_RETURN,      "keycode drift: Return");
+static_assert(key::Escape     == KEY_ESC,         "keycode drift: Escape");
+static_assert(key::Backspace  == KEY_BACKSPACE,   "keycode drift: Backspace");
+static_assert(key::Tab        == KEY_TAB,         "keycode drift: Tab");
+static_assert(key::CapsLock   == KEY_CAPS_LOCK,   "keycode drift: CapsLock");
+static_assert(key::Insert     == KEY_INSERT,      "keycode drift: Insert");
+static_assert(key::Home       == KEY_HOME,        "keycode drift: Home");
+static_assert(key::PageUp     == KEY_PAGE_UP,     "keycode drift: PageUp");
+static_assert(key::Delete     == KEY_DELETE,      "keycode drift: Delete");
+static_assert(key::End        == KEY_END,         "keycode drift: End");
+static_assert(key::PageDown   == KEY_PAGE_DOWN,   "keycode drift: PageDown");
+static_assert(key::RightArrow == KEY_RIGHT_ARROW, "keycode drift: RightArrow");
+static_assert(key::LeftArrow  == KEY_LEFT_ARROW,  "keycode drift: LeftArrow");
+static_assert(key::DownArrow  == KEY_DOWN_ARROW,  "keycode drift: DownArrow");
+static_assert(key::UpArrow    == KEY_UP_ARROW,    "keycode drift: UpArrow");
+static_assert(key::F1         == KEY_F1,          "keycode drift: F1");
+static_assert(key::F12        == KEY_F12,         "keycode drift: F12");
+
+namespace {
+
+USBHIDKeyboard g_keyboard;
+USBHIDMouse    g_mouse;
+
+inline uint8_t mouseButtonMask(MouseButton button) {
+    switch (button) {
+        case MouseButton::Left:   return MOUSE_LEFT;
+        case MouseButton::Right:  return MOUSE_RIGHT;
+        case MouseButton::Middle: return MOUSE_MIDDLE;
+    }
+    return 0;
+}
+
+inline void reportGap() {
+    if (GHOSTHID_HID_REPORT_GAP_MS > 0) {
+        delay(GHOSTHID_HID_REPORT_GAP_MS);
+    }
+}
+
+// Clamp an int32 delta into one HID report's signed 8-bit field.
+inline int8_t clampStep(int32_t v) {
+    if (v >  GHOSTHID_MOUSE_MAX_STEP) return  GHOSTHID_MOUSE_MAX_STEP;
+    if (v < -GHOSTHID_MOUSE_MAX_STEP) return -GHOSTHID_MOUSE_MAX_STEP;
+    return static_cast<int8_t>(v);
+}
+
+}  // namespace
+
+void HidDevice::begin() {
+    if (begun_) return;
+
+    g_keyboard.begin();
+    g_mouse.begin();
+
+    // NOTE: do not set VID/PID/product name here. When ARDUINO_USB_CDC_ON_BOOT=1
+    // the USB stack is already running by the time setup() executes, so these
+    // setters are silently ignored and the device enumerates under the board's
+    // default identity. The identity is set at build time instead -- see the
+    // -DUSB_* flags in platformio.ini.
+    USB.begin();
+
+    begun_ = true;
+}
+
+bool HidDevice::ready() const {
+    // USBDevice reports "mounted" once the host has configured the device.
+    return begun_ && static_cast<bool>(USB);
+}
+
+bool HidDevice::waitUntilReady(uint32_t timeoutMs) {
+    const uint32_t start = millis();
+    while (!ready() && (millis() - start) < timeoutMs) {
+        delay(10);
+    }
+    return ready();
+}
+
+// --- Keyboard --------------------------------------------------------------
+
+void HidDevice::trackKeyDown(uint8_t key) {
+    for (size_t i = 0; i < heldKeyCount_; ++i) {
+        if (heldKeys_[i] == key) return;  // already held
+    }
+    if (heldKeyCount_ < kMaxHeldKeys) {
+        heldKeys_[heldKeyCount_++] = key;
+    }
+}
+
+void HidDevice::trackKeyUp(uint8_t key) {
+    for (size_t i = 0; i < heldKeyCount_; ++i) {
+        if (heldKeys_[i] == key) {
+            heldKeys_[i] = heldKeys_[--heldKeyCount_];
+            return;
+        }
+    }
+}
+
+void HidDevice::keyDown(uint8_t key) {
+    if (!ready()) return;
+    g_keyboard.press(key);
+    trackKeyDown(key);
+    reportGap();
+}
+
+void HidDevice::keyUp(uint8_t key) {
+    if (!ready()) return;
+    g_keyboard.release(key);
+    trackKeyUp(key);
+    reportGap();
+}
+
+void HidDevice::tapKey(uint8_t key, uint32_t holdMs) {
+    keyDown(key);
+    delay(holdMs);
+    keyUp(key);
+}
+
+void HidDevice::typeText(const char *text) {
+    if (!ready() || text == nullptr) return;
+    for (const char *p = text; *p != '\0'; ++p) {
+        const unsigned char c = static_cast<unsigned char>(*p);
+        if (c > 0x7F) continue;  // not representable on a US HID keyboard
+        g_keyboard.write(c);
+        reportGap();
+    }
+}
+
+// --- Mouse -----------------------------------------------------------------
+
+void HidDevice::sendMouseReport(int8_t dx, int8_t dy, int8_t wheel, int8_t pan) {
+    if (!ready()) return;
+    g_mouse.move(dx, dy, wheel, pan);
+    reportGap();
+}
+
+void HidDevice::mouseMove(int32_t dx, int32_t dy) {
+    if (!ready()) return;
+    // Split large movements across as many reports as needed. Without this a
+    // caller asking for +400px would silently get a wrapped/clamped delta.
+    while (dx != 0 || dy != 0) {
+        const int8_t sx = clampStep(dx);
+        const int8_t sy = clampStep(dy);
+        sendMouseReport(sx, sy, 0, 0);
+        dx -= sx;
+        dy -= sy;
+    }
+}
+
+void HidDevice::mouseButtonDown(MouseButton button) {
+    if (!ready()) return;
+    const uint8_t mask = mouseButtonMask(button);
+    g_mouse.press(mask);
+    heldMouseButtons_ |= mask;
+    reportGap();
+}
+
+void HidDevice::mouseButtonUp(MouseButton button) {
+    if (!ready()) return;
+    const uint8_t mask = mouseButtonMask(button);
+    g_mouse.release(mask);
+    heldMouseButtons_ &= static_cast<uint8_t>(~mask);
+    reportGap();
+}
+
+void HidDevice::mouseClick(MouseButton button, uint32_t holdMs) {
+    mouseButtonDown(button);
+    delay(holdMs);
+    mouseButtonUp(button);
+}
+
+void HidDevice::mouseWheel(int32_t delta) {
+    while (delta != 0) {
+        const int8_t step = clampStep(delta);
+        sendMouseReport(0, 0, step, 0);
+        delta -= step;
+    }
+}
+
+void HidDevice::mousePan(int32_t delta) {
+    while (delta != 0) {
+        const int8_t step = clampStep(delta);
+        sendMouseReport(0, 0, 0, step);
+        delta -= step;
+    }
+}
+
+// --- Safety ----------------------------------------------------------------
+
+void HidDevice::releaseAll() {
+    if (!begun_) return;
+
+    // Always send the release reports even if our bookkeeping says nothing is
+    // held: our state can drift from the host's (e.g. after a reset), and a
+    // stuck Ctrl on the target computer is far worse than a redundant report.
+    g_keyboard.releaseAll();
+    g_mouse.release(MOUSE_LEFT | MOUSE_RIGHT | MOUSE_MIDDLE);
+
+    heldKeyCount_ = 0;
+    heldMouseButtons_ = 0;
+}
+
+bool HidDevice::anythingHeld() const {
+    return heldKeyCount_ > 0 || heldMouseButtons_ != 0;
+}
+
+}  // namespace ghosthid
