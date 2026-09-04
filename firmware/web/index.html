@@ -49,14 +49,18 @@ h1{font-size:14px;margin:0;font-weight:600;white-space:nowrap;letter-spacing:.04
      white-space:nowrap;flex:none}
 #usb.ok{color:var(--ok);border-color:var(--ok)}
 #usb.bad{color:var(--bad);border-color:var(--bad)}
-#panic{min-height:32px;padding:5px 10px;font-size:12px;flex:none}
+#panic{min-height:32px;padding:5px 10px;font-size:12px;flex:none;
+       border-color:var(--warn);color:var(--warn)}
+#panic:hover{border-color:var(--warn)}
+#panic:active{background:var(--warn);color:#1f1403;border-color:var(--warn)}
 
 /* Tabs live in the same bar as the title. They sit directly after it rather
    than being pushed to an edge, so the eye finds them next to the name. */
-nav{display:flex;gap:2px;flex:none;margin-left:6px}
+nav{display:flex;gap:2px;flex:0 1 auto;min-width:0;margin-left:6px}
 nav button{background:none;border:0;border-bottom:2px solid transparent;border-radius:3px 3px 0 0;
            color:var(--dim);padding:8px 14px;font:inherit;font-size:13px;
-           cursor:pointer;min-height:34px;white-space:nowrap}
+           cursor:pointer;min-height:34px;white-space:nowrap;min-width:0;
+           overflow:hidden;text-overflow:ellipsis}
 nav button,
 nav button:active,
 nav button.on,
@@ -121,9 +125,13 @@ kbd{background:#0e1a29;border:1px solid var(--line);border-bottom-width:2px;bord
 main,.tab,.tab>*,section{min-width:0}
 html,body{max-width:100%;overflow-x:hidden}
 code{font-family:var(--mono);font-size:12px;background:#000509;
-     border:1px solid var(--line);border-radius:4px;padding:1px 5px}
+     border:1px solid var(--line);border-radius:4px;padding:1px 5px;overflow-wrap:anywhere}
+/* Wrap, never scroll sideways. These are short JSON examples, not code
+   listings - a horizontal scrollbar inside a reference page is worse than a
+   wrapped line. */
 pre{font-family:var(--mono);font-size:12px;background:#000509;border:1px solid var(--line);
-    border-radius:4px;padding:10px;overflow-x:auto;margin:6px 0;max-width:100%}
+    border-radius:4px;padding:10px;margin:6px 0;max-width:100%;
+    white-space:pre-wrap;overflow-wrap:anywhere;overflow-x:hidden}
 table{width:100%;border-collapse:collapse;font-size:13px;table-layout:fixed}
 th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:top;
       overflow-wrap:anywhere}
@@ -153,7 +161,7 @@ td code{white-space:normal}
 
   <span id="stat">connecting…</span>
   <span id="usb" class="bad">USB&nbsp;?</span>
-  <button id="panic">Release</button>
+  <button id="panic" title="Release every key and mouse button currently held down on the target">Release keys</button>
 </header>
 
 <main>
@@ -331,7 +339,7 @@ td code{white-space:normal}
         three independent things prevent it: everything is released the moment this
         page disconnects; if the page stops responding for <b>750&nbsp;ms</b> while
         input is held, the device releases it anyway; and the board's <b>BOOT</b>
-        button releases everything with no network involved. <b>Release</b> in the top
+        button releases everything with no network involved. <b>Release keys</b> in the top
         bar does the same on demand.
       </p>
     </section>
