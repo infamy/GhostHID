@@ -891,6 +891,50 @@ GhostHID
 Target PC
 ```
 
+### Edge-crossing control (Synergy / lan-mouse style)
+
+Move the pointer off the edge of the controller's screen and have it appear on
+the target, keyboard following it, then come back at the far edge.
+
+Synergy, Input Leap and lan-mouse all need software on **both** machines.
+GhostHID would need none on the target - so it works on a machine you cannot
+install on, one sitting at a login screen, or an air-gapped box. That is a
+different product, not a clone.
+
+**This is blocked on absolute mouse positioning, and is the strongest argument
+for building it.** With relative deltas we are nudging a pointer we cannot see:
+the target applies its own pointer acceleration, our idea of the position
+drifts within seconds, and we never learn when the pointer reached the far edge
+to hand control back. The user cannot be shown where the pointer is either.
+
+Absolute positioning inverts that. We stop trying to observe the pointer and
+start dictating it - no acceleration is applied to absolute reports, so it is
+1:1 by construction, and we always know where the pointer is because we put it
+there. It is self-correcting too: if someone nudges the physical mouse on the
+target, the next absolute report re-asserts position rather than compounding an
+error. Edge detection becomes arithmetic we already have the inputs for.
+
+```text
+controller pointer hits right edge
+        -> capture and hide the local cursor
+        -> send absolute coordinates, scaled to the target's resolution
+virtual pointer reaches the target's left edge
+        -> release capture, cursor returns to the controller
+```
+
+Requires:
+
+* absolute HID report descriptor (see MVP Requirements / Mouse)
+* the target's screen resolution as a configured value - we cannot query it
+* controller-side input capture and suppression, which is gap 5: macOS needs
+  Accessibility permission and a CGEventTap, and Wayland has no portable path
+* an unambiguous escape hatch, so a controller that loses the link cannot leave
+  the user with no cursor on either machine
+
+Out of scope regardless, because all of it needs an agent on the target:
+clipboard sharing, drag-and-drop between machines, and discovering the target's
+real resolution or monitor layout.
+
 ### Multiple targets
 
 One controller could manage several GhostHID devices.
