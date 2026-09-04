@@ -1,4 +1,4 @@
-# GhostHID 👻
+<img src="assets/logo.svg" alt="GhostHID" width="290">
 
 **Locked out of a machine that won't let you install anything?** Staring at a
 login screen with no keyboard in reach? Babysitting a box that'll never run an

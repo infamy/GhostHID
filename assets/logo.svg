@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 232 68" width="232" height="68"
+     role="img" aria-label="GhostHID">
+  <title>GhostHID</title>
+  <style>
+    .wm { font: 700 30px ui-monospace, "SF Mono", "JetBrains Mono", "DejaVu Sans Mono",
+                Menlo, Consolas, monospace }
+  </style>
+
+  <g transform="translate(2 4) scale(0.82)">
+    <path fill="#00e5ff" d="
+      M15 55 L15 26 A17 17 0 0 1 49 26 L49 55
+      L49 48 L46 48 L46 55 L41 55 L41 48 L39 48 L39 55
+      L33 55 L33 48 L29 48 L29 55 L26 55 L26 48 L23 48 L23 55 Z"/>
+    <rect x="24" y="24" width="5" height="10" rx="1.5" fill="#01050b"/>
+    <rect x="35" y="24" width="5" height="10" rx="1.5" fill="#01050b"/>
+  </g>
+
+  <text class="wm" x="62" y="36" fill="#cfe3f5">Ghost<tspan fill="#00e5ff">HID</tspan></text>
+
+  <!-- The trace runs on past the wordmark: the signal continues beyond the
+       device, which is rather the point of it. -->
+  <path fill="none" stroke="#25405c" stroke-width="2" d="M0 0"/>
+  <path fill="none" stroke="#25405c" stroke-width="2" stroke-linejoin="miter" d="
+    M62 50 L80 50 L80 44 L88 44 L88 50 L104 50 L104 44 L109 44 L109 50
+    L134 50 L134 44 L142 44 L142 50 L168 50 L168 44 L172 44 L172 50 L228 50"/>
+</svg>

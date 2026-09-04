@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64"
+     role="img" aria-label="GhostHID">
+  <title>GhostHID</title>
+  <!-- A ghost whose hem is a square wave. A ghost's scalloped tail and a digital
+       pulse train are the same silhouette, which is this project in one shape.
+       The pulse widths are deliberately irregular: even spacing reads as
+       decoration, uneven spacing reads as data. -->
+  <path fill="#00e5ff" d="
+    M15 55
+    L15 26
+    A17 17 0 0 1 49 26
+    L49 55
+    L49 48 L46 48 L46 55
+    L41 55 L41 48 L39 48 L39 55
+    L33 55 L33 48 L29 48 L29 55
+    L26 55 L26 48 L23 48 L23 55
+    Z"/>
+  <rect x="24" y="24" width="5" height="10" rx="1.5" fill="#01050b"/>
+  <rect x="35" y="24" width="5" height="10" rx="1.5" fill="#01050b"/>
+</svg>
