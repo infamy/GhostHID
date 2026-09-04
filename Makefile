@@ -51,7 +51,7 @@ help:
 	@echo "  make build              compile firmware in a clean container"
 	@echo "  make flash PORT=...     flash the merged image over USB"
 	@echo "  make ota IP=... TOKEN=.. update over the network (no cable)"
-	@echo "  make monitor PORT=...   open the USB CDC serial console"
+	@echo "  make monitor PORT=...   serial setup console (wifi/token config)"
 	@echo "  make ports              list candidate serial ports"
 	@echo "  make shell              interactive shell in the build container"
 	@echo "  make clean              remove build output"
@@ -139,4 +139,7 @@ ota:
 
 monitor: $(ESPTOOL)
 	@test -n "$(PORT)" || { echo "PORT is required, e.g. make monitor PORT=/dev/cu.usbmodem01"; exit 1; }
-	"$(FLASH_VENV)/bin/python" -m serial.tools.miniterm "$(PORT)" 115200
+	@echo "Setup console: type 'help'. Exit with Ctrl-]."
+	@# --dtr/--rts 0: asserting either resets the S2 and drops the CDC port.
+	"$(FLASH_VENV)/bin/python" -m serial.tools.miniterm --dtr 0 --rts 0 \
+		--eol LF "$(PORT)" 115200

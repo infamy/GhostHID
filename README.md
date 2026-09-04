@@ -86,6 +86,30 @@ with GhostHID("192.168.4.1", token="ghosthid") as g:
 Use the context manager. On exit it releases everything held, so an exception
 in your script cannot leave a modifier stuck on the target.
 
+### First-time setup over serial
+
+The quickest way to configure a fresh device is the cable you just flashed it
+with — no need to join its access point first:
+
+```bash
+make monitor PORT=/dev/cu.usbmodemXXX
+```
+
+```
+> help
+> wifi MyNetwork
+> wifipass hunter2
+> token something-private
+> appass a-good-ap-password
+> show
+> reboot
+```
+
+Values are taken verbatim to the end of the line, so spaces in an SSID or
+password are fine. Settings save immediately and apply on reboot. `show`
+reports whether each password is set but never prints one, and `reset` erases
+everything back to the build-time defaults.
+
 ### Configuration
 
 Settings live in **NVS on the device**, not in the firmware image, and are

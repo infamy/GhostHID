@@ -14,6 +14,7 @@
 
 #include "board_config.h"
 #include "config/Config.h"
+#include "config/SerialConsole.h"
 #include "hid/HidDevice.h"
 #include "net/Network.h"
 #include "protocol/CommandProcessor.h"
@@ -24,6 +25,7 @@ ghosthid::Config           config;
 ghosthid::HidDevice        hid;
 ghosthid::CommandProcessor processor(hid, config);
 ghosthid::Network          network(processor, config);
+ghosthid::SerialConsole    console(config, processor);
 
 // --- Status LED ------------------------------------------------------------
 
@@ -101,10 +103,12 @@ void setup() {
     Serial.printf("[auth] token %s\n",
                   (config.authToken()[0] == '\0') ? "disabled" : "required");
     Serial.println("Press BOOT to release all held input.");
+    console.begin();
 }
 
 void loop() {
     network.loop();
+    console.feed();
 
     // Reboot requested over the API (config change). Done here rather than in
     // the network callback so the stack is not torn down from inside itself.
