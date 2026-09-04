@@ -5,6 +5,7 @@
 
 #include "Config.h"
 #include "board_config.h"
+#include "net/Network.h"
 #include "protocol/CommandProcessor.h"
 
 namespace ghosthid {
@@ -32,30 +33,54 @@ void SerialConsole::begin() {
 void SerialConsole::printHelp() const {
     Serial.println();
     Serial.println("GhostHID setup console");
-    Serial.println("  show                 current settings");
-    Serial.println("  wifi <ssid>          station SSID (empty value disables station mode)");
+    Serial.println("  show                 current settings and both addresses");
+    Serial.println("  wifi <ssid>          network to JOIN (empty disables joining)");
     Serial.println("  wifipass <password>  station password");
-    Serial.println("  appass <password>    access point password (8-63 chars)");
+    Serial.println("  appass <password>    password for GhostHID's OWN access point (8-63)");
     Serial.println("  token <token>        pairing token (empty value disables auth)");
-    Serial.println("  name <name>          device name, used for mDNS");
+    Serial.println("  name <name>          device name - sets the AP SSID and mDNS name");
     Serial.println("  reset                erase all settings");
     Serial.println("  reboot               restart to apply changes");
+    Serial.println();
+    Serial.println("GhostHID always hosts its own access point. Joining a network is extra,");
+    Serial.println("not instead - so a wrong SSID can never lock you out.");
     Serial.println();
     Serial.println("Values are taken verbatim to end of line, so spaces are fine.");
     Serial.println("Changes save immediately but take effect on reboot.");
 }
 
 void SerialConsole::printStatus() const {
-    Serial.println();
-    Serial.printf("  version   %s\r\n", GHOSTHID_VERSION);
-    Serial.printf("  name      %s\r\n", config_.deviceName());
-    Serial.printf("  wifi      %s\r\n",
-                  config_.stationConfigured() ? config_.staSsid() : "(station mode disabled)");
-    // Secrets are reported as set/unset only, matching the network API. Serial
-    // access is physical, but terminals get logged and shoulder-surfed.
-    Serial.printf("  wifipass  %s\r\n", config_.staPassword()[0] ? "(set)" : "(not set)");
-    Serial.printf("  appass    (set)\r\n");
-    Serial.printf("  token     %s\r\n", config_.authToken()[0] ? "(set)" : "(auth disabled)");
+    // GhostHID runs BOTH radios at once, and reporting only the station half
+    // made that genuinely confusing. Spell out both, and which one is optional.
+    Serial.printf("\r\n  GhostHID %s   device name: %s\r\n",
+                  GHOSTHID_VERSION, config_.deviceName());
+
+    Serial.printf("\r\n  Own access point        ALWAYS ON\r\n");
+    Serial.printf("    ssid      %s\r\n", network_.ssid());
+    Serial.printf("    address   http://%s/\r\n", network_.apAddress());
+    Serial.printf("    password  (set)\r\n");
+
+    Serial.printf("\r\n  Joined network          OPTIONAL\r\n");
+    if (!config_.stationConfigured()) {
+        Serial.printf("    ssid      (not set - use: wifi <ssid>)\r\n");
+        Serial.printf("    password  (not set - use: wifipass <password>)\r\n");
+        Serial.printf("    address   -\r\n");
+    } else {
+        Serial.printf("    ssid      %s\r\n", config_.staSsid());
+        Serial.printf("    password  %s\r\n",
+                      config_.staPassword()[0] ? "(set)" : "(NOT SET)");
+        if (network_.stationConnected()) {
+            Serial.printf("    address   http://%s/\r\n", network_.staAddress());
+        } else {
+            Serial.printf("    address   not connected "
+                          "(wrong password, out of range, or needs reboot)\r\n");
+        }
+    }
+
+    Serial.printf("\r\n  Pairing token  %s\r\n",
+                  config_.authToken()[0] ? "(set)" : "(none - auth disabled)");
+    Serial.printf("  USB to target  %s\r\n\r\n",
+                  "see the web UI's USB badge");
 }
 
 void SerialConsole::execute(char *line) {

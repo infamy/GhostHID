@@ -44,12 +44,13 @@ DOCKER_RUN = docker run --rm -t \
 	$(PIO_ENVVARS) \
 	$(IMAGE)
 
-.PHONY: help image build rebuild clean distclean shell flash monitor ports size localini ota
+.PHONY: help image build rebuild clean distclean shell flash flash-factory monitor ports size localini ota
 
 help:
 	@echo "GhostHID"
 	@echo "  make build              compile firmware in a clean container"
-	@echo "  make flash PORT=...     flash the merged image over USB"
+	@echo "  make flash PORT=...     flash over USB, keeping stored settings"
+	@echo "  make flash-factory      flash and ERASE settings (clean slate)"
 	@echo "  make ota IP=... TOKEN=.. update over the network (no cable)"
 	@echo "  make monitor PORT=...   serial setup console (wifi/token config)"
 	@echo "  make ports              list candidate serial ports"
@@ -106,25 +107,46 @@ ports:
 	@system_profiler SPUSBDataType 2>/dev/null \
 		| grep -B6 -i "0x303a" || echo "  none found - hold BOOT and replug to enter the ROM bootloader"
 
+# Normal flash: writes the four components at their own offsets, which steps
+# over the NVS partition at 0x9000 and so PRESERVES stored settings (wifi,
+# token, device name).
+#
+# Do NOT flash ghosthid-merged.bin here. esptool merge_bin pads the gaps
+# between partitions with 0xFF, so that image spans NVS with erase pattern and
+# wipes settings on every write. It is a factory image - see flash-factory.
 flash: $(ESPTOOL)
 	@test -n "$(PORT)" || { echo "PORT is required, e.g. make flash PORT=/dev/cu.usbmodem01"; exit 1; }
-	@test -f "$(MERGED)" || { echo "no merged image - run 'make build' first"; exit 1; }
+	@for f in bootloader partitions boot_app0 firmware; do \
+		test -f "$(BUILD_DIR)/$$f.bin" || { echo "missing $$f.bin - run 'make build' first"; exit 1; }; \
+	done
 	@set -o pipefail; \
 	"$(ESPTOOL)" --chip esp32s2 --port "$(PORT)" --baud 921600 \
-		write_flash --flash_mode keep --flash_freq keep --flash_size keep 0x0 "$(MERGED)" \
+		write_flash --flash_mode keep --flash_freq keep --flash_size keep \
+		0x1000  "$(BUILD_DIR)/bootloader.bin" \
+		0x8000  "$(BUILD_DIR)/partitions.bin" \
+		0xe000  "$(BUILD_DIR)/boot_app0.bin" \
+		0x10000 "$(BUILD_DIR)/firmware.bin" \
 		2>&1 | tee /tmp/ghosthid-flash.log; \
-	rc=$$?; \
 	if grep -q "Hash of data verified" /tmp/ghosthid-flash.log; then \
-		echo; echo "Flash verified OK."; \
-		grep -q "serial exception" /tmp/ghosthid-flash.log \
-			&& echo "(The reset error above is benign: the bootloader's CDC port"; \
-		grep -q "serial exception" /tmp/ghosthid-flash.log \
-			&& echo " disappears the moment the chip reboots into the new firmware.)"; \
-		echo "Replug if it does not re-enumerate within a few seconds."; \
+		echo; echo "Flash verified OK. Stored settings preserved."; \
 		exit 0; \
 	else \
-		echo "FLASH FAILED - image was not verified."; exit $${rc:-1}; \
+		echo "FLASH FAILED - image was not verified."; exit 1; \
 	fi
+
+# Factory flash: single merged image at 0x0. ERASES stored settings, because
+# the image spans the NVS region. Use for a brand-new board or a clean slate.
+flash-factory: $(ESPTOOL)
+	@test -n "$(PORT)" || { echo "PORT is required"; exit 1; }
+	@test -f "$(MERGED)" || { echo "no merged image - run 'make build' first"; exit 1; }
+	@echo "This ERASES stored settings (wifi, token, name)."
+	@set -o pipefail; \
+	"$(ESPTOOL)" --chip esp32s2 --port "$(PORT)" --baud 921600 \
+		write_flash --flash_mode keep --flash_freq keep --flash_size keep \
+		0x0 "$(MERGED)" 2>&1 | tee /tmp/ghosthid-flash.log; \
+	grep -q "Hash of data verified" /tmp/ghosthid-flash.log \
+		&& { echo; echo "Factory flash OK - settings erased."; exit 0; } \
+		|| { echo "FLASH FAILED"; exit 1; }
 
 # Wireless update. Sends the app image only - the merged image is for USB.
 ota:

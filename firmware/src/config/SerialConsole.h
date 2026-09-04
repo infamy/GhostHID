@@ -14,11 +14,12 @@ namespace ghosthid {
 
 class Config;
 class CommandProcessor;
+class Network;
 
 class SerialConsole {
 public:
-    SerialConsole(Config &config, CommandProcessor &processor)
-        : config_(config), processor_(processor) {}
+    SerialConsole(Config &config, CommandProcessor &processor, Network &network)
+        : config_(config), processor_(processor), network_(network) {}
 
     // Prints the banner. Call once after Serial is up.
     void begin();
@@ -35,6 +36,7 @@ private:
 
     Config           &config_;
     CommandProcessor &processor_;
+    Network          &network_;
     char   line_[kLineMax] = {};
     size_t len_ = 0;
 };

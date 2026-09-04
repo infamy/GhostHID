@@ -39,6 +39,12 @@ def merge_firmware(source, target, env):
         print("[ghosthid] skipping merge, missing: %s" % ", ".join(missing))
         return
 
+    # Copy boot_app0 next to the other artifacts so the host can flash the
+    # four components individually. That path skips the NVS partition and
+    # therefore preserves settings; the merged image below does not.
+    import shutil
+    shutil.copyfile(boot_app0, os.path.join(build_dir, "boot_app0.bin"))
+
     out = os.path.join(build_dir, "ghosthid-merged.bin")
     flash_size = board.get("upload.flash_size", "4MB")
     flash_mode = board.get("build.flash_mode", "dio")
@@ -63,6 +69,10 @@ def merge_firmware(source, target, env):
         ])
     )
     print("[ghosthid] merged image -> %s" % out)
+    print("[ghosthid] NOTE: the merged image spans the NVS region with 0xFF "
+          "padding, so flashing it ERASES stored settings. `make flash` writes "
+          "the components individually and keeps them; `make flash-factory` "
+          "writes the merged image deliberately.")
 
 
 env.AddPostAction("$BUILD_DIR/${PROGNAME}.bin", merge_firmware)  # noqa: F821

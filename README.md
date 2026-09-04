@@ -50,7 +50,7 @@ own — as a keyboard, a mouse, and a serial console on the one cable.
 Once flashed, GhostHID brings up its own WPA2 access point:
 
 ```
-SSID:     GhostHID-XXXX        (XXXX derived from the board's MAC)
+SSID:     ghosthid-XXXX        (name + a MAC-derived suffix)
 Password: ghosthid-setup       (change it - see below)
 Device:   ws://192.168.4.1/ws
 Token:    ghosthid
@@ -118,7 +118,7 @@ edited from the web UI's **Settings** tab:
 * Wi-Fi station SSID + password (blank SSID disables station mode)
 * AP password (WPA2, 8-63 characters)
 * Pairing token
-* Device name, used for mDNS
+* Device name — sets both the AP SSID and the mDNS hostname
 
 They survive a reflash, because writing the app image does not touch the NVS
 partition. Changes apply on reboot; there is a Reboot button next to Save.
@@ -128,7 +128,7 @@ set, never its value. Otherwise anyone holding the token could read your Wi-Fi
 password out of the device.
 
 The device's own AP always comes up, whatever the station settings say, so a
-mistyped SSID can never lock you out — join `GhostHID-XXXX` and fix it.
+mistyped SSID can never lock you out — join `ghosthid-XXXX` and fix it.
 
 The build flags are now only **first-boot defaults**, used until something is
 stored in NVS:
@@ -139,7 +139,7 @@ make build WIFI_SSID="YourNet" WIFI_PASS="…" AP_PASS="…" TOKEN="…"
 
 Handy for flashing a device that should come up already on your network, but
 not required — a device flashed with no flags at all brings up
-`GhostHID-XXXX` / `ghosthid-setup`, and you configure it from there.
+`ghosthid-XXXX` / `ghosthid-setup`, and you configure it from there.
 
 ## Updating over the air
 

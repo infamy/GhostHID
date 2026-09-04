@@ -25,7 +25,7 @@ ghosthid::Config           config;
 ghosthid::HidDevice        hid;
 ghosthid::CommandProcessor processor(hid, config);
 ghosthid::Network          network(processor, config);
-ghosthid::SerialConsole    console(config, processor);
+ghosthid::SerialConsole    console(config, processor, network);
 
 // --- Status LED ------------------------------------------------------------
 

@@ -185,7 +185,10 @@ void Network::begin() {
 
     char suffix[5];
     deviceSuffix(suffix);
-    snprintf(ssid_, sizeof(ssid_), "%s-%s", GHOSTHID_AP_SSID_PREFIX, suffix);
+    // The configured device name drives BOTH the AP SSID and the mDNS
+    // hostname. Having `name` change one but not the other was just
+    // confusing. The MAC-derived suffix keeps two devices distinguishable.
+    snprintf(ssid_, sizeof(ssid_), "%s-%s", config_.deviceName(), suffix);
 
     // WPA2, not an open AP. On an open network every keystroke crosses the air
     // in cleartext to anyone in range, and the app-layer token is replayable.
