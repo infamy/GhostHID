@@ -235,6 +235,11 @@ CI does not touch any device. Deploying is a deliberate act: it installs code on
 a machine that types into someone's computer, and an image that boots but breaks
 networking needs physical recovery, since there is no rollback yet.
 
+**`release.yml`** fires when a `v*` tag is pushed. It builds every target,
+packages each into a zip, and creates a Gitea Release with the matching
+`CHANGELOG.md` section as the notes. It uses the token the runner injects
+automatically, so there is nothing to configure.
+
 Build the same bundle locally with:
 
 ```bash

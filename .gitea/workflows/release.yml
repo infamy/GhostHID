@@ -1,0 +1,56 @@
+# Creates a Gitea Release when a v* tag is pushed, and attaches flashable
+# images to it.
+#
+# Uses plain stdlib Python against the Gitea API with the token the runner
+# injects automatically. No third-party action, nothing to configure, and
+# nothing that breaks if a JS action runtime is unavailable in the image.
+
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to build a release for"
+        required: true
+        default: "v0.3.0"
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install PlatformIO
+        run: |
+          set -eu
+          python3 -m venv /tmp/pio || { apt-get update -qq && \
+            apt-get install -y -qq python3-venv zip && python3 -m venv /tmp/pio; }
+          /tmp/pio/bin/pip install -q --upgrade pip
+          /tmp/pio/bin/pip install -q platformio==6.1.16
+
+      - name: Build and package every target
+        run: |
+          set -eu
+          for env in esp32-s2-key esp32-s3; do
+            ( cd firmware && /tmp/pio/bin/pio run -e "$env" )
+            ./scripts/package.sh "firmware/.pio/build/$env" "$env" dist
+            ( cd dist && zip -qr "ghosthid-$env.zip" "ghosthid-$env" )
+          done
+          ls -l dist/
+
+      - name: Publish the release
+        env:
+          GITEA_TOKEN: ${{ secrets.GITEA_TOKEN }}
+        run: |
+          set -eu
+          TAG="${{ inputs.tag }}"
+          [ -n "$TAG" ] || TAG="${GITHUB_REF##*/}"
+          python3 scripts/changelog_section.py "$TAG" > /tmp/notes.md
+          python3 scripts/gitea_release.py \
+            "${GITHUB_SERVER_URL}/api/v1/repos/${GITHUB_REPOSITORY}" \
+            "$TAG" /tmp/notes.md dist/*.zip
