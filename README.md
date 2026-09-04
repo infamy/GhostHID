@@ -1,15 +1,30 @@
 # GhostHID 👻
 
-Wireless USB HID bridge. An ESP32-S2/S3 plugs into a target computer, appears
-as an ordinary USB keyboard and mouse, and relays input sent to it over Wi-Fi.
-The target needs no software, drivers, agents or network access.
+**Locked out of a machine that won't let you install anything?** Staring at a
+login screen with no keyboard in reach? Babysitting a box that'll never run an
+agent?
 
-See [PLAN.md](PLAN.md) for the full design.
+**Meet GhostHID.**
 
-**Status: v0.3.0.** Working end to end. Enumerates as a composite USB keyboard,
-relative mouse and absolute pointer; joins your network while keeping its own
-access point as a fallback; is driven from a browser or the serial
-console; and updates itself over the air.
+Plug a thumb-sized board into any computer's USB port. That machine sees a
+perfectly ordinary keyboard and mouse — no drivers, no agent, no account,
+nothing installed. Then type on it from your phone, from across the room, or
+from across the network.
+
+**GhostHID. The keyboard that isn't there.**
+
+---
+
+An ESP32-S2 presents itself to a target computer as a composite USB keyboard,
+relative mouse and absolute pointer, and relays input sent to it over Wi-Fi. The
+target needs no software, drivers, agents or network access of its own.
+
+**Status: v0.3.0**, working end to end — joins your network while keeping its own
+access point as a fallback, is driven from a browser or a serial console, and
+updates itself over the air.
+
+Design notes and open problems are in [PLAN.md](PLAN.md); what changed and when
+is in [CHANGELOG.md](CHANGELOG.md).
 
 ## Build
 
