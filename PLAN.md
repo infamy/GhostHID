@@ -521,7 +521,7 @@ No networking yet.
 
 ---
 
-## Phase 2 — Wi-Fi Command Receiver
+## Phase 2 — Wi-Fi Command Receiver — **IMPLEMENTED** (AP path untested)
 
 Implement:
 
@@ -553,7 +553,7 @@ hello
 
 ---
 
-## Phase 3 — Mouse
+## Phase 3 — Mouse — **IMPLEMENTED** (relative only; absolute still outstanding)
 
 Add:
 
@@ -565,7 +565,7 @@ Test latency and reliability.
 
 ---
 
-## Phase 4 — Python Controller
+## Phase 4 — Python Controller — **IMPLEMENTED** (connects; input path unverified)
 
 Build a reusable Python client library.
 
@@ -586,7 +586,7 @@ g.click("left")
 
 ---
 
-## Phase 5 — Browser UI
+## Phase 5 — Browser UI — **IMPLEMENTED** (served from flash; adds settings, API docs, OTA)
 
 Add a lightweight web interface.
 
@@ -596,7 +596,7 @@ Use WebSocket for real-time control.
 
 ---
 
-## Phase 6 — Station Mode
+## Phase 6 — Station Mode — **IMPLEMENTED**, concurrent with the AP
 
 Add connection to an existing Wi-Fi network.
 
@@ -604,7 +604,7 @@ Configuration should be available through the web interface.
 
 ---
 
-## Phase 7 — Pairing & Security
+## Phase 7 — Pairing & Security — **PARTIAL**
 
 Implement:
 
@@ -617,7 +617,7 @@ Do not compromise the simple setup experience.
 
 ---
 
-## Phase 8 — Performance
+## Phase 8 — Performance — **NOT STARTED**
 
 Measure:
 
@@ -705,14 +705,18 @@ Open issues in this plan, roughly by importance. Not yet scheduled.
    as a single boot-protocol keyboard with no CDC and no mouse. Needs to be
    proven on real hardware before the MVP claims BIOS support.
 
-2. **Heartbeat timeout of 2 s is too slow for its own stated purpose.**
+2. **RESOLVED** ~~Heartbeat timeout of 2 s is too slow for its own purpose.~~
+   Now 750 ms, with a clean WebSocket close releasing immediately so the timer
+   only ever covers abrupt link loss. Original note kept for the reasoning:
    A modifier stuck for two full seconds has already done damage on the target
    (autorepeat, Ctrl-chords). Suggest ~250-500 ms for the watchdog. Note the
    watchdog is only the backstop: a clean TCP/WebSocket close should release
    everything *immediately*, and only an abrupt link loss falls through to the
    timer.
 
-3. **The AP itself must be WPA2, not just the app-layer password.**
+3. **RESOLVED** ~~The AP must be WPA2, not just the app-layer password.~~
+   The AP is WPA2 and `Config::setApPassword` refuses anything outside 8-63
+   characters rather than silently coming up open. Note kept:
    Section 8 covers authenticating the *controller*, but on an open AP every
    keystroke crosses the air in plaintext for anyone in range, and the
    app-layer password is replayable. WPA2 on the AP is one line of config and
@@ -925,6 +929,30 @@ But video is explicitly outside the initial project.
 ---
 
 # MVP Definition of Done
+
+## Verification status
+
+Separated deliberately from "implemented", because the two diverged badly
+during development and the difference is where the bugs were hiding.
+
+**Proven on hardware** (ESP32-S2 + macOS host):
+
+* enumerates as a composite HID keyboard + mouse, descriptor decoded and
+  checked (`0x303A:0x4004`, report IDs 1 and 2, 6-key rollover, rel X/Y
+  +/-127, wheel, AC Pan)
+* typed keystrokes reached the target OS
+* joins an existing network in station mode, with the AP up concurrently
+* serves the web UI and answers WebSocket auth / ping / error paths
+
+**Implemented but NOT yet verified on hardware** - do not claim these work:
+
+* mouse movement actually moving a pointer on a target
+* the Python client's input path end to end
+* a controller associating with the device's own AP (Mode A)
+* release-on-disconnect and the 750 ms watchdog actually firing
+* NVS settings surviving a reboot, OTA round-trip, the serial console
+* anything on iOS
+* anything on Windows or Linux - only macOS has been used as a target
 
 GhostHID v0.1 is complete when:
 
