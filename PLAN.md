@@ -783,7 +783,13 @@ ghosthid/
 └── README.md
 ```
 
-Use a permissive open-source license unless there is a specific reason otherwise.
+Licensed **MIT** (see `LICENSE`).
+
+Note the compiled firmware statically links LGPL-3.0 libraries
+(ESPAsyncWebServer, AsyncTCP) and the LGPL-2.1 arduino-esp32 core. That
+obligation attaches to the distributed binary, not to this source. The pinned
+Docker build satisfies the LGPL relink requirement by construction; see
+`THIRD-PARTY-LICENSES.md`.
 
 ---
 

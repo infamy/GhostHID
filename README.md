@@ -143,4 +143,10 @@ on disconnect" possible.
 
 ## Licence
 
-TBD — intended to be permissive (MIT or Apache-2.0).
+GhostHID is [MIT licensed](LICENSE).
+
+Note that the *compiled firmware* statically links LGPL-3.0 libraries
+(ESPAsyncWebServer, AsyncTCP) and the LGPL-2.1 arduino-esp32 core. If you
+redistribute a built `.bin`, see [THIRD-PARTY-LICENSES.md](THIRD-PARTY-LICENSES.md)
+for what that obliges you to do — in short, ship it with a pointer to the
+source, which the pinned Docker build already makes sufficient.
