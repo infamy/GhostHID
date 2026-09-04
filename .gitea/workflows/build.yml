@@ -46,11 +46,13 @@ jobs:
       - name: Build
         run: /tmp/pio/bin/pio run -d firmware -e esp32-s2-key
 
-      - name: Report size
-        run: |
-          ls -l firmware/.pio/build/esp32-s2-key/
-          /tmp/pio/bin/pio run -d firmware -e esp32-s2-key -t size 2>/dev/null | \
-            grep -E "RAM:|Flash:" || true
+      # No second `pio run ... -t size` here. SCons removes a target before
+      # rebuilding it, and invoking the size target dropped firmware.bin without
+      # regenerating it - the build left bootloader.bin, partitions.bin and the
+      # .elf in place but no .bin, which is what broke packaging. The build step
+      # above already prints RAM and flash usage.
+      - name: Show build output
+        run: ls -l firmware/.pio/build/esp32-s2-key/*.bin
 
       - name: Package a downloadable bundle
         # Same script `make dist` runs, so what you build locally is exactly
