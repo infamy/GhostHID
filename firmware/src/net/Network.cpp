@@ -87,6 +87,18 @@ void onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *client,
 
 const char *g_otaError = nullptr;
 bool        g_otaBegun = false;
+bool        g_otaReplied = false;   // a response was already sent from onOtaBody
+
+// Ends the request from inside the body handler. Without this we would keep
+// accepting an 800KB upload we have already decided to reject, and the client
+// sees a reset connection rather than the reason.
+void otaFail(AsyncWebServerRequest *request, int code, const char *why) {
+    g_otaError = why;
+    if (g_otaReplied) return;
+    g_otaReplied = true;
+    request->send(code, "application/json",
+                  String("{\"type\":\"error\",\"error\":\"") + why + "\"}");
+}
 
 // This endpoint installs arbitrary code on a device that types into someone's
 // computer. It must never be reachable without the token.
@@ -104,18 +116,27 @@ bool otaAuthorized(AsyncWebServerRequest *request) {
 
 void onOtaBody(AsyncWebServerRequest *request, uint8_t *data, size_t len,
                size_t index, size_t total) {
-    if (!otaAuthorized(request)) return;    // the completion handler 401s
-
     if (index == 0) {
         g_otaError = nullptr;
         g_otaBegun = false;
+        g_otaReplied = false;
+    }
+
+    if (!otaAuthorized(request)) {
+        otaFail(request, 401, "unauthorized");
+        return;
+    }
+    if (g_otaError != nullptr) return;   // already rejected; ignore the rest
+
+    if (index == 0) {
 
         // An ESP32 application image starts with magic 0xE9. Catching this
         // here gives a useful message instead of a failed flash, and it is the
         // exact mistake people make: ghosthid-merged.bin starts with 0xFF
         // bootloader padding and is for USB flashing only.
         if (len > 0 && data[0] != 0xE9) {
-            g_otaError = "not an ESP32 app image - upload firmware.bin, not ghosthid-merged.bin";
+            otaFail(request, 400,
+                    "not an ESP32 app image - upload firmware.bin, not ghosthid-merged.bin");
             return;
         }
 
@@ -123,23 +144,23 @@ void onOtaBody(AsyncWebServerRequest *request, uint8_t *data, size_t len,
         g_processor->setLocked(true, "firmware update in progress");
 
         if (!Update.begin(total > 0 ? total : UPDATE_SIZE_UNKNOWN)) {
-            g_otaError = "could not start update (image too large?)";
+            otaFail(request, 400, "could not start update (image too large?)");
             return;
         }
         g_otaBegun = true;
         Serial.printf("[ota] receiving %u bytes\r\n", static_cast<unsigned>(total));
     }
 
-    if (g_otaError != nullptr || !g_otaBegun) return;
+    if (!g_otaBegun) return;
 
     if (Update.write(data, len) != len) {
-        g_otaError = "write failed";
+        otaFail(request, 500, "flash write failed");
         return;
     }
 
     if (total > 0 && index + len >= total) {
         if (!Update.end(true)) {
-            g_otaError = "image failed validation";
+            otaFail(request, 400, "image failed validation");
             return;
         }
         Serial.println("[ota] image verified, rebooting");
@@ -147,21 +168,22 @@ void onOtaBody(AsyncWebServerRequest *request, uint8_t *data, size_t len,
 }
 
 void onOtaDone(AsyncWebServerRequest *request) {
-    if (!otaAuthorized(request)) {
-        request->send(401, "application/json",
-                      "{\"type\":\"error\",\"error\":\"unauthorized\"}");
-        return;
-    }
     if (g_otaError != nullptr) {
         if (g_otaBegun) Update.abort();
         g_processor->setLocked(false, nullptr);
         Serial.printf("[ota] failed: %s\r\n", g_otaError);
-        AsyncWebServerResponse *r = request->beginResponse(
-            400, "application/json",
-            String("{\"type\":\"error\",\"error\":\"") + g_otaError + "\"}");
-        request->send(r);
+        if (!g_otaReplied) {
+            g_otaReplied = true;
+            request->send(400, "application/json",
+                          String("{\"type\":\"error\",\"error\":\"") + g_otaError + "\"}");
+        }
         g_otaError = nullptr;
         g_otaBegun = false;
+        return;
+    }
+    if (!otaAuthorized(request)) {
+        request->send(401, "application/json",
+                      "{\"type\":\"error\",\"error\":\"unauthorized\"}");
         return;
     }
     request->send(200, "application/json",

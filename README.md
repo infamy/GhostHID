@@ -152,6 +152,12 @@ make ota IP=192.168.7.113 TOKEN=your-token
 
 Or drag `firmware.bin` into the web UI's Settings tab.
 
+If you call the endpoint by hand, **send `Content-Type: application/octet-stream`**.
+Without it curl defaults to `x-www-form-urlencoded` and the server tries to parse
+the whole 800KB image as form fields, runs out of memory and resets the
+connection — which looks like a network fault rather than the header mistake it
+is.
+
 Upload **`firmware.bin`**, not `ghosthid-merged.bin` — the merged image includes
 the bootloader and partition table at absolute offsets and is for USB flashing
 only. Both the browser and the device check the image's magic byte and reject

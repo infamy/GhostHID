@@ -60,12 +60,14 @@ bool Config::setStation(const char *ssid, const char *password) {
     snprintf(staPass_, sizeof(staPass_), "%s", password);
     store(kKeySsid,  staSsid_);
     store(kKeyStaPw, staPass_);
+    rebootPending_ = true;
     return true;
 }
 
 bool Config::setApPassword(const char *password) {
     if (!validApPassword(password)) return false;
     snprintf(apPass_, sizeof(apPass_), "%s", password);
+    rebootPending_ = true;
     return store(kKeyApPw, apPass_);
 }
 
@@ -84,6 +86,7 @@ bool Config::setDeviceName(const char *name) {
         if (!ok) return false;
     }
     snprintf(name_, sizeof(name_), "%s", name);
+    rebootPending_ = true;
     return store(kKeyName, name_);
 }
 

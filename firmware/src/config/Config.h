@@ -43,6 +43,14 @@ public:
     // Wipes stored settings; the next boot uses build-time defaults.
     void factoryReset();
 
+    // True if a setting has been changed since boot that the radios only read
+    // at startup - station credentials, AP password, device name. Lets the UI
+    // say "reboot required" as a fact rather than a guess.
+    //
+    // The pairing token is deliberately excluded: CommandProcessor reads it
+    // live on every new session, so a token change takes effect immediately.
+    bool rebootPending() const { return rebootPending_; }
+
     // WPA2 requires 8..63 characters. Refusing a shorter one here is what
     // stops a typo from silently bringing the AP up wide open.
     static bool validApPassword(const char *p);
@@ -53,6 +61,7 @@ private:
     char apPass_[kPassMax + 1]   = {};
     char token_[kTokenMax + 1]   = {};
     char name_[kNameMax + 1]     = {};
+    bool rebootPending_ = false;
 };
 
 }  // namespace ghosthid

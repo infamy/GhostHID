@@ -1034,13 +1034,20 @@ during development and the difference is where the bugs were hiding.
 * joins an existing network in station mode, with the AP up concurrently
 * serves the web UI and answers WebSocket auth / ping / error paths
 
+* settings persist across a reflash - verified by writing a marker, flashing,
+  and reading it back
+* the serial setup console, and station mode joining a real network
+* over-the-air update end to end: 820KB in 11.6s, plus both rejection paths
+  (wrong image, bad token) returning proper errors
+* absolute positioning enumerates - report ID 7, `81 02` (Absolute), 16-bit
+  axes over 0..32767, alongside the relative pointer's `81 06` / +/-127
+
 **Implemented but NOT yet verified on hardware** - do not claim these work:
 
-* mouse movement actually moving a pointer on a target
+* mouse movement actually moving a pointer on a target, relative or absolute
 * the Python client's input path end to end
 * a controller associating with the device's own AP (Mode A)
 * release-on-disconnect and the 750 ms watchdog actually firing
-* NVS settings surviving a reboot, OTA round-trip, the serial console
 * anything on iOS
 * anything on Windows or Linux - only macOS has been used as a target
 

@@ -71,14 +71,22 @@ void SerialConsole::printStatus() const {
                       config_.staPassword()[0] ? "(set)" : "(NOT SET)");
         if (network_.stationConnected()) {
             Serial.printf("    address   http://%s/\r\n", network_.staAddress());
+        } else if (config_.rebootPending()) {
+            // We know the settings changed since boot, so this is not a
+            // failure - the radio simply has not been restarted yet. Saying
+            // "maybe" here sent people chasing passwords that were fine.
+            Serial.printf("    address   NOT APPLIED YET - type 'reboot'\r\n");
         } else {
-            Serial.printf("    address   not connected "
-                          "(wrong password, out of range, or needs reboot)\r\n");
+            Serial.printf("    address   FAILED to connect "
+                          "(wrong password, or out of range)\r\n");
         }
     }
 
-    Serial.printf("\r\n  Pairing token  %s\r\n",
+    Serial.printf("\r\n  Pairing token  %s   (applies immediately, no reboot)\r\n",
                   config_.authToken()[0] ? "(set)" : "(none - auth disabled)");
+    if (config_.rebootPending()) {
+        Serial.printf("\r\n  *** REBOOT REQUIRED - settings changed since boot ***\r\n");
+    }
     Serial.printf("  USB to target  %s\r\n\r\n",
                   "see the web UI's USB badge");
 }
@@ -96,31 +104,33 @@ void SerialConsole::execute(char *line) {
         printStatus();
     } else if (strcasecmp(line, "wifi") == 0) {
         if (config_.setStation(value, config_.staPassword())) {
-            Serial.printf("ok: wifi = %s\r\n", value[0] ? value : "(disabled)");
+            Serial.printf("ok: wifi = %s  -- type 'reboot' to apply\r\n",
+                          value[0] ? value : "(disabled)");
         } else {
             Serial.println("error: ssid too long (max 32)");
         }
     } else if (strcasecmp(line, "wifipass") == 0) {
         if (config_.setStation(config_.staSsid(), value)) {
-            Serial.println("ok: wifi password set");
+            Serial.println("ok: wifi password set  -- type 'reboot' to apply");
         } else {
             Serial.println("error: password too long (max 64)");
         }
     } else if (strcasecmp(line, "appass") == 0) {
         if (config_.setApPassword(value)) {
-            Serial.println("ok: ap password set");
+            Serial.println("ok: ap password set  -- type 'reboot' to apply");
         } else {
             Serial.println("error: WPA2 requires 8-63 characters");
         }
     } else if (strcasecmp(line, "token") == 0) {
         if (config_.setAuthToken(value)) {
-            Serial.printf("ok: token %s\r\n", value[0] ? "set" : "cleared (auth disabled)");
+            Serial.printf("ok: token %s  (active now, no reboot needed)\r\n",
+                          value[0] ? "set" : "cleared - auth disabled");
         } else {
             Serial.println("error: token too long (max 48)");
         }
     } else if (strcasecmp(line, "name") == 0) {
         if (config_.setDeviceName(value)) {
-            Serial.printf("ok: name = %s\r\n", value);
+            Serial.printf("ok: name = %s  -- type 'reboot' to apply\r\n", value);
         } else {
             Serial.println("error: use letters, digits and hyphens only");
         }

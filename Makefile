@@ -11,7 +11,8 @@ PIO_VOLUME  ?= ghosthid-pio-cache
 FIRMWARE    := $(CURDIR)/firmware
 BUILD_DIR   := $(FIRMWARE)/.pio/build/$(ENV)
 MERGED      := $(BUILD_DIR)/ghosthid-merged.bin
-APP_BIN     := $(BUILD_DIR)/firmware.bin     # app image only - what OTA takes
+# App image only - this is what OTA takes (never the merged image).
+APP_BIN     := $(BUILD_DIR)/firmware.bin
 TOKEN       ?= ghosthid
 
 # Host-side flashing tools, kept in a project-local venv so nothing is

@@ -213,11 +213,13 @@ CommandResult CommandProcessor::handleMessage(const char *json, size_t len,
     if (strcmp(type, "get_config") == 0) {
         reply(outResponse, outSize,
               "{\"type\":\"config\",\"sta_ssid\":\"%s\",\"sta_pass_set\":%s,"
-              "\"ap_pass_set\":true,\"token_set\":%s,\"name\":\"%s\"}",
+              "\"ap_pass_set\":true,\"token_set\":%s,\"name\":\"%s\","
+              "\"reboot_pending\":%s}",
               config_.staSsid(),
               config_.staPassword()[0] ? "true" : "false",
               config_.authToken()[0]   ? "true" : "false",
-              config_.deviceName());
+              config_.deviceName(),
+              config_.rebootPending() ? "true" : "false");
         return CommandResult::Ok;
     }
 
@@ -251,8 +253,11 @@ CommandResult CommandProcessor::handleMessage(const char *json, size_t len,
                   "{\"type\":\"error\",\"error\":\"%s\"}", err);
             return CommandResult::BadRequest;
         }
+        // Report what actually needs a restart rather than always claiming
+        // one: a token change is live on the next connection.
         reply(outResponse, outSize,
-              "{\"type\":\"config_saved\",\"reboot_required\":true}");
+              "{\"type\":\"config_saved\",\"reboot_required\":%s}",
+              config_.rebootPending() ? "true" : "false");
         return CommandResult::Ok;
     }
 

@@ -180,9 +180,14 @@ td code{white-space:nowrap}
       </div>
       <p class="hint">
         Passwords are write-only: the device reports whether one is set, never its
-        value. Leave a field blank to keep the current one. Changes take effect after
-        a reboot.
+        value. Leave a field blank to keep the current one. Wi-Fi, AP and name
+        changes need a reboot; a token change is live on the next connection.
       </p>
+      <div id="c_pending" style="display:none;margin-top:9px;background:#3a2f1d;
+           border:1px solid var(--warn);color:#ffe0b0;border-radius:8px;padding:9px;font-size:13px">
+        <b>Reboot required.</b> Wi-Fi, access-point and device-name changes are only
+        read at startup, so they are saved but not yet active.
+      </div>
       <div id="c_log" style="font-family:ui-monospace,monospace;font-size:11px;color:var(--dim);margin-top:8px"></div>
     </section>
 
@@ -315,12 +320,17 @@ Body: raw firmware.bin
 → {"type":"error","error":"not an ESP32 app image …"}   (400)
 → {"type":"error","error":"unauthorized"}               (401)</pre>
       <p class="hint">
+        <b><code>Content-Type: application/octet-stream</code> is required.</b> Without
+        it curl defaults to <code>x-www-form-urlencoded</code>, and the server tries to
+        parse the whole image as form fields and runs out of memory — the upload dies
+        with a reset connection rather than an error.
         The token may also be sent as an <code>X-GhostHID-Token</code> header.
         Upload <code>firmware.bin</code>, not <code>ghosthid-merged.bin</code>.
         HID input is locked out for the duration. Writes go to the inactive OTA
         slot, so an interrupted upload cannot brick the device.
       </p>
-      <pre>curl -sS --data-binary @firmware.bin \
+      <pre>curl -sS -H "Content-Type: application/octet-stream" \
+  --data-binary @firmware.bin \
   "http://&lt;device&gt;/api/ota?token=&lt;token&gt;"</pre>
     </section>
 
@@ -397,8 +407,12 @@ function connect(){
       $("#c_ssid").value=m.sta_ssid||"";
       $("#c_name").value=m.name||"";
       $("#c_stapass_set").textContent=m.sta_pass_set?"(set)":"(not set)";
+      setReboot(!!m.reboot_pending);
     } else if(m.type==="config_saved"){
-      $("#c_log").textContent="Saved. Reboot to apply.";
+      setReboot(!!m.reboot_required);
+      $("#c_log").textContent = m.reboot_required
+        ? "Saved. These settings need a reboot to take effect."
+        : "Saved and active now.";
     } else if(m.type==="rebooting"){
       $("#c_log").textContent="Rebooting…"; setState(false,"rebooting");
     } else if(m.type==="error"){
@@ -636,6 +650,14 @@ $("#c_save").onclick=function(){
   $("#c_stapass").value=""; $("#c_appass").value=""; $("#c_token").value="";
   $("#c_log").textContent="Saving…";
 };
+// Definite, not speculative: the device tells us whether anything changed
+// since boot that the radios only read at startup.
+function setReboot(pending){
+  var b=$("#c_reboot");
+  b.classList.toggle("lock",pending);
+  b.textContent = pending ? "Reboot to apply" : "Reboot";
+  $("#c_pending").style.display = pending ? "block" : "none";
+}
 $("#c_reboot").onclick=function(){ send({type:"reboot"}); };
 
 // --- firmware update --------------------------------------------------------
