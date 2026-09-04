@@ -16,7 +16,16 @@ APP="$BUILD_DIR/firmware.bin"
 MERGED="$BUILD_DIR/ghosthid-merged.bin"
 
 for f in "$APP" "$MERGED"; do
-    [ -f "$f" ] || { echo "missing $f - build first" >&2; exit 1; }
+    if [ ! -f "$f" ]; then
+        {
+            echo "missing $f"
+            echo "  cwd:       $(pwd)"
+            echo "  build dir: $BUILD_DIR"
+            echo "  contents:"
+            ls -la "$BUILD_DIR" 2>&1 | sed 's/^/    /' || echo "    (does not exist)"
+        } >&2
+        exit 1
+    fi
 done
 
 DEST="$OUT/ghosthid-$ENV_NAME"

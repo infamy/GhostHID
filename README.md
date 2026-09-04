@@ -8,8 +8,8 @@ See [PLAN.md](PLAN.md) for the full design.
 
 **Status: v0.3.0.** Working end to end. Enumerates as a composite USB keyboard,
 relative mouse and absolute pointer; joins your network while keeping its own
-access point as a fallback; is driven from a browser, a Python client or the
-serial console; and updates itself over the air.
+access point as a fallback; is driven from a browser or the serial
+console; and updates itself over the air.
 
 ## Build
 
@@ -57,35 +57,12 @@ Device:   ws://192.168.4.1/ws
 Token:    ghosthid
 ```
 
-Join that network from your controller machine, then:
+Join that network (or reach it on your LAN) and open the address in a browser.
+Everything is there: live typing, a key pad, sticky modifiers, a trackpad with
+relative and absolute modes, settings and the API reference.
 
-```bash
-cd controller
-pip install -e .
-
-ghosthid type "hello world"
-ghosthid key ENTER
-ghosthid key CTRL+ALT+DELETE
-ghosthid move 100 50
-ghosthid click left
-ghosthid scroll 3
-```
-
-Or from Python:
-
-```python
-from ghosthid import GhostHID
-
-with GhostHID("192.168.4.1", token="ghosthid") as g:
-    g.type("hello world")
-    g.key("ENTER")
-    g.chord("CTRL", "ALT", "DELETE")
-    g.mouse_move(100, 50)
-    g.click("left")
-```
-
-Use the context manager. On exit it releases everything held, so an exception
-in your script cannot leave a modifier stuck on the target.
+For scripting, the WebSocket protocol is documented on the device itself under
+the **About** tab.
 
 ### First-time setup over serial
 
@@ -214,13 +191,10 @@ Gitea Actions workflows live in `.gitea/workflows/`.
 
 **`build.yml`** runs on every push and pull request:
 
-* firmware for both `esp32-s2-key` and `esp32-s3` — the S3 build is not a
-  deployment target, it is the check that keeps the HAL from quietly welding
-  itself to one board
+* the firmware builds
 * the embedded web UI parses as JavaScript, its tags balance, and it still fits
   the flash budget — the page lives inside the firmware image, so a runaway UI
   eats the headroom OTA depends on
-* the Python client byte-compiles and the package actually installs
 
 It installs PlatformIO directly rather than reusing the Docker build. That
 image exists to keep a developer's machine clean; nesting it inside a runner
@@ -250,26 +224,27 @@ If your runner uses different labels, change `runs-on` in the workflow.
 
 ## Porting
 
-Board specifics live in [`firmware/include/board_config.h`](firmware/include/board_config.h)
-and the `[env:...]` sections of [`firmware/platformio.ini`](firmware/platformio.ini).
-An ESP32-S3 target is kept building as a portability check:
-
-```bash
-make build ENV=esp32-s3
-```
+The ESP32-S2 is the only target right now. Board specifics are confined to
+[`firmware/include/board_config.h`](firmware/include/board_config.h) and the
+`[env:...]` section of [`firmware/platformio.ini`](firmware/platformio.ini), and
+`HidDevice` is the only code that touches USB — so another native-USB ESP32
+should need a board config and a platformio env, not changes elsewhere. That is
+untested; there is no second target to prove it against.
 
 ## Layout
 
 ```
 firmware/
-  include/board_config.h    board/HAL configuration + first-boot defaults
-  src/config/Config.{h,cpp} NVS-backed runtime settings
-  src/hid/HidDevice.{h,cpp} the only code that touches USB
-  src/main.cpp              Phase 1 self-test
-  scripts/                  PlatformIO post-build (image merge)
-  Dockerfile                build environment
-controller/                 Python client (Phase 4)
-docs/
+  include/board_config.h      board/HAL configuration + first-boot defaults
+  src/config/                 NVS settings and the serial setup console
+  src/hid/                    the only code that touches USB
+  src/net/Network.cpp         Wi-Fi, WebSocket, web UI, OTA
+  src/protocol/               transport-agnostic command handling
+  src/main.cpp                wiring
+  web/index.html              the control UI, embedded into the image
+  scripts/                    PlatformIO pre/post build steps
+  Dockerfile                  build environment
+scripts/                      packaging and release helpers
 ```
 
 `HidDevice` is the seam the whole design rests on: transports call into it and

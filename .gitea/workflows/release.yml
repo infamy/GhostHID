@@ -33,14 +33,12 @@ jobs:
           /tmp/pio/bin/pip install -q --upgrade pip
           /tmp/pio/bin/pip install -q platformio==6.1.16
 
-      - name: Build and package every target
+      - name: Build and package
         run: |
           set -eu
-          for env in esp32-s2-key esp32-s3; do
-            ( cd firmware && /tmp/pio/bin/pio run -e "$env" )
-            ./scripts/package.sh "firmware/.pio/build/$env" "$env" dist
-            ( cd dist && zip -qr "ghosthid-$env.zip" "ghosthid-$env" )
-          done
+          /tmp/pio/bin/pio run -d firmware -e esp32-s2-key
+          ./scripts/package.sh firmware/.pio/build/esp32-s2-key esp32-s2-key dist
+          ( cd dist && zip -qr ghosthid-esp32-s2-key.zip ghosthid-esp32-s2-key )
           ls -l dist/
 
       - name: Publish the release

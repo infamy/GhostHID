@@ -26,11 +26,12 @@ below was verified on hardware unless stated otherwise.
 * **Station mode**, concurrent with the access point. The AP always comes up, so
   a mistyped SSID cannot lock you out. `ap fallback` drops it while a network is
   joined and restores it if that connection is lost.
-* **Web UI**: touch-friendly, with live typing through the on-screen keyboard,
+* **Web UI** as the only client - touch-friendly, with live typing through the on-screen keyboard,
   sticky modifiers for chords a phone keyboard cannot produce, a trackpad with
   absolute and relative modes, settings, and on-device API documentation.
-* **CI** (Gitea Actions) building both ESP32-S2 and ESP32-S3, checking the web UI
-  and Python client, and publishing flashable images with instructions.
+* **CI** (Gitea Actions) building the firmware, checking the web UI, and
+  publishing flashable images with instructions. A `v*` tag also creates a
+  Gitea Release with those images attached.
 
 ### Changed
 
@@ -64,3 +65,12 @@ See `PLAN.md`. The notable ones: hosts increasingly block newly-attached HID
 devices at lock and boot screens; there is no OTA rollback, so an image that
 boots but breaks networking needs physical recovery; and keystrokes cross the
 network in cleartext in station mode.
+
+### Removed
+
+* The Python client. The browser UI covers the same ground without anything to
+  install, and the WebSocket protocol is documented on the device itself for
+  anyone scripting against it.
+* The ESP32-S3 build target. Only the ESP32-S2 is being tested, and an
+  unexercised second target is a maintenance cost rather than a portability
+  guarantee. The board abstraction that made it cheap is still in place.

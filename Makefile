@@ -60,7 +60,6 @@ help:
 	@echo "  make clean              remove build output"
 	@echo "  make distclean          also drop the toolchain cache volume"
 	@echo
-	@echo "  ENV=$(ENV)  (set ENV=esp32-s3 to cross-check portability)"
 	@echo
 	@echo "Build-time config (all optional):"
 	@echo "  WIFI_SSID=... WIFI_PASS=...   also join your LAN (AP stays up)"

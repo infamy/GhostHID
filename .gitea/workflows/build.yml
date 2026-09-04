@@ -17,14 +17,8 @@ on:
 
 jobs:
   firmware:
-    name: firmware (${{ matrix.env }})
+    name: firmware
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        # esp32-s3 is not a deployment target; it is the portability check that
-        # keeps the HAL from quietly welding itself to one board.
-        env: [esp32-s2-key, esp32-s3]
     steps:
       - uses: actions/checkout@v4
 
@@ -44,28 +38,31 @@ jobs:
           /tmp/pio/bin/pip install -q --upgrade pip
           /tmp/pio/bin/pip install -q platformio==6.1.16
 
+      # Every step runs from the repository root and passes PlatformIO an
+      # explicit project directory. Mixing `working-directory: firmware` on some
+      # steps with root-relative paths on others is what broke the packaging
+      # step: it was handed a path that was correct from one directory and not
+      # the other.
       - name: Build
-        working-directory: firmware
-        run: /tmp/pio/bin/pio run -e ${{ matrix.env }}
+        run: /tmp/pio/bin/pio run -d firmware -e esp32-s2-key
 
       - name: Report size
-        working-directory: firmware
         run: |
-          ls -l .pio/build/${{ matrix.env }}/firmware.bin
-          /tmp/pio/bin/pio run -e ${{ matrix.env }} -t size 2>/dev/null | \
+          ls -l firmware/.pio/build/esp32-s2-key/
+          /tmp/pio/bin/pio run -d firmware -e esp32-s2-key -t size 2>/dev/null | \
             grep -E "RAM:|Flash:" || true
 
       - name: Package a downloadable bundle
         # Same script `make dist` runs, so what you build locally is exactly
         # what CI publishes - binaries, checksums and flashing instructions.
-        run: ./scripts/package.sh firmware/.pio/build/${{ matrix.env }} ${{ matrix.env }} dist
+        run: ./scripts/package.sh firmware/.pio/build/esp32-s2-key esp32-s2-key dist
 
       - name: Upload
         uses: actions/upload-artifact@v3
         continue-on-error: true
         with:
-          name: ghosthid-${{ matrix.env }}
-          path: dist/ghosthid-${{ matrix.env }}/
+          name: ghosthid-esp32-s2-key
+          path: dist/ghosthid-esp32-s2-key/
 
   web:
     name: web UI
@@ -104,17 +101,3 @@ jobs:
             // silently eat the flash budget the OTA slot depends on.
             if (gz > 64 * 1024) { console.error("gzipped UI exceeds 64KB budget"); process.exit(1); }
           '
-
-  controller:
-    name: python client
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Byte-compile the client
-        run: python3 -m compileall -q controller/ghosthid controller/examples
-      - name: Check the package metadata is installable
-        run: |
-          python3 -m venv /tmp/v
-          /tmp/v/bin/pip install -q --upgrade pip
-          /tmp/v/bin/pip install -q ./controller
-          /tmp/v/bin/python -c "import ghosthid; print('ghosthid', ghosthid.__version__)"

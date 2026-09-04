@@ -574,7 +574,11 @@ Test latency and reliability.
 
 ---
 
-## Phase 4 — Python Controller — **IMPLEMENTED** (connects; input path unverified)
+## Phase 4 — Python Controller — **DROPPED**
+
+The browser UI arrived first and covers the same ground with nothing to install,
+so a Python client was redundant. The protocol is documented on the device for
+anyone who wants to script against it.
 
 Build a reusable Python client library.
 
@@ -1083,7 +1087,6 @@ during development and the difference is where the bugs were hiding.
 **Implemented but NOT yet verified on hardware** - do not claim these work:
 
 * relative mouse movement on a target (absolute is confirmed)
-* the Python client's input path end to end
 * a controller associating with the device's own AP (Mode A)
 * release-on-disconnect and the 750 ms watchdog actually firing
 * anything on iOS
