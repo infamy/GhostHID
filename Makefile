@@ -140,6 +140,8 @@ ota:
 monitor: $(ESPTOOL)
 	@test -n "$(PORT)" || { echo "PORT is required, e.g. make monitor PORT=/dev/cu.usbmodem01"; exit 1; }
 	@echo "Setup console: type 'help'. Exit with Ctrl-]."
-	@# --dtr/--rts 0: asserting either resets the S2 and drops the CDC port.
-	"$(FLASH_VENV)/bin/python" -m serial.tools.miniterm --dtr 0 --rts 0 \
+	@# DTR must be 1: arduino-esp32's USB CDC only transmits when it sees DTR
+	@# asserted, so --dtr 0 gives a completely silent console. RTS stays 0
+	@# because asserting it resets the S2 and drops the port.
+	"$(FLASH_VENV)/bin/python" -m serial.tools.miniterm --dtr 1 --rts 0 \
 		--eol LF "$(PORT)" 115200

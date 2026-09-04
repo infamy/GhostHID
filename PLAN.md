@@ -922,9 +922,46 @@ virtual pointer reaches the target's left edge
         -> release capture, cursor returns to the controller
 ```
 
+## Better: be a client of an existing server
+
+Rather than building our own edge-crossing, implement a **Deskflow / Barrier /
+Input Leap client**. Those projects already solve the genuinely hard parts -
+capturing and suppressing input on the controller, edge detection, multi-monitor
+layout, a config UI, cross-platform support. GhostHID would just be another
+"screen" that happens to need no software installed on it.
+
+This removes gap 5 entirely: controller-side key capture stops being our
+problem.
+
+Protocol comparison, if we pick one:
+
+| Target | Transport | Difficulty |
+|---|---|---|
+| **Deskflow / Barrier / Input Leap** | plain TCP :24800, documented legacy Synergy 1.x protocol (`DMMV`, `DMDN`, `DKDN`, `CINN`/`COUT`) | **easiest, no crypto** |
+| lan-mouse | DTLS over UDP :4242 (WebRTC.rs, self-signed certs, TOFU fingerprints) | hard - DTLS interop, no embedded reference |
+| Synergy 3 | new proprietary protocol | avoid |
+
+UDP itself is no obstacle - it is in fact the better transport for input, with
+no head-of-line blocking. The cost in lan-mouse's case is DTLS. mbedTLS is
+already linked and supports DTLS 1.2, so it is possible; the risk is interop
+debugging against WebRTC.rs.
+
+Note a cross-project effort to define a **unified protocol** across Deskflow,
+Input Leap, Barrier, Synergy and lan-mouse. If that lands, one implementation
+covers all of them - an argument against over-investing in the legacy Barrier
+wire format now.
+
+Side benefit if the lan-mouse path were ever taken: the same mbedTLS DTLS work
+would give GhostHID's own protocol an encrypted transport, closing the
+cleartext-keystrokes problem.
+
 Requires:
 
-* absolute HID report descriptor (see MVP Requirements / Mouse)
+* absolute HID report descriptor (see MVP Requirements / Mouse). `DMMV` carries
+  absolute screen coordinates, so this is a hard prerequisite, not a nicety -
+  the third separate feature to be blocked on it
+* a keysym -> HID usage mapping table; protocol key events are X11 keysym-based
+* our advertised screen size configured to match the target's resolution
 * the target's screen resolution as a configured value - we cannot query it
 * controller-side input capture and suppression, which is gap 5: macOS needs
   Accessibility permission and a CGEventTap, and Wayland has no portable path
