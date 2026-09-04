@@ -248,6 +248,16 @@ td code{white-space:normal}
       <h2 style="margin-top:16px">Access point</h2>
       <label>AP password (8–63 characters)</label>
       <input id="c_appass" type="password" placeholder="unchanged" autocomplete="new-password">
+      <label>When a network is joined</label>
+      <div class="row">
+        <button id="ap_always" class="grow">Keep the AP up</button>
+        <button id="ap_fallback" class="grow">Drop it while joined</button>
+      </div>
+      <p class="hint">
+        Keeping it up means a wrong Wi-Fi setting can never lock you out. Dropping it
+        dedicates the radio to the joined network and returns the AP by itself if that
+        connection is lost — measured as no faster here, but useful on a congested band.
+      </p>
 
       <h2 style="margin-top:16px">Access</h2>
       <label>Pairing token</label>
@@ -326,8 +336,7 @@ td code{white-space:normal}
         <tr><td>Firmware</td><td id="a_ver">—</td></tr>
         <tr><td>Name</td><td id="a_name">—</td></tr>
         <tr><td>This address</td><td id="a_here">—</td></tr>
-        <tr><td>Own access point</td><td>always on, as a fallback if the
-            joined network is unavailable</td></tr>
+        <tr><td>Own access point</td><td id="a_ap">—</td></tr>
         <tr><td>USB to target</td><td id="a_usb">—</td></tr>
       </table>
     </section>
@@ -430,10 +439,11 @@ td code{white-space:normal}
       <h2>4 · Configuration</h2>
       <pre>{"type":"get_config"}
 → {"type":"config","sta_ssid":"…","sta_pass_set":true,
-   "ap_pass_set":true,"token_set":true,"name":"ghosthid"}
+   "ap_pass_set":true,"token_set":true,"name":"ghosthid",
+   "ap_always":true,"reboot_pending":false}
 
 {"type":"set_config","sta_ssid":"MyNet","sta_pass":"…",
- "ap_pass":"…","token":"…","name":"ghosthid"}
+ "ap_pass":"…","token":"…","name":"ghosthid","ap_always":true}
 → {"type":"config_saved","reboot_required":true}
 
 {"type":"reboot"} → {"type":"rebooting"}</pre>
@@ -441,6 +451,13 @@ td code{white-space:normal}
         Every field of <code>set_config</code> is optional; omitted fields keep their
         stored value. Secrets are <b>write-only</b> — <code>get_config</code> reports
         only whether each is set. Settings persist in NVS and survive reflashing.
+      </p>
+      <p class="hint">
+        <code>reboot_required</code> and <code>reboot_pending</code> are facts, not
+        guesses: Wi-Fi, access-point and device-name changes are only read at startup,
+        while a token change takes effect on the next connection and reports
+        <code>false</code>. <code>ap_always:false</code> drops the access point while a
+        network is joined and restores it if that connection is lost.
       </p>
     </section>
 
@@ -553,6 +570,10 @@ function connect(){
       $("#c_ssid").value=m.sta_ssid||"";
       $("#c_name").value=m.name||"";
       $("#a_name").textContent=m.name||"—";
+      setApMode(m.ap_always!==false);
+      $("#a_ap").textContent = m.ap_always!==false
+        ? "always on — a wrong Wi-Fi setting cannot lock you out"
+        : "drops while a network is joined; returns if that connection is lost";
       $("#c_stapass_set").textContent=m.sta_pass_set?"(set)":"(not set)";
       setReboot(!!m.reboot_pending);
     } else if(m.type==="config_saved"){
@@ -811,6 +832,7 @@ document.querySelectorAll("[data-scroll]").forEach(function(b){
 $("#c_save").onclick=function(){
   var m={type:"set_config"};
   m.sta_ssid=$("#c_ssid").value;
+  m.ap_always=apAlways;
   if($("#c_stapass").value) m.sta_pass=$("#c_stapass").value;
   if($("#c_appass").value)  m.ap_pass =$("#c_appass").value;
   if($("#c_token").value)   m.token   =$("#c_token").value;
@@ -827,6 +849,14 @@ function setReboot(pending){
   b.textContent = pending ? "Reboot to apply" : "Reboot";
   $("#c_pending").style.display = pending ? "block" : "none";
 }
+var apAlways=true;
+function setApMode(v){
+  apAlways=v;
+  $("#ap_always").classList.toggle("on",v);
+  $("#ap_fallback").classList.toggle("on",!v);
+}
+$("#ap_always").onclick=function(){ setApMode(true); };
+$("#ap_fallback").onclick=function(){ setApMode(false); };
 $("#c_reboot").onclick=function(){ send({type:"reboot"}); };
 
 // --- firmware update --------------------------------------------------------

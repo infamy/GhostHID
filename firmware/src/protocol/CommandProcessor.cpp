@@ -214,11 +214,12 @@ CommandResult CommandProcessor::handleMessage(const char *json, size_t len,
         reply(outResponse, outSize,
               "{\"type\":\"config\",\"sta_ssid\":\"%s\",\"sta_pass_set\":%s,"
               "\"ap_pass_set\":true,\"token_set\":%s,\"name\":\"%s\","
-              "\"reboot_pending\":%s}",
+              "\"ap_always\":%s,\"reboot_pending\":%s}",
               config_.staSsid(),
               config_.staPassword()[0] ? "true" : "false",
               config_.authToken()[0]   ? "true" : "false",
               config_.deviceName(),
+              config_.apAlways()      ? "true" : "false",
               config_.rebootPending() ? "true" : "false");
         return CommandResult::Ok;
     }
@@ -242,6 +243,9 @@ CommandResult CommandProcessor::handleMessage(const char *json, size_t len,
         if (!err && doc["token"].is<const char *>()) {
             if (!config_.setAuthToken(doc["token"].as<const char *>()))
                 err = "token too long";
+        }
+        if (!err && doc["ap_always"].is<bool>()) {
+            config_.setApAlways(doc["ap_always"].as<bool>());
         }
         if (!err && doc["name"].is<const char *>()) {
             if (!config_.setDeviceName(doc["name"].as<const char *>()))

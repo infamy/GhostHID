@@ -12,7 +12,7 @@
 // Identity
 // ---------------------------------------------------------------------------
 
-#define GHOSTHID_VERSION "0.2.0-phase2"
+#define GHOSTHID_VERSION "0.3.0"
 
 // How the target computer sees us in its USB device list.
 //

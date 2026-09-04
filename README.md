@@ -6,9 +6,10 @@ The target needs no software, drivers, agents or network access.
 
 See [PLAN.md](PLAN.md) for the full design.
 
-**Status: Phase 2 — Wi-Fi command receiver.** Enumerates as a composite USB
-keyboard + mouse, serves a WebSocket over its own access point, and is driven
-by a Python client.
+**Status: v0.3.0.** Working end to end. Enumerates as a composite USB keyboard,
+relative mouse and absolute pointer; joins your network while keeping its own
+access point as a fallback; is driven from a browser, a Python client or the
+serial console; and updates itself over the air.
 
 ## Build
 

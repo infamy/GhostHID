@@ -1,6 +1,6 @@
 [project]
 name = "ghosthid"
-version = "0.2.0"
+version = "0.3.0"
 description = "Controller client for GhostHID, a wireless USB HID bridge"
 requires-python = ">=3.9"
 dependencies = ["websockets>=13.0"]
