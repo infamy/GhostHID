@@ -55,16 +55,17 @@ jobs:
           /tmp/pio/bin/pio run -e ${{ matrix.env }} -t size 2>/dev/null | \
             grep -E "RAM:|Flash:" || true
 
-      - name: Upload firmware
+      - name: Package a downloadable bundle
+        # Same script `make dist` runs, so what you build locally is exactly
+        # what CI publishes - binaries, checksums and flashing instructions.
+        run: ./scripts/package.sh firmware/.pio/build/${{ matrix.env }} ${{ matrix.env }} dist
+
+      - name: Upload
         uses: actions/upload-artifact@v3
         continue-on-error: true
         with:
           name: ghosthid-${{ matrix.env }}
-          # firmware.bin is the OTA image; the merged one is for USB flashing
-          # and deliberately erases stored settings.
-          path: |
-            firmware/.pio/build/${{ matrix.env }}/firmware.bin
-            firmware/.pio/build/${{ matrix.env }}/ghosthid-merged.bin
+          path: dist/ghosthid-${{ matrix.env }}/
 
   web:
     name: web UI

@@ -226,18 +226,21 @@ image exists to keep a developer's machine clean; nesting it inside a runner
 that is already a container buys nothing. The pinned PlatformIO version is kept
 in step with `firmware/Dockerfile`.
 
-**`deploy.yml`** is manual (Actions → deploy → Run workflow). It builds and
-pushes the image to a device over the air. It needs:
+Each firmware build uploads a downloadable bundle containing both images,
+their checksums, and `FLASHING.md` with instructions for a fresh board and for
+an over-the-air update. Download it from the run's Artifacts.
 
-* a `GHOSTHID_TOKEN` repository secret holding the device's pairing token
-  (Settings → Actions → Secrets)
-* a runner that can reach the device on the network
+CI does not touch any device. Deploying is a deliberate act: it installs code on
+a machine that types into someone's computer, and an image that boots but breaks
+networking needs physical recovery, since there is no rollback yet.
 
-It is deliberately not automatic on push. This installs code on a device that
-types into someone's computer, and an image that boots but breaks networking
-needs physical recovery — there is no rollback yet.
+Build the same bundle locally with:
 
-If your runner uses different labels, change `runs-on` in both files.
+```bash
+make dist        # -> dist/ghosthid-esp32-s2-key/
+```
+
+If your runner uses different labels, change `runs-on` in the workflow.
 
 ## Porting
 

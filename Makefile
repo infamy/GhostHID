@@ -45,7 +45,7 @@ DOCKER_RUN = docker run --rm -t \
 	$(PIO_ENVVARS) \
 	$(IMAGE)
 
-.PHONY: help image build rebuild clean distclean shell flash flash-factory monitor ports size localini ota
+.PHONY: help image build rebuild clean distclean shell flash flash-factory monitor ports size localini ota dist
 
 help:
 	@echo "GhostHID"
@@ -53,6 +53,7 @@ help:
 	@echo "  make flash PORT=...     flash over USB, keeping stored settings"
 	@echo "  make flash-factory      flash and ERASE settings (clean slate)"
 	@echo "  make ota IP=... TOKEN=.. update over the network (no cable)"
+	@echo "  make dist               package images + flashing instructions"
 	@echo "  make monitor PORT=...   serial setup console (wifi/token config)"
 	@echo "  make ports              list candidate serial ports"
 	@echo "  make shell              interactive shell in the build container"
@@ -82,6 +83,11 @@ rebuild: image localini
 	$(DOCKER_RUN) pio run -e $(ENV) -t clean
 	$(DOCKER_RUN) pio run -e $(ENV)
 
+# Assemble a downloadable bundle: both images, checksums and flashing
+# instructions. Identical to what CI publishes.
+dist: build
+	@./scripts/package.sh "$(BUILD_DIR)" "$(ENV)" "$(CURDIR)/dist"
+
 size: image localini
 	$(DOCKER_RUN) pio run -e $(ENV) -t size
 
@@ -90,7 +96,7 @@ shell: image
 		-e PLATFORMIO_CORE_DIR=/pio $(IMAGE) bash
 
 clean:
-	rm -rf "$(FIRMWARE)/.pio"
+	rm -rf "$(FIRMWARE)/.pio" "$(CURDIR)/dist"
 
 distclean: clean
 	-docker volume rm $(PIO_VOLUME)
