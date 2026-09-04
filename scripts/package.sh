@@ -8,9 +8,26 @@
 
 set -euo pipefail
 
+# Resolve everything from the repository root, derived from this script's own
+# location, so the caller's working directory is irrelevant. Gitea's runner did
+# not put us where the workflow implied, and a path that is correct from the
+# root and wrong from firmware/ is not a bug worth having twice.
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$REPO_ROOT"
+
 BUILD_DIR="${1:?build dir required}"
 ENV_NAME="${2:?env name required}"
 OUT="${3:?output dir required}"
+
+# Accept a relative path (resolved against the repo root) or an absolute one.
+case "$BUILD_DIR" in
+    /*) ;;
+    *) BUILD_DIR="$REPO_ROOT/$BUILD_DIR" ;;
+esac
+case "$OUT" in
+    /*) ;;
+    *) OUT="$REPO_ROOT/$OUT" ;;
+esac
 
 APP="$BUILD_DIR/firmware.bin"
 MERGED="$BUILD_DIR/ghosthid-merged.bin"
