@@ -1,0 +1,119 @@
+# Gitea Actions CI for GhostHID.
+#
+# Deliberately does not use the repo's Docker build (`make build`): that exists
+# to keep a developer's machine clean, and nesting it inside a runner that is
+# already a container buys nothing. CI installs PlatformIO directly and pins the
+# same version the Dockerfile does, so the two stay in step.
+#
+# If your runner uses different labels, change `runs-on` below.
+
+name: build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  firmware:
+    name: firmware (${{ matrix.env }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # esp32-s3 is not a deployment target; it is the portability check that
+        # keeps the HAL from quietly welding itself to one board.
+        env: [esp32-s2-key, esp32-s3]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache PlatformIO packages
+        uses: actions/cache@v4
+        continue-on-error: true          # a cache miss must never fail the build
+        with:
+          path: ~/.platformio
+          key: pio-${{ runner.os }}-${{ hashFiles('firmware/platformio.ini') }}
+          restore-keys: pio-${{ runner.os }}-
+
+      - name: Install PlatformIO
+        run: |
+          set -eu
+          python3 -m venv /tmp/pio || { apt-get update -qq && \
+            apt-get install -y -qq python3-venv && python3 -m venv /tmp/pio; }
+          /tmp/pio/bin/pip install -q --upgrade pip
+          /tmp/pio/bin/pip install -q platformio==6.1.16
+
+      - name: Build
+        working-directory: firmware
+        run: /tmp/pio/bin/pio run -e ${{ matrix.env }}
+
+      - name: Report size
+        working-directory: firmware
+        run: |
+          ls -l .pio/build/${{ matrix.env }}/firmware.bin
+          /tmp/pio/bin/pio run -e ${{ matrix.env }} -t size 2>/dev/null | \
+            grep -E "RAM:|Flash:" || true
+
+      - name: Upload firmware
+        uses: actions/upload-artifact@v3
+        continue-on-error: true
+        with:
+          name: ghosthid-${{ matrix.env }}
+          # firmware.bin is the OTA image; the merged one is for USB flashing
+          # and deliberately erases stored settings.
+          path: |
+            firmware/.pio/build/${{ matrix.env }}/firmware.bin
+            firmware/.pio/build/${{ matrix.env }}/ghosthid-merged.bin
+
+  web:
+    name: web UI
+    runs-on: ubuntu-latest
+    container:
+      image: node:20-alpine
+    steps:
+      - name: Install git for checkout
+        run: apk add --no-cache git
+      - uses: actions/checkout@v4
+
+      - name: Check the embedded UI parses
+        run: |
+          node -e '
+            const fs = require("fs");
+            const html = fs.readFileSync("firmware/web/index.html", "utf8");
+            const m = html.match(/<script>([\s\S]*)<\/script>/);
+            if (!m) { console.error("no <script> block found"); process.exit(1); }
+            new Function(m[1]);                      // throws on a syntax error
+            for (const tag of ["script", "style", "header", "main", "nav"]) {
+              const o = (html.match(new RegExp("<" + tag + "[ >]", "g")) || []).length;
+              const c = (html.match(new RegExp("</" + tag + ">", "g")) || []).length;
+              if (o !== c) { console.error(`unbalanced <${tag}>: ${o} open, ${c} close`); process.exit(1); }
+            }
+            console.log("UI parses, tags balanced");
+          '
+
+      - name: Check it still fits in flash
+        run: |
+          node -e '
+            const zlib = require("zlib"), fs = require("fs");
+            const raw = fs.readFileSync("firmware/web/index.html");
+            const gz = zlib.gzipSync(raw, { level: 9 }).length;
+            console.log(`UI ${raw.length} bytes -> ${gz} gzipped`);
+            // The page is embedded in the firmware image; a runaway UI would
+            // silently eat the flash budget the OTA slot depends on.
+            if (gz > 64 * 1024) { console.error("gzipped UI exceeds 64KB budget"); process.exit(1); }
+          '
+
+  controller:
+    name: python client
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Byte-compile the client
+        run: python3 -m compileall -q controller/ghosthid controller/examples
+      - name: Check the package metadata is installable
+        run: |
+          python3 -m venv /tmp/v
+          /tmp/v/bin/pip install -q --upgrade pip
+          /tmp/v/bin/pip install -q ./controller
+          /tmp/v/bin/python -c "import ghosthid; print('ghosthid', ghosthid.__version__)"

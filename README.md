@@ -207,6 +207,38 @@ worst failure this device can produce:
    this.
 3. **BOOT button** — a physical panic release that needs no network at all.
 
+## CI
+
+Gitea Actions workflows live in `.gitea/workflows/`.
+
+**`build.yml`** runs on every push and pull request:
+
+* firmware for both `esp32-s2-key` and `esp32-s3` — the S3 build is not a
+  deployment target, it is the check that keeps the HAL from quietly welding
+  itself to one board
+* the embedded web UI parses as JavaScript, its tags balance, and it still fits
+  the flash budget — the page lives inside the firmware image, so a runaway UI
+  eats the headroom OTA depends on
+* the Python client byte-compiles and the package actually installs
+
+It installs PlatformIO directly rather than reusing the Docker build. That
+image exists to keep a developer's machine clean; nesting it inside a runner
+that is already a container buys nothing. The pinned PlatformIO version is kept
+in step with `firmware/Dockerfile`.
+
+**`deploy.yml`** is manual (Actions → deploy → Run workflow). It builds and
+pushes the image to a device over the air. It needs:
+
+* a `GHOSTHID_TOKEN` repository secret holding the device's pairing token
+  (Settings → Actions → Secrets)
+* a runner that can reach the device on the network
+
+It is deliberately not automatic on push. This installs code on a device that
+types into someone's computer, and an image that boots but breaks networking
+needs physical recovery — there is no rollback yet.
+
+If your runner uses different labels, change `runs-on` in both files.
+
 ## Porting
 
 Board specifics live in [`firmware/include/board_config.h`](firmware/include/board_config.h)

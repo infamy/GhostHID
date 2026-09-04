@@ -1,0 +1,2 @@
+[console_scripts]
+ghosthid = ghosthid.__main__:main

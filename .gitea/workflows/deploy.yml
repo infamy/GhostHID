@@ -1,0 +1,86 @@
+# Manual over-the-air deploy.
+#
+# Run from Gitea's Actions tab. The runner must be able to reach the device on
+# the network, and the repository needs a GHOSTHID_TOKEN secret holding the
+# device's pairing token.
+#
+# Deliberately manual rather than on-push: this installs code on a device that
+# types into someone's computer, and a bad image that boots but breaks
+# networking needs physical recovery (there is no rollback - see PLAN.md).
+
+name: deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      host:
+        description: "Device address (mDNS name or IP)"
+        required: true
+        default: "ghosthid-ba98.local"
+      build_env:
+        description: "PlatformIO environment to build"
+        required: true
+        default: "esp32-s2-key"
+
+jobs:
+  ota:
+    name: build and flash over the air
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Require the pairing token
+        env:
+          TOKEN: ${{ secrets.GHOSTHID_TOKEN }}
+        run: |
+          if [ -z "${TOKEN:-}" ]; then
+            echo "GHOSTHID_TOKEN secret is not set."
+            echo "Add it under Settings -> Actions -> Secrets in this repository."
+            exit 1
+          fi
+
+      - name: Install PlatformIO
+        run: |
+          set -eu
+          python3 -m venv /tmp/pio || { apt-get update -qq && \
+            apt-get install -y -qq python3-venv && python3 -m venv /tmp/pio; }
+          /tmp/pio/bin/pip install -q --upgrade pip
+          /tmp/pio/bin/pip install -q platformio==6.1.16
+
+      - name: Build
+        working-directory: firmware
+        run: /tmp/pio/bin/pio run -e ${{ inputs.build_env }}
+
+      - name: Check the device is reachable
+        run: |
+          curl -sS --max-time 10 -o /dev/null -w "device HTTP %{http_code}\n" \
+            "http://${{ inputs.host }}/"
+
+      - name: Upload firmware over the air
+        env:
+          TOKEN: ${{ secrets.GHOSTHID_TOKEN }}
+        run: |
+          set -eu
+          IMG="firmware/.pio/build/${{ inputs.build_env }}/firmware.bin"
+          # firmware.bin only. ghosthid-merged.bin carries the bootloader and
+          # partition table at absolute offsets and would be rejected - it is
+          # the USB-flash image, and it erases stored settings.
+          test -f "$IMG"
+          echo "uploading $(du -h "$IMG" | cut -f1)"
+          curl -sS --fail-with-body --max-time 180 \
+            -H "Content-Type: application/octet-stream" \
+            -H "X-GhostHID-Token: $TOKEN" \
+            --data-binary "@$IMG" \
+            "http://${{ inputs.host }}/api/ota"
+          echo
+
+      - name: Confirm it came back
+        run: |
+          set -eu
+          for i in $(seq 1 20); do
+            sleep 3
+            if curl -sS --max-time 5 -o /dev/null "http://${{ inputs.host }}/"; then
+              echo "device is back up after $((i * 3))s"; exit 0
+            fi
+          done
+          echo "device did not respond within 60s"; exit 1
