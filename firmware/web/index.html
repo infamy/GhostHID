@@ -1,95 +1,297 @@
 <!doctype html>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="color-scheme" content="dark">
 <title>GhostHID</title>
 <style>
-:root{--bg:#12141a;--panel:#1b1e27;--line:#2c3140;--fg:#e6e8ef;--dim:#8a91a6;--ok:#3ddc84;--bad:#ff5c5c;--accent:#6ea8fe}
-*{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.45 ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
-header{display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--panel);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
-h1{font-size:15px;margin:0;font-weight:600;letter-spacing:.2px}
+:root{--bg:#12141a;--panel:#1b1e27;--line:#2c3140;--fg:#e6e8ef;--dim:#8a91a6;
+      --ok:#3ddc84;--bad:#ff5c5c;--accent:#6ea8fe;--warn:#ffb454;
+      --tap:44px}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{overscroll-behavior:none}
+body{margin:0;background:var(--bg);color:var(--fg);
+     font:15px/1.45 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+     padding-bottom:env(safe-area-inset-bottom)}
+header{display:flex;align-items:center;gap:9px;padding:calc(9px + env(safe-area-inset-top)) 12px 9px;
+       background:var(--panel);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:20}
+h1{font-size:15px;margin:0;font-weight:600}
 #dot{width:9px;height:9px;border-radius:50%;background:var(--bad);flex:none}
 #dot.on{background:var(--ok)}
-#usb{font-size:11px;padding:3px 8px;border-radius:5px;border:1px solid var(--line);white-space:nowrap}
+#stat{color:var(--dim);font-size:11px;margin-right:auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#usb{font-size:10px;padding:3px 7px;border-radius:5px;border:1px solid var(--line);white-space:nowrap}
 #usb.ok{color:var(--ok);border-color:var(--ok)}
 #usb.bad{color:var(--bad);border-color:var(--bad)}
-#warn{display:none;background:#3a1d1d;border:1px solid var(--bad);color:#ffc9c9;
-      border-radius:8px;padding:9px 11px;font-size:13px}
-#warn.show{display:block}
-#stat{color:var(--dim);font-size:12px;margin-right:auto}
-main{padding:14px;display:grid;gap:14px;max-width:760px;margin:0 auto}
+
+nav{display:flex;background:var(--panel);border-bottom:1px solid var(--line);
+    position:sticky;top:0;z-index:19}
+nav button{flex:1;background:none;border:0;border-bottom:2px solid transparent;
+           color:var(--dim);padding:11px 4px;font:inherit;font-size:13px;cursor:pointer;min-height:var(--tap)}
+nav button.on{color:var(--accent);border-bottom-color:var(--accent)}
+
+main{padding:12px;display:grid;gap:12px;max-width:820px;margin:0 auto}
 section{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px}
 h2{font-size:11px;text-transform:uppercase;letter-spacing:.09em;color:var(--dim);margin:0 0 9px}
-button,input{font:inherit;color:var(--fg);background:#252a36;border:1px solid var(--line);border-radius:7px;padding:7px 11px}
+button,input,select{font:inherit;color:var(--fg);background:#252a36;border:1px solid var(--line);
+                    border-radius:8px;padding:9px 11px;min-height:var(--tap)}
 button{cursor:pointer;-webkit-user-select:none;user-select:none;touch-action:manipulation}
 button:active{background:var(--accent);color:#06080d;border-color:var(--accent)}
-button.wide{width:100%}
-input{width:100%}
-.row{display:flex;gap:7px;flex-wrap:wrap}
-.row>*{flex:0 0 auto}
-.grow{flex:1 1 auto;min-width:120px}
-#pad{height:230px;border:1px dashed #3a4152;border-radius:9px;background:#161923;
-     display:flex;align-items:center;justify-content:center;color:var(--dim);
-     touch-action:none;-webkit-user-select:none;user-select:none;cursor:crosshair;text-align:center;padding:12px}
-#pad.live{border-color:var(--accent);color:var(--accent)}
-#cap{border-color:var(--accent)}
-#cap.on{background:var(--accent);color:#06080d}
-.hint{color:var(--dim);font-size:12px;margin:7px 0 0}
-kbd{background:#252a36;border:1px solid var(--line);border-bottom-width:2px;border-radius:4px;padding:1px 5px;font-size:11px;font-family:ui-monospace,monospace}
-#log{font-family:ui-monospace,monospace;font-size:11px;color:var(--dim);max-height:88px;overflow:auto;white-space:pre-wrap;margin-top:8px}
+button.on{background:var(--accent);color:#06080d;border-color:var(--accent)}
+button.lock{background:var(--warn);color:#06080d;border-color:var(--warn)}
+input{width:100%;font-size:16px}          /* 16px stops iOS zooming on focus */
+.row{display:flex;gap:6px;flex-wrap:wrap}
+.grow{flex:1 1 auto;min-width:110px}
+.g4{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.g6{display:grid;grid-template-columns:repeat(6,1fr);gap:6px}
+label{display:block;font-size:11px;color:var(--dim);margin:9px 0 4px;text-transform:uppercase;letter-spacing:.06em}
+.hint{color:var(--dim);font-size:12px;margin:8px 0 0}
+kbd{background:#252a36;border:1px solid var(--line);border-bottom-width:2px;border-radius:4px;
+    padding:1px 5px;font-size:11px;font-family:ui-monospace,monospace}
+#warn{display:none;background:#3a1d1d;border:1px solid var(--bad);color:#ffc9c9;
+      border-radius:9px;padding:10px;font-size:13px}
+#warn.show{display:block}
+#pad{height:min(44vh,300px);border:1px dashed #3a4152;border-radius:10px;background:#161923;
+     display:flex;align-items:center;justify-content:center;color:var(--dim);text-align:center;
+     touch-action:none;-webkit-user-select:none;user-select:none;padding:12px;font-size:13px}
+#pad.live{border-color:var(--accent);color:var(--accent);background:#171d2b}
+#typebox{border:1px solid var(--accent);background:#161923}
+#typebox:focus{outline:2px solid var(--accent);outline-offset:1px}
+#log{font-family:ui-monospace,monospace;font-size:11px;color:var(--dim);
+     max-height:110px;overflow:auto;white-space:pre-wrap;margin-top:8px}
+.tab{display:none}.tab.on{display:grid;gap:12px}
+code{font-family:ui-monospace,monospace;font-size:12px;background:#0e1016;
+     border:1px solid var(--line);border-radius:4px;padding:1px 5px}
+pre{font-family:ui-monospace,monospace;font-size:12px;background:#0e1016;border:1px solid var(--line);
+    border-radius:8px;padding:10px;overflow-x:auto;margin:6px 0}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+th{color:var(--dim);font-size:11px;text-transform:uppercase;letter-spacing:.06em}
+td code{white-space:nowrap}
+.ok{color:var(--ok)}.bad{color:var(--bad)}
 </style>
 
 <header>
   <div id="dot"></div><h1>GhostHID</h1><span id="stat">connecting…</span>
   <span id="usb" class="bad">USB ?</span>
-  <button id="panic" title="Release every held key and button">Release all</button>
+  <button id="panic" style="min-height:34px;padding:6px 9px;font-size:12px">Release</button>
 </header>
+
+<nav>
+  <button data-tab="control" class="on">Control</button>
+  <button data-tab="settings">Settings</button>
+  <button data-tab="api">API</button>
+</nav>
 
 <main>
   <div id="warn">
     <b>The target is not receiving input.</b> GhostHID is on the network, but the
-    computer it is plugged into has not enumerated it over USB — it may be
-    unplugged, asleep, or in a charge-only port. Keystrokes will go nowhere
-    until this clears.
+    computer it is plugged into has not enumerated it over USB — unplugged,
+    asleep, or a charge-only port.
   </div>
 
-  <section>
-    <h2>Type text</h2>
-    <div class="row">
-      <input id="txt" class="grow" placeholder="Type here, press Enter to send" autocomplete="off">
-      <button id="send">Send</button>
-    </div>
-    <p class="hint">Sends the whole string as keystrokes. ASCII / US layout.</p>
-  </section>
+  <!-- ================= CONTROL ================= -->
+  <div class="tab on" id="tab-control">
+    <section>
+      <h2>Live typing</h2>
+      <input id="typebox" placeholder="Tap here, then type — keys go straight to the target"
+             autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+      <p class="hint">
+        On a phone this opens the on-screen keyboard and forwards each character as
+        you type. Modifiers below are <b>sticky</b>: tap <kbd>Ctrl</kbd> then press
+        <kbd>c</kbd> to send Ctrl+C. Double-tap a modifier to lock it.
+      </p>
+      <div class="row" style="margin-top:9px" id="mods"></div>
+    </section>
 
-  <section>
-    <h2>Keyboard</h2>
-    <div class="row" id="keys"></div>
-    <p class="hint" style="margin-top:10px">
-      <button id="cap">Capture keyboard: off</button>
-      &nbsp;While on, every key you press goes to the target.
-      Press <kbd>Esc</kbd> twice quickly to stop capturing.
-    </p>
-  </section>
+    <section>
+      <h2>Send a whole string</h2>
+      <div class="row">
+        <input id="txt" class="grow" placeholder="Type a line, press Enter to send"
+               autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+        <button id="send">Send</button>
+      </div>
+    </section>
 
-  <section>
-    <h2>Mouse</h2>
-    <div id="pad">Drag here to move the pointer<br>· scroll wheel to scroll · double-tap to drag</div>
-    <div class="row" style="margin-top:9px">
-      <button data-btn="left"   class="grow">Left</button>
-      <button data-btn="middle" class="grow">Middle</button>
-      <button data-btn="right"  class="grow">Right</button>
-    </div>
-  </section>
+    <section>
+      <h2>Keys</h2>
+      <div class="g4" id="keys"></div>
+      <label>Combos</label>
+      <div class="row" id="combos"></div>
+      <label>Function keys</label>
+      <div class="g6" id="fkeys"></div>
+      <p class="hint">
+        <button id="cap" style="min-height:36px;padding:7px 10px;font-size:13px">Capture physical keyboard: off</button>
+        Desktop only — forwards every real keypress. Double-tap <kbd>Esc</kbd> to stop.
+      </p>
+    </section>
 
-  <section>
-    <h2>Connection</h2>
-    <div class="row">
-      <input id="tok" class="grow" placeholder="pairing token" autocomplete="off">
-      <button id="reconn">Reconnect</button>
-    </div>
-    <div id="log"></div>
-  </section>
+    <section>
+      <h2>Mouse</h2>
+      <div id="pad">Drag to move the pointer<br>tap = click · two-finger drag = scroll</div>
+      <div class="row" style="margin-top:8px">
+        <button data-btn="left" class="grow">Left</button>
+        <button data-btn="middle" class="grow">Middle</button>
+        <button data-btn="right" class="grow">Right</button>
+      </div>
+      <div class="row" style="margin-top:6px">
+        <button data-scroll="3" class="grow">Scroll ↑</button>
+        <button data-scroll="-3" class="grow">Scroll ↓</button>
+      </div>
+    </section>
+  </div>
+
+  <!-- ================= SETTINGS ================= -->
+  <div class="tab" id="tab-settings">
+    <section>
+      <h2>Wi-Fi (station)</h2>
+      <p class="hint" style="margin:0 0 8px">
+        Join an existing network. The device's own access point stays up regardless,
+        so a bad setting here can never lock you out.
+      </p>
+      <label>Network name (SSID)</label>
+      <input id="c_ssid" placeholder="leave empty to disable station mode" autocapitalize="off" autocorrect="off">
+      <label>Password <span id="c_stapass_set" class="hint"></span></label>
+      <input id="c_stapass" type="password" placeholder="unchanged" autocomplete="new-password">
+
+      <h2 style="margin-top:16px">Access point</h2>
+      <label>AP password (8–63 characters)</label>
+      <input id="c_appass" type="password" placeholder="unchanged" autocomplete="new-password">
+
+      <h2 style="margin-top:16px">Access</h2>
+      <label>Pairing token</label>
+      <input id="c_token" type="password" placeholder="unchanged" autocomplete="new-password">
+      <label>Device name (mDNS)</label>
+      <input id="c_name" placeholder="ghosthid" autocapitalize="off" autocorrect="off">
+
+      <div class="row" style="margin-top:14px">
+        <button id="c_save" class="grow">Save settings</button>
+        <button id="c_reboot">Reboot</button>
+      </div>
+      <p class="hint">
+        Passwords are write-only: the device reports whether one is set, never its
+        value. Leave a field blank to keep the current one. Changes take effect after
+        a reboot.
+      </p>
+      <div id="c_log" style="font-family:ui-monospace,monospace;font-size:11px;color:var(--dim);margin-top:8px"></div>
+    </section>
+
+    <section>
+      <h2>Connection</h2>
+      <label>Token used by this browser</label>
+      <div class="row">
+        <input id="tok" class="grow" placeholder="pairing token" autocomplete="off">
+        <button id="reconn">Reconnect</button>
+      </div>
+      <div id="log"></div>
+    </section>
+  </div>
+
+  <!-- ================= API ================= -->
+  <div class="tab" id="tab-api">
+    <section>
+      <h2>Endpoint</h2>
+      <p class="hint" style="margin:0 0 8px">
+        One WebSocket carries everything. JSON text frames, one message per frame.
+      </p>
+      <pre id="api-url">ws://&lt;device&gt;/ws</pre>
+      <p class="hint">
+        Only <b>one controller may connect at a time</b>; a second gets close code
+        <code>1013</code>. Two controllers sharing one held-key state would fight
+        over it.
+      </p>
+    </section>
+
+    <section>
+      <h2>1 · Authenticate first</h2>
+      <pre>{"type":"auth","token":"ghosthid"}
+→ {"type":"auth","ok":true,"version":"…","usb":true}</pre>
+      <p class="hint">
+        Every other command except <code>auth</code> is rejected until this succeeds.
+        <code>usb</code> tells you whether the target has actually enumerated the
+        device — if it is <code>false</code>, input goes nowhere.
+      </p>
+    </section>
+
+    <section>
+      <h2>2 · Keep the link alive</h2>
+      <pre>{"type":"ping"}   → {"type":"pong","usb":true}
+{"type":"status"} → {"type":"status","version":"…","usb":true,"held":0}</pre>
+      <p class="hint">
+        Ping at least every <b>250&nbsp;ms</b>. If input is held and nothing arrives
+        for <b>750&nbsp;ms</b>, the device releases everything — the backstop for a
+        controller that vanishes without closing the socket.
+      </p>
+    </section>
+
+    <section>
+      <h2>3 · Input</h2>
+      <table>
+        <tr><th>Message</th><th>Notes</th></tr>
+        <tr><td><code>{"type":"key","key":"a","pressed":true}</code></td>
+            <td>A single character, or a name: <code>CTRL SHIFT ALT GUI ENTER ESC TAB
+            BACKSPACE DELETE INSERT HOME END PAGEUP PAGEDOWN UP DOWN LEFT RIGHT
+            CAPSLOCK F1</code>–<code>F12</code>. Aliases: <code>WIN CMD META SUPER</code>
+            → GUI, <code>CONTROL</code> → CTRL, <code>RETURN</code> → ENTER. Case-insensitive.</td></tr>
+        <tr><td><code>{"type":"text","text":"hello"}</code></td>
+            <td>ASCII / US layout. Non-ASCII bytes are skipped rather than typed as garbage.</td></tr>
+        <tr><td><code>{"type":"mouse_move","dx":12,"dy":-4}</code></td>
+            <td>Relative. Any integer — the firmware splits values beyond ±127 across
+            multiple HID reports.</td></tr>
+        <tr><td><code>{"type":"mouse_button","button":"left","pressed":true}</code></td>
+            <td><code>left</code>, <code>right</code> or <code>middle</code>.</td></tr>
+        <tr><td><code>{"type":"mouse_wheel","delta":-1,"pan":0}</code></td>
+            <td><code>delta</code> scrolls (positive = up), <code>pan</code> is the
+            horizontal wheel.</td></tr>
+        <tr><td><code>{"type":"release_all"}</code></td>
+            <td>Release every held key and button. Cheap and idempotent — send it
+            whenever your UI loses focus.</td></tr>
+      </table>
+      <p class="hint">
+        Input commands are fire-and-forget: no reply on success. A reply means
+        something went wrong.
+      </p>
+    </section>
+
+    <section>
+      <h2>4 · Configuration</h2>
+      <pre>{"type":"get_config"}
+→ {"type":"config","sta_ssid":"…","sta_pass_set":true,
+   "ap_pass_set":true,"token_set":true,"name":"ghosthid"}
+
+{"type":"set_config","sta_ssid":"MyNet","sta_pass":"…",
+ "ap_pass":"…","token":"…","name":"ghosthid"}
+→ {"type":"config_saved","reboot_required":true}
+
+{"type":"reboot"} → {"type":"rebooting"}</pre>
+      <p class="hint">
+        Every field of <code>set_config</code> is optional; omitted fields keep their
+        stored value. Secrets are <b>write-only</b> — <code>get_config</code> reports
+        only whether each is set. Settings persist in NVS and survive reflashing.
+      </p>
+    </section>
+
+    <section>
+      <h2>Errors</h2>
+      <pre>{"type":"error","error":"unauthenticated"}
+{"type":"error","error":"unknown key"}
+{"type":"error","error":"usb not ready - target has not enumerated GhostHID …"}</pre>
+    </section>
+
+    <section>
+      <h2>Minimal client</h2>
+      <pre>import json
+from websockets.sync.client import connect
+
+with connect("ws://192.168.4.1/ws") as ws:
+    ws.send(json.dumps({"type":"auth","token":"ghosthid"}))
+    ws.recv()
+    ws.send(json.dumps({"type":"text","text":"hello world"}))
+    ws.send(json.dumps({"type":"key","key":"ENTER","pressed":True}))
+    ws.send(json.dumps({"type":"key","key":"ENTER","pressed":False}))</pre>
+      <p class="hint">A fuller client with auto-reconnect lives in <code>controller/</code>.</p>
+    </section>
+  </div>
 </main>
 
 <script>
@@ -97,100 +299,168 @@ kbd{background:#252a36;border:1px solid var(--line);border-bottom-width:2px;bord
 "use strict";
 var $=function(s){return document.querySelector(s)};
 var dot=$("#dot"), stat=$("#stat"), logEl=$("#log");
-var ws=null, ready=false, pingTimer=null, retryTimer=null;
+var ws=null, ready=false, retryTimer=null;
 
-function log(m){ logEl.textContent=(new Date().toLocaleTimeString()+"  "+m+"\n"+logEl.textContent).slice(0,1200); }
+function log(m){ logEl.textContent=(new Date().toLocaleTimeString()+"  "+m+"\n"+logEl.textContent).slice(0,1400); }
 function setState(ok,msg){ ready=ok; dot.classList.toggle("on",ok); stat.textContent=msg; }
 function setUsb(ok){
   var el=$("#usb");
-  el.textContent = ok===null ? "USB ?" : (ok ? "USB ready" : "USB not ready");
-  el.className = ok ? "ok" : "bad";
+  el.textContent = ok===null?"USB ?":(ok?"USB ready":"USB not ready");
+  el.className = ok?"ok":"bad";
   $("#warn").classList.toggle("show", ok===false);
 }
+function send(o){ if(ws&&ws.readyState===1) ws.send(JSON.stringify(o)); }
 
-var token = localStorage.getItem("ghosthid.token") || "ghosthid";
-$("#tok").value = token;
+$("#api-url").textContent = "ws://"+location.host+"/ws";
+$("#tok").value = localStorage.getItem("ghosthid.token") || "ghosthid";
 
-function send(o){ if(ws && ws.readyState===1){ ws.send(JSON.stringify(o)); } }
+// --- tabs -------------------------------------------------------------------
+document.querySelectorAll("nav button").forEach(function(b){
+  b.onclick=function(){
+    document.querySelectorAll("nav button").forEach(function(x){x.classList.remove("on")});
+    document.querySelectorAll(".tab").forEach(function(x){x.classList.remove("on")});
+    b.classList.add("on");
+    $("#tab-"+b.dataset.tab).classList.add("on");
+    if(b.dataset.tab==="settings") send({type:"get_config"});
+  };
+});
 
+// --- connection -------------------------------------------------------------
 function connect(){
   clearTimeout(retryTimer);
   if(ws){ try{ws.close()}catch(e){} }
   setState(false,"connecting…");
   ws=new WebSocket("ws://"+location.host+"/ws");
-
-  ws.onopen=function(){
-    send({type:"auth",token:$("#tok").value});
-  };
+  ws.onopen=function(){ send({type:"auth",token:$("#tok").value}); };
   ws.onmessage=function(ev){
     var m; try{ m=JSON.parse(ev.data) }catch(e){ return }
     if(typeof m.usb==="boolean") setUsb(m.usb);
     if(m.type==="auth"){
-      if(m.ok){ setState(true,"connected"+(m.version?" · "+m.version:"")); log("authenticated");
-                localStorage.setItem("ghosthid.token",$("#tok").value); }
-      else { setState(false,"auth rejected"); log("auth rejected - check the token"); }
+      if(m.ok){ setState(true,"connected"+(m.version?" · "+m.version:""));
+                localStorage.setItem("ghosthid.token",$("#tok").value);
+                log("authenticated"); send({type:"get_config"}); }
+      else { setState(false,"auth rejected"); log("auth rejected — check the token"); }
+    } else if(m.type==="config"){
+      $("#c_ssid").value=m.sta_ssid||"";
+      $("#c_name").value=m.name||"";
+      $("#c_stapass_set").textContent=m.sta_pass_set?"(set)":"(not set)";
+    } else if(m.type==="config_saved"){
+      $("#c_log").textContent="Saved. Reboot to apply.";
+    } else if(m.type==="rebooting"){
+      $("#c_log").textContent="Rebooting…"; setState(false,"rebooting");
     } else if(m.type==="error"){
       log("error: "+m.error);
+      $("#c_log").textContent=m.error;
       if(/usb not ready/.test(m.error)) setUsb(false);
     }
   };
-  ws.onclose=function(){
-    setState(false,"disconnected"); setUsb(null);
-    // The device releases all held input the moment this socket closes, so
-    // there is nothing to clean up here beyond retrying.
-    retryTimer=setTimeout(connect,1200);
-  };
+  ws.onclose=function(){ setState(false,"disconnected"); setUsb(null);
+                         retryTimer=setTimeout(connect,1200); };
   ws.onerror=function(){ setState(false,"connection error"); };
 }
-
-// Heartbeat. Must stay well under the device's watchdog timeout (750 ms) or a
-// healthy but idle link looks dead and input gets released underneath us.
-pingTimer=setInterval(function(){ if(ready) send({type:"ping"}); },250);
-
+setInterval(function(){ if(ready) send({type:"ping"}); },250);
 $("#reconn").onclick=connect;
-$("#panic").onclick=function(){ send({type:"release_all"}); log("released all input"); };
+$("#panic").onclick=function(){ send({type:"release_all"}); clearMods(); log("released all"); };
 
-// --- text -------------------------------------------------------------------
-function sendText(){
-  var v=$("#txt").value; if(!v) return;
-  send({type:"text",text:v}); $("#txt").value=""; log("typed "+v.length+" chars");
+// --- sticky modifiers -------------------------------------------------------
+// Sticky rather than held, because a phone cannot hold Ctrl while typing: the
+// on-screen keyboard has no modifier keys at all.
+var MODS=[["Ctrl","CTRL"],["Alt","ALT"],["Shift","SHIFT"],["Cmd/Win","GUI"]];
+var sticky={}, locked={};
+var modBar=$("#mods");
+MODS.forEach(function(m){
+  var b=document.createElement("button"); b.textContent=m[0]; b.dataset.mod=m[1];
+  b.className="grow";
+  b.onclick=function(){
+    if(sticky[m[1]] && !locked[m[1]]){ locked[m[1]]=true; }
+    else if(locked[m[1]]){ locked[m[1]]=false; sticky[m[1]]=false; }
+    else { sticky[m[1]]=true; }
+    paintMods();
+  };
+  modBar.appendChild(b);
+});
+function paintMods(){
+  modBar.querySelectorAll("button").forEach(function(b){
+    var k=b.dataset.mod;
+    b.classList.toggle("on", !!sticky[k] && !locked[k]);
+    b.classList.toggle("lock", !!locked[k]);
+  });
 }
+function clearMods(){ sticky={}; locked={}; paintMods(); }
+function activeMods(){ return Object.keys(sticky).filter(function(k){return sticky[k]||locked[k]}); }
+// Sends a key with whatever modifiers are sticky, then drops the one-shot ones.
+function tapWithMods(keyName){
+  var mods=activeMods();
+  mods.forEach(function(k){ send({type:"key",key:k,pressed:true}); });
+  send({type:"key",key:keyName,pressed:true});
+  send({type:"key",key:keyName,pressed:false});
+  // Reverse order: releasing a modifier before the key it modifies can deliver
+  // a bare keypress to the target.
+  mods.slice().reverse().forEach(function(k){ send({type:"key",key:k,pressed:false}); });
+  Object.keys(sticky).forEach(function(k){ if(!locked[k]) delete sticky[k]; });
+  paintMods();
+}
+
+// --- live typing (mobile-friendly) -----------------------------------------
+// iOS Safari does not deliver usable keydown/keyup from the software keyboard
+// (it reports keyCode 229), so we listen to beforeinput instead, which does
+// carry the actual text and the edit intent.
+var tb=$("#typebox");
+tb.addEventListener("beforeinput",function(e){
+  var t=e.inputType;
+  if(t==="insertText" && e.data){
+    e.preventDefault();
+    for(var i=0;i<e.data.length;i++) tapWithMods(e.data[i]);
+  } else if(t==="deleteContentBackward"){
+    e.preventDefault(); tapWithMods("BACKSPACE");
+  } else if(t==="insertLineBreak"||t==="insertParagraph"){
+    e.preventDefault(); tapWithMods("ENTER");
+  }
+});
+// Belt and braces: anything that slipped past beforeinput still gets sent, and
+// the field is kept empty so it never accumulates text.
+tb.addEventListener("input",function(){
+  if(tb.value){ send({type:"text",text:tb.value}); tb.value=""; }
+});
+tb.addEventListener("keydown",function(e){ e.stopPropagation(); });
+tb.addEventListener("blur",function(){ if(activeMods().length) { send({type:"release_all"}); clearMods(); } });
+
+// --- whole-string send ------------------------------------------------------
+function sendText(){ var v=$("#txt").value; if(!v) return;
+  send({type:"text",text:v}); $("#txt").value=""; log("typed "+v.length+" chars"); }
 $("#send").onclick=sendText;
 $("#txt").addEventListener("keydown",function(e){
-  e.stopPropagation();                       // never let capture mode grab this
+  e.stopPropagation();
   if(e.key==="Enter"){ e.preventDefault(); sendText(); }
 });
 
-// --- named keys -------------------------------------------------------------
-var QUICK=[["Esc","ESC"],["Tab","TAB"],["Enter","ENTER"],["Bksp","BACKSPACE"],
-           ["Del","DELETE"],["↑","UP"],["↓","DOWN"],["←","LEFT"],["→","RIGHT"],
-           ["Home","HOME"],["End","END"],["PgUp","PAGEUP"],["PgDn","PAGEDOWN"]];
-var kr=$("#keys");
-QUICK.forEach(function(k){
+// --- key buttons ------------------------------------------------------------
+[["Esc","ESC"],["Tab","TAB"],["Enter","ENTER"],["Bksp","BACKSPACE"],
+ ["Del","DELETE"],["Home","HOME"],["End","END"],["Ins","INSERT"],
+ ["PgUp","PAGEUP"],["PgDn","PAGEDOWN"],["↑","UP"],["↓","DOWN"],
+ ["←","LEFT"],["→","RIGHT"],["Space","SPACE"],["Caps","CAPSLOCK"]
+].forEach(function(k){
   var b=document.createElement("button"); b.textContent=k[0];
-  b.onclick=function(){ send({type:"key",key:k[1],pressed:true});
-                        send({type:"key",key:k[1],pressed:false}); };
-  kr.appendChild(b);
+  b.onclick=function(){ tapWithMods(k[1]); };
+  $("#keys").appendChild(b);
 });
-[["Ctrl+Alt+Del",["CTRL","ALT","DELETE"]],
- ["Alt+Tab",["ALT","TAB"]],
- ["Ctrl+C",["CTRL","c"]],
- ["Ctrl+V",["CTRL","v"]],
- ["Win",["GUI"]]].forEach(function(c){
+for(var i=1;i<=12;i++){(function(n){
+  var b=document.createElement("button"); b.textContent="F"+n;
+  b.onclick=function(){ tapWithMods("F"+n); };
+  $("#fkeys").appendChild(b);
+})(i)}
+[["Ctrl+Alt+Del",["CTRL","ALT","DELETE"]],["Alt+Tab",["ALT","TAB"]],
+ ["Ctrl+C",["CTRL","c"]],["Ctrl+V",["CTRL","v"]],["Ctrl+Alt+T",["CTRL","ALT","t"]]
+].forEach(function(c){
   var b=document.createElement("button"); b.textContent=c[0];
   b.onclick=function(){
     c[1].forEach(function(k){ send({type:"key",key:k,pressed:true}); });
-    // Reverse order: releasing a modifier before the key it modifies can
-    // deliver a bare keypress to the target.
     c[1].slice().reverse().forEach(function(k){ send({type:"key",key:k,pressed:false}); });
   };
-  kr.appendChild(b);
+  $("#combos").appendChild(b);
 });
 
-// --- raw keyboard capture ---------------------------------------------------
-// Transmit PHYSICAL keys plus modifiers and let the target apply its own
-// layout, rather than sending the already-composed character. That is what a
-// KVM does, and it keeps Shift/Ctrl chords correct.
+// --- physical keyboard capture (desktop) -----------------------------------
 var CODE={Space:"SPACE",Enter:"ENTER",Escape:"ESC",Backspace:"BACKSPACE",Tab:"TAB",
   ArrowUp:"UP",ArrowDown:"DOWN",ArrowLeft:"LEFT",ArrowRight:"RIGHT",
   Home:"HOME",End:"END",PageUp:"PAGEUP",PageDown:"PAGEDOWN",
@@ -201,61 +471,61 @@ var CODE={Space:"SPACE",Enter:"ENTER",Escape:"ESC",Backspace:"BACKSPACE",Tab:"TA
   Semicolon:";",Quote:"'",Comma:",",Period:".",Slash:"/",Backquote:"`"};
 function codeName(c){
   if(CODE[c]) return CODE[c];
-  if(/^Key[A-Z]$/.test(c))      return c.slice(3).toLowerCase();
-  if(/^Digit[0-9]$/.test(c))    return c.slice(5);
+  if(/^Key[A-Z]$/.test(c)) return c.slice(3).toLowerCase();
+  if(/^Digit[0-9]$/.test(c)) return c.slice(5);
   if(/^F([1-9]|1[0-2])$/.test(c)) return c;
   return null;
 }
-var capturing=false, lastEsc=0;
-var capBtn=$("#cap");
+var capturing=false,lastEsc=0,capBtn=$("#cap");
 function setCapture(on){
   capturing=on; capBtn.classList.toggle("on",on);
-  capBtn.textContent="Capture keyboard: "+(on?"ON":"off");
+  capBtn.textContent="Capture physical keyboard: "+(on?"ON":"off");
   if(!on) send({type:"release_all"});
 }
 capBtn.onclick=function(){ setCapture(!capturing); };
-
 window.addEventListener("keydown",function(e){
-  if(!capturing) return;
-  if(e.key==="Escape"){
-    var now=Date.now();
-    if(now-lastEsc<400){ setCapture(false); e.preventDefault(); return; }
-    lastEsc=now;
-  }
-  var n=codeName(e.code); if(!n) return;
-  e.preventDefault();
-  if(e.repeat) return;                 // the target does its own autorepeat
-  send({type:"key",key:n,pressed:true});
+  if(!capturing||document.activeElement===tb||document.activeElement===$("#txt")) return;
+  if(e.key==="Escape"){ var n=Date.now(); if(n-lastEsc<400){setCapture(false);e.preventDefault();return;} lastEsc=n; }
+  var k=codeName(e.code); if(!k) return;
+  e.preventDefault(); if(e.repeat) return;
+  send({type:"key",key:k,pressed:true});
 },true);
-
 window.addEventListener("keyup",function(e){
-  if(!capturing) return;
-  var n=codeName(e.code); if(!n) return;
-  e.preventDefault();
-  send({type:"key",key:n,pressed:false});
+  if(!capturing||document.activeElement===tb||document.activeElement===$("#txt")) return;
+  var k=codeName(e.code); if(!k) return;
+  e.preventDefault(); send({type:"key",key:k,pressed:false});
 },true);
-
-// Losing focus while keys are held is a classic stuck-modifier source.
 window.addEventListener("blur",function(){ if(capturing) send({type:"release_all"}); });
 
 // --- trackpad ---------------------------------------------------------------
-var pad=$("#pad"), tracking=false, lastX=0, lastY=0, moved=0, downAt=0;
+var pad=$("#pad"),tracking=false,lastX=0,lastY=0,moved=0,downAt=0,pts={},scrollAcc=0;
 pad.addEventListener("pointerdown",function(e){
-  pad.setPointerCapture(e.pointerId);
+  pts[e.pointerId]=e; pad.setPointerCapture(e.pointerId);
   tracking=true; lastX=e.clientX; lastY=e.clientY; moved=0; downAt=Date.now();
   pad.classList.add("live"); e.preventDefault();
 });
 pad.addEventListener("pointermove",function(e){
   if(!tracking) return;
+  if(!pts[e.pointerId]) return;
   var dx=Math.round(e.clientX-lastX), dy=Math.round(e.clientY-lastY);
   lastX=e.clientX; lastY=e.clientY;
+  if(Object.keys(pts).length>1){
+    // Two fingers = scroll, matching the trackpad gesture people expect.
+    scrollAcc+=dy;
+    while(Math.abs(scrollAcc)>=18){
+      var s=scrollAcc>0?-1:1; scrollAcc-=(scrollAcc>0?18:-18);
+      send({type:"mouse_wheel",delta:s});
+    }
+    return;
+  }
   if(dx||dy){ moved+=Math.abs(dx)+Math.abs(dy); send({type:"mouse_move",dx:dx,dy:dy}); }
 });
 function endPad(e){
+  delete pts[e.pointerId];
+  if(Object.keys(pts).length) return;
   if(!tracking) return;
-  tracking=false; pad.classList.remove("live");
-  // A short, near-stationary press is a tap -> left click.
-  if(moved<6 && Date.now()-downAt<250){
+  tracking=false; pad.classList.remove("live"); scrollAcc=0;
+  if(moved<8 && Date.now()-downAt<250){
     send({type:"mouse_button",button:"left",pressed:true});
     send({type:"mouse_button",button:"left",pressed:false});
   }
@@ -263,20 +533,32 @@ function endPad(e){
 pad.addEventListener("pointerup",endPad);
 pad.addEventListener("pointercancel",endPad);
 pad.addEventListener("wheel",function(e){
-  e.preventDefault();
-  send({type:"mouse_wheel",delta:e.deltaY>0?-1:1});
+  e.preventDefault(); send({type:"mouse_wheel",delta:e.deltaY>0?-1:1});
 },{passive:false});
 
-// --- mouse buttons ----------------------------------------------------------
 document.querySelectorAll("[data-btn]").forEach(function(b){
-  var name=b.getAttribute("data-btn");
-  b.addEventListener("pointerdown",function(e){ e.preventDefault();
-    send({type:"mouse_button",button:name,pressed:true}); });
-  b.addEventListener("pointerup",function(e){ e.preventDefault();
-    send({type:"mouse_button",button:name,pressed:false}); });
-  b.addEventListener("pointerleave",function(){
-    send({type:"mouse_button",button:name,pressed:false}); });
+  var n=b.dataset.btn;
+  b.addEventListener("pointerdown",function(e){e.preventDefault();send({type:"mouse_button",button:n,pressed:true})});
+  b.addEventListener("pointerup",  function(e){e.preventDefault();send({type:"mouse_button",button:n,pressed:false})});
+  b.addEventListener("pointercancel",function(){send({type:"mouse_button",button:n,pressed:false})});
 });
+document.querySelectorAll("[data-scroll]").forEach(function(b){
+  b.onclick=function(){ send({type:"mouse_wheel",delta:parseInt(b.dataset.scroll,10)}); };
+});
+
+// --- settings ---------------------------------------------------------------
+$("#c_save").onclick=function(){
+  var m={type:"set_config"};
+  m.sta_ssid=$("#c_ssid").value;
+  if($("#c_stapass").value) m.sta_pass=$("#c_stapass").value;
+  if($("#c_appass").value)  m.ap_pass =$("#c_appass").value;
+  if($("#c_token").value)   m.token   =$("#c_token").value;
+  if($("#c_name").value)    m.name    =$("#c_name").value;
+  send(m);
+  $("#c_stapass").value=""; $("#c_appass").value=""; $("#c_token").value="";
+  $("#c_log").textContent="Saving…";
+};
+$("#c_reboot").onclick=function(){ send({type:"reboot"}); };
 
 connect();
 })();

@@ -10,10 +10,12 @@
 namespace ghosthid {
 
 class CommandProcessor;
+class Config;
 
 class Network {
 public:
-    explicit Network(CommandProcessor &processor) : processor_(processor) {}
+    Network(CommandProcessor &processor, Config &config)
+        : processor_(processor), config_(config) {}
 
     // Brings up the AP (always) plus the station connection (if credentials
     // were compiled in), then starts the WebSocket server.
@@ -38,6 +40,7 @@ public:
 
 private:
     CommandProcessor &processor_;
+    Config           &config_;
     char ssid_[33]  = {};
     char apIp_[16]  = {};
     char staIp_[16] = {};

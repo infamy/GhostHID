@@ -13,15 +13,17 @@
 #include <Arduino.h>
 
 #include "board_config.h"
+#include "config/Config.h"
 #include "hid/HidDevice.h"
 #include "net/Network.h"
 #include "protocol/CommandProcessor.h"
 
 namespace {
 
+ghosthid::Config           config;
 ghosthid::HidDevice        hid;
-ghosthid::CommandProcessor processor(hid, GHOSTHID_AUTH_TOKEN);
-ghosthid::Network          network(processor);
+ghosthid::CommandProcessor processor(hid, config);
+ghosthid::Network          network(processor, config);
 
 // --- Status LED ------------------------------------------------------------
 
@@ -79,6 +81,10 @@ void setup() {
     ledBegin();
     buttonBegin();
 
+    // Settings must load before the radio comes up: they carry the SSID,
+    // passphrases and token the network layer needs.
+    config.begin();
+
     hid.begin();
     const bool enumerated = hid.waitUntilReady(10000);
 
@@ -93,12 +99,20 @@ void setup() {
     network.begin();
 
     Serial.printf("[auth] token %s\n",
-                  (GHOSTHID_AUTH_TOKEN[0] == '\0') ? "disabled" : "required");
+                  (config.authToken()[0] == '\0') ? "disabled" : "required");
     Serial.println("Press BOOT to release all held input.");
 }
 
 void loop() {
     network.loop();
+
+    // Reboot requested over the API (config change). Done here rather than in
+    // the network callback so the stack is not torn down from inside itself.
+    if (processor.rebootRequested()) {
+        Serial.println("[config] rebooting to apply settings");
+        delay(250);              // let the WebSocket reply flush first
+        ESP.restart();
+    }
 
     // Backstop for abrupt link loss. A clean disconnect already released
     // everything via CommandProcessor::endSession().

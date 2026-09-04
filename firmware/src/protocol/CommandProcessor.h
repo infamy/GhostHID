@@ -12,6 +12,7 @@
 namespace ghosthid {
 
 class HidDevice;
+class Config;
 
 enum class CommandResult : uint8_t {
     Ok,
@@ -21,8 +22,8 @@ enum class CommandResult : uint8_t {
 
 class CommandProcessor {
 public:
-    CommandProcessor(HidDevice &hid, const char *token)
-        : hid_(hid), token_(token) {}
+    CommandProcessor(HidDevice &hid, Config &config)
+        : hid_(hid), config_(config) {}
 
     // Called when a controller connects. Resets per-session state.
     void beginSession();
@@ -38,6 +39,10 @@ public:
 
     bool authenticated() const { return authenticated_; }
 
+    // Set when a config change needs a restart to take effect. main() acts on
+    // it from loop(), never from inside a network callback.
+    bool rebootRequested() const { return rebootRequested_; }
+
     // Milliseconds since the last message from the controller.
     uint32_t millisSinceLastMessage() const;
 
@@ -46,11 +51,12 @@ public:
     bool serviceWatchdog(uint32_t timeoutMs);
 
 private:
-    HidDevice  &hid_;
-    const char *token_;
+    HidDevice &hid_;
+    Config    &config_;
     bool     authenticated_ = false;
     bool     sessionActive_ = false;
     uint32_t lastMessageMs_ = 0;
+    bool     rebootRequested_ = false;
 };
 
 }  // namespace ghosthid

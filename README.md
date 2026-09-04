@@ -86,20 +86,53 @@ with GhostHID("192.168.4.1", token="ghosthid") as g:
 Use the context manager. On exit it releases everything held, so an exception
 in your script cannot leave a modifier stuck on the target.
 
-### Changing the credentials
+### Configuration
 
-The defaults are for bench use. Override at build time:
+Settings live in **NVS on the device**, not in the firmware image, and are
+edited from the web UI's **Settings** tab:
+
+* Wi-Fi station SSID + password (blank SSID disables station mode)
+* AP password (WPA2, 8-63 characters)
+* Pairing token
+* Device name, used for mDNS
+
+They survive a reflash, because writing the app image does not touch the NVS
+partition. Changes apply on reboot; there is a Reboot button next to Save.
+
+Passwords are **write-only over the API**: the device reports whether each is
+set, never its value. Otherwise anyone holding the token could read your Wi-Fi
+password out of the device.
+
+The device's own AP always comes up, whatever the station settings say, so a
+mistyped SSID can never lock you out — join `GhostHID-XXXX` and fix it.
+
+The build flags are now only **first-boot defaults**, used until something is
+stored in NVS:
 
 ```bash
-docker run --rm -v "$PWD/firmware":/project -v ghosthid-pio-cache:/pio \
-  -e PLATFORMIO_CORE_DIR=/pio ghosthid/build \
-  pio run -e esp32-s2-key \
-  --project-option='build_flags=-DGHOSTHID_AP_PASSWORD=\"your-wpa2-pass\" -DGHOSTHID_AUTH_TOKEN=\"your-token\"'
+make build WIFI_SSID="YourNet" WIFI_PASS="…" AP_PASS="…" TOKEN="…"
 ```
 
-The AP is WPA2 rather than open on purpose: on an open network every keystroke
-crosses the air in cleartext to anyone in range, and the application-layer
-token alone is replayable.
+Handy for flashing a device that should come up already on your network, but
+not required — a device flashed with no flags at all brings up
+`GhostHID-XXXX` / `ghosthid-setup`, and you configure it from there.
+
+## Using it from a phone
+
+The web UI is built for touch. On iOS the software keyboard does not deliver
+usable `keydown`/`keyup` events (it reports `keyCode 229`) and has no Ctrl, Alt
+or Esc at all, so a pure key-capture approach cannot work there. Instead:
+
+* **Live typing** field — opens the native keyboard and forwards each character
+  as you type, via `beforeinput` rather than key events.
+* **Sticky modifiers** — tap `Ctrl`, then press `c`, to send Ctrl+C. Double-tap
+  a modifier to lock it, tap again to clear.
+* **Trackpad** — drag to move, tap to click, two-finger drag to scroll.
+* Buttons are sized to Apple's 44px touch target, and inputs use 16px text so
+  iOS does not zoom when they take focus.
+
+The **API** tab documents the full protocol on the device itself, so anyone
+who can reach the page can write a client without this repo.
 
 ## Stuck-key safety
 
@@ -128,7 +161,8 @@ make build ENV=esp32-s3
 
 ```
 firmware/
-  include/board_config.h    board/HAL configuration
+  include/board_config.h    board/HAL configuration + first-boot defaults
+  src/config/Config.{h,cpp} NVS-backed runtime settings
   src/hid/HidDevice.{h,cpp} the only code that touches USB
   src/main.cpp              Phase 1 self-test
   scripts/                  PlatformIO post-build (image merge)

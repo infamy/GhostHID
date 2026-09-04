@@ -7,6 +7,7 @@
 #include <ESPmDNS.h>
 
 #include "board_config.h"
+#include "config/Config.h"
 #include "protocol/CommandProcessor.h"
 #include "web/WebAssets.h"
 
@@ -57,7 +58,7 @@ void onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *client,
                 info->len != len) {
                 return;  // ignore fragmented/binary frames for now
             }
-            char response[160];
+            char response[512];
             g_processor->handleMessage(reinterpret_cast<const char *>(data), len,
                                        response, sizeof(response));
             // Only reply when the processor produced something: key and mouse
@@ -78,7 +79,7 @@ void Network::begin() {
     g_network   = this;
     g_processor = &processor_;
 
-    const bool wantStation = (GHOSTHID_STA_SSID[0] != '\0');
+    const bool wantStation = config_.stationConfigured();
 
     // AP_STA keeps our own access point alive while also joining an existing
     // network, so the device never becomes unreachable just because the
@@ -91,12 +92,12 @@ void Network::begin() {
 
     // WPA2, not an open AP. On an open network every keystroke crosses the air
     // in cleartext to anyone in range, and the app-layer token is replayable.
-    const bool apOk = WiFi.softAP(ssid_, GHOSTHID_AP_PASSWORD);
+    const bool apOk = WiFi.softAP(ssid_, config_.apPassword());
     snprintf(apIp_, sizeof(apIp_), "%s", WiFi.softAPIP().toString().c_str());
     Serial.printf("[wifi] AP  %s : %s (%s)\n", ssid_, apOk ? "up" : "FAILED", apIp_);
 
     if (wantStation) {
-        WiFi.begin(GHOSTHID_STA_SSID, GHOSTHID_STA_PASSWORD);
+        WiFi.begin(config_.staSsid(), config_.staPassword());
         const uint32_t start = millis();
         while (WiFi.status() != WL_CONNECTED &&
                (millis() - start) < GHOSTHID_STA_TIMEOUT_MS) {
@@ -104,17 +105,17 @@ void Network::begin() {
         }
         if (WiFi.status() == WL_CONNECTED) {
             snprintf(staIp_, sizeof(staIp_), "%s", WiFi.localIP().toString().c_str());
-            Serial.printf("[wifi] STA %s : up (%s)\n", GHOSTHID_STA_SSID, staIp_);
+            Serial.printf("[wifi] STA %s : up (%s)\n", config_.staSsid(), staIp_);
         } else {
             // Not fatal: the AP above is already serving.
             staIp_[0] = '\0';
             Serial.printf("[wifi] STA %s : failed, AP still available\n",
-                          GHOSTHID_STA_SSID);
+                          config_.staSsid());
         }
     }
 
     char host[32];
-    snprintf(host, sizeof(host), "%s-%s", GHOSTHID_MDNS_NAME, suffix);
+    snprintf(host, sizeof(host), "%s-%s", config_.deviceName(), suffix);
     if (MDNS.begin(host)) {
         MDNS.addService("ghosthid", "tcp", 80);
         Serial.printf("[mdns] http://%s.local/\n", host);
