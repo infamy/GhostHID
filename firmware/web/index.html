@@ -6,7 +6,7 @@
 <meta name="color-scheme" content="dark">
 <title>GhostHID</title>
 <style>
-:root{--bg:#12141a;--panel:#1b1e27;--line:#2c3140;--fg:#e6e8ef;--dim:#8a91a6;
+:root{--bg:#12141a;--panel:#1b1e27;--line:#333a4a;--fg:#e6e8ef;--dim:#9ba3b8;
       --ok:#3ddc84;--bad:#ff5c5c;--accent:#6ea8fe;--warn:#ffb454;
       --tap:44px}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -14,7 +14,12 @@ html,body{overscroll-behavior:none}
 body{margin:0;background:var(--bg);color:var(--fg);
      font:15px/1.45 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
      padding-bottom:env(safe-area-inset-bottom)}
-header{display:flex;align-items:center;gap:9px;padding:calc(9px + env(safe-area-inset-top)) 12px 9px;
+/* The bars stay full width so the sticky background spans the viewport, but
+   their contents line up with the 820px content column. Without this the tabs
+   stretch across an entire 4K display while the panels below sit centred. */
+:root{--col:820px;--gutter:max(12px, calc((100% - var(--col)) / 2))}
+header{display:flex;align-items:center;gap:9px;
+       padding:calc(9px + env(safe-area-inset-top)) var(--gutter) 9px;
        background:var(--panel);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:20}
 h1{font-size:15px;margin:0;font-weight:600}
 #dot{width:9px;height:9px;border-radius:50%;background:var(--bad);flex:none}
@@ -25,20 +30,43 @@ h1{font-size:15px;margin:0;font-weight:600}
 #usb.bad{color:var(--bad);border-color:var(--bad)}
 
 nav{display:flex;background:var(--panel);border-bottom:1px solid var(--line);
-    position:sticky;top:0;z-index:19}
+    position:sticky;top:0;z-index:19;padding:0 var(--gutter)}
+/* Phones: equal thirds, full width - there is no room to be clever.
+   Anything wider: natural width, so tabs do not sprawl. */
 nav button{flex:1;background:none;border:0;border-bottom:2px solid transparent;
            color:var(--dim);padding:11px 4px;font:inherit;font-size:13px;cursor:pointer;min-height:var(--tap)}
-nav button.on{color:var(--accent);border-bottom-color:var(--accent)}
+@media (min-width:640px){
+  nav button{flex:0 0 auto;min-width:118px;padding:11px 18px}
+}
+/* Tabs are underline-selected, never filled - so they need the generic
+   filled-state rules explicitly switched off. */
+nav button,
+nav button:active,
+nav button.on,
+nav button.on:active{background:none;border-left:0;border-right:0;border-top:0}
+nav button:hover{color:var(--fg)}
+nav button.on,
+nav button.on:active{color:var(--accent);border-bottom:2px solid var(--accent)}
 
-main{padding:12px;display:grid;gap:12px;max-width:820px;margin:0 auto}
+main{padding:12px var(--gutter);display:grid;gap:12px}
 section{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px}
 h2{font-size:11px;text-transform:uppercase;letter-spacing:.09em;color:var(--dim);margin:0 0 9px}
 button,input,select{font:inherit;color:var(--fg);background:#252a36;border:1px solid var(--line);
                     border-radius:8px;padding:9px 11px;min-height:var(--tap)}
-button{cursor:pointer;-webkit-user-select:none;user-select:none;touch-action:manipulation}
-button:active{background:var(--accent);color:#06080d;border-color:var(--accent)}
-button.on{background:var(--accent);color:#06080d;border-color:var(--accent)}
-button.lock{background:var(--warn);color:#06080d;border-color:var(--warn)}
+button{cursor:pointer;-webkit-user-select:none;user-select:none;touch-action:manipulation;
+       transition:background .08s,border-color .08s}
+
+/* Button states.
+   Every filled state sets BOTH background and text together, so a fill can
+   never land on text of the same colour. The earlier version set the fill in
+   `button:active` and the text in a more specific `nav button.on`, so pressing
+   an already-selected tab painted accent text on an accent fill - invisible. */
+button:hover{border-color:#49546d}
+button:active{background:#323a4d;border-color:var(--accent)}
+button.on,
+button.on:active{background:var(--accent);color:#06080d;border-color:var(--accent)}
+button.lock,
+button.lock:active{background:var(--warn);color:#1a1206;border-color:var(--warn)}
 input{width:100%;font-size:16px}          /* 16px stops iOS zooming on focus */
 .row{display:flex;gap:6px;flex-wrap:wrap}
 .grow{flex:1 1 auto;min-width:110px}
