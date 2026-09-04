@@ -18,28 +18,26 @@ body{margin:0;background:var(--bg);color:var(--fg);
    their contents line up with the 820px content column. Without this the tabs
    stretch across an entire 4K display while the panels below sit centred. */
 :root{--col:820px;--gutter:max(12px, calc((100% - var(--col)) / 2))}
-header{display:flex;align-items:center;gap:9px;
-       padding:calc(9px + env(safe-area-inset-top)) var(--gutter) 9px;
-       background:var(--panel);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:20}
-h1{font-size:15px;margin:0;font-weight:600}
+header{display:flex;align-items:center;gap:10px;
+       padding:calc(7px + env(safe-area-inset-top)) var(--gutter) 7px;
+       background:var(--panel);border-bottom:1px solid var(--line);
+       position:sticky;top:0;z-index:20}
+h1{font-size:14px;margin:0;font-weight:600;white-space:nowrap}
 #dot{width:9px;height:9px;border-radius:50%;background:var(--bad);flex:none}
 #dot.on{background:var(--ok)}
-#stat{color:var(--dim);font-size:11px;margin-right:auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-#usb{font-size:10px;padding:3px 7px;border-radius:5px;border:1px solid var(--line);white-space:nowrap}
+#stat{color:var(--dim);font-size:11px;white-space:nowrap;margin-left:auto}
+#usb{font-size:10px;padding:3px 7px;border-radius:5px;border:1px solid var(--line);
+     white-space:nowrap;flex:none}
 #usb.ok{color:var(--ok);border-color:var(--ok)}
 #usb.bad{color:var(--bad);border-color:var(--bad)}
+#panic{min-height:32px;padding:5px 10px;font-size:12px;flex:none}
 
-nav{display:flex;background:var(--panel);border-bottom:1px solid var(--line);
-    position:sticky;top:0;z-index:19;padding:0 var(--gutter)}
-/* Phones: equal thirds, full width - there is no room to be clever.
-   Anything wider: natural width, so tabs do not sprawl. */
-nav button{flex:1;background:none;border:0;border-bottom:2px solid transparent;
-           color:var(--dim);padding:11px 4px;font:inherit;font-size:13px;cursor:pointer;min-height:var(--tap)}
-@media (min-width:640px){
-  nav button{flex:0 0 auto;min-width:118px;padding:11px 18px}
-}
-/* Tabs are underline-selected, never filled - so they need the generic
-   filled-state rules explicitly switched off. */
+/* Tabs live in the same bar as the title. They sit directly after it rather
+   than being pushed to an edge, so the eye finds them next to the name. */
+nav{display:flex;gap:2px;flex:none;margin-left:6px}
+nav button{background:none;border:0;border-bottom:2px solid transparent;border-radius:6px 6px 0 0;
+           color:var(--dim);padding:8px 14px;font:inherit;font-size:13px;
+           cursor:pointer;min-height:34px;white-space:nowrap}
 nav button,
 nav button:active,
 nav button.on,
@@ -47,6 +45,16 @@ nav button.on:active{background:none;border-left:0;border-right:0;border-top:0}
 nav button:hover{color:var(--fg)}
 nav button.on,
 nav button.on:active{color:var(--accent);border-bottom:2px solid var(--accent)}
+
+/* Narrow screens: drop the wordmark and the status text, and let the tabs take
+   the width. The dot and the USB badge still carry the state, and `stat` is
+   duplicated in the dot's tooltip. */
+@media (max-width:600px){
+  h1{display:none}
+  #stat{display:none}
+  nav{flex:1;margin-left:0}
+  nav button{flex:1;padding:8px 4px}
+}
 
 main{padding:12px var(--gutter);display:grid;gap:12px}
 section{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px}
@@ -100,16 +108,19 @@ td code{white-space:nowrap}
 </style>
 
 <header>
-  <div id="dot"></div><h1>GhostHID</h1><span id="stat">connecting…</span>
-  <span id="usb" class="bad">USB ?</span>
-  <button id="panic" style="min-height:34px;padding:6px 9px;font-size:12px">Release</button>
-</header>
+  <div id="dot" title="connecting…"></div>
+  <h1>GhostHID</h1>
 
-<nav>
-  <button data-tab="control" class="on">Control</button>
-  <button data-tab="settings">Settings</button>
-  <button data-tab="api">API</button>
-</nav>
+  <nav>
+    <button data-tab="control" class="on">Control</button>
+    <button data-tab="settings">Settings</button>
+    <button data-tab="about">About</button>
+  </nav>
+
+  <span id="stat">connecting…</span>
+  <span id="usb" class="bad">USB&nbsp;?</span>
+  <button id="panic">Release</button>
+</header>
 
 <main>
   <div id="warn">
@@ -249,7 +260,60 @@ td code{white-space:nowrap}
   </div>
 
   <!-- ================= API ================= -->
-  <div class="tab" id="tab-api">
+  <div class="tab" id="tab-about">
+    <section>
+      <h2>What this is</h2>
+      <p style="margin:0 0 10px">
+        <b>GhostHID</b> is a wireless USB keyboard and mouse. The small board it runs
+        on plugs into a computer's USB port and that computer sees an ordinary
+        keyboard and mouse — no drivers, no agent, no account, and no network
+        connection on its end. Everything you type or click on this page is delivered
+        over Wi-Fi to the board, which types it for you.
+      </p>
+      <p class="hint" style="margin:0">
+        Because the target needs nothing installed, it works on machines you cannot
+        install software on. The trade-off is that GhostHID is input-only: it cannot
+        see the target's screen, read its clipboard, or know where its pointer is —
+        which is why absolute pointer mode exists.
+      </p>
+    </section>
+
+    <section>
+      <h2>This device</h2>
+      <table>
+        <tr><td>Firmware</td><td id="a_ver">—</td></tr>
+        <tr><td>Name</td><td id="a_name">—</td></tr>
+        <tr><td>This address</td><td id="a_here">—</td></tr>
+        <tr><td>Own access point</td><td>always on, as a fallback if the
+            joined network is unavailable</td></tr>
+        <tr><td>USB to target</td><td id="a_usb">—</td></tr>
+      </table>
+    </section>
+
+    <section>
+      <h2>Safety</h2>
+      <p class="hint" style="margin:0">
+        A key left stuck down on the target is the worst thing this device can do, so
+        three independent things prevent it: everything is released the moment this
+        page disconnects; if the page stops responding for <b>750&nbsp;ms</b> while
+        input is held, the device releases it anyway; and the board's <b>BOOT</b>
+        button releases everything with no network involved. <b>Release</b> in the top
+        bar does the same on demand.
+      </p>
+    </section>
+
+    <section>
+      <h2>Project</h2>
+      <p class="hint" style="margin:0">
+        Open source under the MIT licence. The firmware statically links some LGPL
+        libraries, so a redistributed binary must be accompanied by a pointer to its
+        source — see <code>THIRD-PARTY-LICENSES.md</code> in the repository.
+        Updates are installed from the <b>Settings</b> tab over Wi-Fi; no cable needed.
+      </p>
+    </section>
+
+    <h2 style="margin:6px 0 -4px">Control API</h2>
+
     <section>
       <h2>Endpoint</h2>
       <p class="hint" style="margin:0 0 8px">
@@ -393,7 +457,11 @@ var dot=$("#dot"), stat=$("#stat"), logEl=$("#log");
 var ws=null, ready=false, retryTimer=null;
 
 function log(m){ logEl.textContent=(new Date().toLocaleTimeString()+"  "+m+"\n"+logEl.textContent).slice(0,1400); }
-function setState(ok,msg){ ready=ok; dot.classList.toggle("on",ok); stat.textContent=msg; }
+function setState(ok,msg){
+  ready=ok; dot.classList.toggle("on",ok);
+  stat.textContent=msg;
+  dot.title=msg;                 // the only status indicator left on narrow screens
+}
 function setUsb(ok){
   var el=$("#usb");
   el.textContent = ok===null?"USB ?":(ok?"USB ready":"USB not ready");
@@ -412,7 +480,7 @@ document.querySelectorAll("nav button").forEach(function(b){
     document.querySelectorAll(".tab").forEach(function(x){x.classList.remove("on")});
     b.classList.add("on");
     $("#tab-"+b.dataset.tab).classList.add("on");
-    if(b.dataset.tab==="settings") send({type:"get_config"});
+    if(b.dataset.tab==="settings"||b.dataset.tab==="about") send({type:"get_config"});
   };
 });
 
@@ -425,15 +493,23 @@ function connect(){
   ws.onopen=function(){ send({type:"auth",token:$("#tok").value}); };
   ws.onmessage=function(ev){
     var m; try{ m=JSON.parse(ev.data) }catch(e){ return }
-    if(typeof m.usb==="boolean") setUsb(m.usb);
+    if(typeof m.usb==="boolean"){
+      setUsb(m.usb);
+      $("#a_usb").textContent = m.usb
+        ? "connected — the target has recognised the keyboard and mouse"
+        : "not connected — target unplugged, asleep, or a charge-only port";
+    }
     if(m.type==="auth"){
       if(m.ok){ setState(true,"connected"+(m.version?" · "+m.version:""));
                 localStorage.setItem("ghosthid.token",$("#tok").value);
+                $("#a_ver").textContent = m.version || "—";
+                $("#a_here").textContent = location.host;
                 log("authenticated"); send({type:"get_config"}); }
       else { setState(false,"auth rejected"); log("auth rejected — check the token"); }
     } else if(m.type==="config"){
       $("#c_ssid").value=m.sta_ssid||"";
       $("#c_name").value=m.name||"";
+      $("#a_name").textContent=m.name||"—";
       $("#c_stapass_set").textContent=m.sta_pass_set?"(set)":"(not set)";
       setReboot(!!m.reboot_pending);
     } else if(m.type==="config_saved"){
