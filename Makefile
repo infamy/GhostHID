@@ -11,6 +11,8 @@ PIO_VOLUME  ?= ghosthid-pio-cache
 FIRMWARE    := $(CURDIR)/firmware
 BUILD_DIR   := $(FIRMWARE)/.pio/build/$(ENV)
 MERGED      := $(BUILD_DIR)/ghosthid-merged.bin
+APP_BIN     := $(BUILD_DIR)/firmware.bin     # app image only - what OTA takes
+TOKEN       ?= ghosthid
 
 # Host-side flashing tools, kept in a project-local venv so nothing is
 # installed globally.
@@ -42,12 +44,13 @@ DOCKER_RUN = docker run --rm -t \
 	$(PIO_ENVVARS) \
 	$(IMAGE)
 
-.PHONY: help image build rebuild clean distclean shell flash monitor ports size localini
+.PHONY: help image build rebuild clean distclean shell flash monitor ports size localini ota
 
 help:
 	@echo "GhostHID"
 	@echo "  make build              compile firmware in a clean container"
-	@echo "  make flash PORT=...     flash the merged image from the host"
+	@echo "  make flash PORT=...     flash the merged image over USB"
+	@echo "  make ota IP=... TOKEN=.. update over the network (no cable)"
 	@echo "  make monitor PORT=...   open the USB CDC serial console"
 	@echo "  make ports              list candidate serial ports"
 	@echo "  make shell              interactive shell in the build container"
@@ -122,6 +125,17 @@ flash: $(ESPTOOL)
 	else \
 		echo "FLASH FAILED - image was not verified."; exit $${rc:-1}; \
 	fi
+
+# Wireless update. Sends the app image only - the merged image is for USB.
+ota:
+	@test -n "$(IP)" || { echo "IP is required, e.g. make ota IP=192.168.7.113 TOKEN=ghosthid"; exit 1; }
+	@test -f "$(APP_BIN)" || { echo "no firmware.bin - run 'make build' first"; exit 1; }
+	@echo "Uploading $$(du -h "$(APP_BIN)" | cut -f1) to $(IP)…"
+	@curl -sS --fail-with-body -X POST \
+		-H "Content-Type: application/octet-stream" \
+		-H "X-GhostHID-Token: $(TOKEN)" \
+		--data-binary "@$(APP_BIN)" \
+		"http://$(IP)/api/ota" && echo && echo "Device is rebooting."
 
 monitor: $(ESPTOOL)
 	@test -n "$(PORT)" || { echo "PORT is required, e.g. make monitor PORT=/dev/cu.usbmodem01"; exit 1; }

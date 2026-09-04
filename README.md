@@ -117,6 +117,36 @@ Handy for flashing a device that should come up already on your network, but
 not required — a device flashed with no flags at all brings up
 `GhostHID-XXXX` / `ghosthid-setup`, and you configure it from there.
 
+## Updating over the air
+
+After the first USB flash, updates go over the network:
+
+```bash
+make build
+make ota IP=192.168.7.113 TOKEN=your-token
+```
+
+Or drag `firmware.bin` into the web UI's Settings tab.
+
+Upload **`firmware.bin`**, not `ghosthid-merged.bin` — the merged image includes
+the bootloader and partition table at absolute offsets and is for USB flashing
+only. Both the browser and the device check the image's magic byte and reject
+the wrong one, so the mistake costs you an error message rather than a brick.
+
+Why it is safe to interrupt: the partition table is dual-slot
+(`app0`/`app1` + `otadata`). The incoming image is written to the *inactive*
+slot and `otadata` only switches once it validates, so a dropped Wi-Fi link or
+a power cut mid-upload leaves the running firmware untouched. Retry and nothing
+is lost.
+
+**The endpoint requires the pairing token.** It installs arbitrary code on a
+device that types into your computer, so leaving the token at its default while
+the device sits on a shared network is a genuinely bad idea.
+
+Not covered: an image that boots but breaks networking still needs USB
+recovery. Arduino does not enable ESP-IDF's rollback, so there is no automatic
+revert. See PLAN.md "Known Gaps".
+
 ## Using it from a phone
 
 The web UI is built for touch. On iOS the software keyboard does not deliver

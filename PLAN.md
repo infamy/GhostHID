@@ -742,7 +742,14 @@ Open issues in this plan, roughly by importance. Not yet scheduled.
    the target's port. Some KVMs, unpowered hubs and front-panel ports current-
    limit hard enough to brown out the radio. Measure before trusting it.
 
-9. **`tests/` exists in the layout with nothing said about it.** The keymap,
+9. **OTA has no rollback safety net.** Updates are crash-safe (dual-slot: an
+   interrupted upload leaves the running image untouched), but an image that
+   *boots and then fails* - breaks Wi-Fi, crashes after a minute - is not
+   caught, because Arduino does not enable ESP-IDF's `app_rollback`. Recovery
+   is a USB reflash. Enabling rollback properly means marking the app valid
+   only after the network comes up and a controller connects.
+
+10. **`tests/` exists in the layout with nothing said about it.** The keymap,
    the mouse-delta chunking and the held-key bookkeeping are all pure logic
    and unit-testable on the host, with no board attached. Worth doing — they
    are exactly the parts where a silent bug looks like flaky hardware.

@@ -5,6 +5,7 @@
 #include <AsyncTCP.h>
 #include <ESPAsyncWebServer.h>
 #include <ESPmDNS.h>
+#include <Update.h>
 
 #include "board_config.h"
 #include "config/Config.h"
@@ -18,6 +19,7 @@ AsyncWebServer    g_server(80);
 AsyncWebSocket    g_ws("/ws");
 Network          *g_network = nullptr;
 CommandProcessor *g_processor = nullptr;
+Config           *g_config = nullptr;
 
 // Derives a stable 4-hex-digit device suffix from the Wi-Fi MAC, so two
 // GhostHIDs in the same room do not collide.
@@ -73,11 +75,106 @@ void onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *client,
     }
 }
 
+
+// ---------------------------------------------------------------------------
+// Firmware update over the network
+//
+// The partition table is already dual-slot (app0/app1 + otadata), so a write
+// lands in the *inactive* slot and otadata only switches once the image
+// validates. An interrupted upload therefore leaves the running firmware
+// untouched - retry and nothing is lost.
+// ---------------------------------------------------------------------------
+
+const char *g_otaError = nullptr;
+bool        g_otaBegun = false;
+
+// This endpoint installs arbitrary code on a device that types into someone's
+// computer. It must never be reachable without the token.
+bool otaAuthorized(AsyncWebServerRequest *request) {
+    const char *tok = g_config->authToken();
+    if (tok == nullptr || tok[0] == '\0') return true;   // auth disabled
+    if (request->hasHeader("X-GhostHID-Token")) {
+        return request->getHeader("X-GhostHID-Token")->value() == tok;
+    }
+    if (request->hasParam("token")) {
+        return request->getParam("token")->value() == tok;
+    }
+    return false;
+}
+
+void onOtaBody(AsyncWebServerRequest *request, uint8_t *data, size_t len,
+               size_t index, size_t total) {
+    if (!otaAuthorized(request)) return;    // the completion handler 401s
+
+    if (index == 0) {
+        g_otaError = nullptr;
+        g_otaBegun = false;
+
+        // An ESP32 application image starts with magic 0xE9. Catching this
+        // here gives a useful message instead of a failed flash, and it is the
+        // exact mistake people make: ghosthid-merged.bin starts with 0xFF
+        // bootloader padding and is for USB flashing only.
+        if (len > 0 && data[0] != 0xE9) {
+            g_otaError = "not an ESP32 app image - upload firmware.bin, not ghosthid-merged.bin";
+            return;
+        }
+
+        // Stop driving the target before rewriting our own flash.
+        g_processor->setLocked(true, "firmware update in progress");
+
+        if (!Update.begin(total > 0 ? total : UPDATE_SIZE_UNKNOWN)) {
+            g_otaError = "could not start update (image too large?)";
+            return;
+        }
+        g_otaBegun = true;
+        Serial.printf("[ota] receiving %u bytes\n", static_cast<unsigned>(total));
+    }
+
+    if (g_otaError != nullptr || !g_otaBegun) return;
+
+    if (Update.write(data, len) != len) {
+        g_otaError = "write failed";
+        return;
+    }
+
+    if (total > 0 && index + len >= total) {
+        if (!Update.end(true)) {
+            g_otaError = "image failed validation";
+            return;
+        }
+        Serial.println("[ota] image verified, rebooting");
+    }
+}
+
+void onOtaDone(AsyncWebServerRequest *request) {
+    if (!otaAuthorized(request)) {
+        request->send(401, "application/json",
+                      "{\"type\":\"error\",\"error\":\"unauthorized\"}");
+        return;
+    }
+    if (g_otaError != nullptr) {
+        if (g_otaBegun) Update.abort();
+        g_processor->setLocked(false, nullptr);
+        Serial.printf("[ota] failed: %s\n", g_otaError);
+        AsyncWebServerResponse *r = request->beginResponse(
+            400, "application/json",
+            String("{\"type\":\"error\",\"error\":\"") + g_otaError + "\"}");
+        request->send(r);
+        g_otaError = nullptr;
+        g_otaBegun = false;
+        return;
+    }
+    request->send(200, "application/json",
+                  "{\"type\":\"ota_ok\",\"rebooting\":true}");
+    g_processor->requestReboot();
+}
+
 }  // namespace
 
 void Network::begin() {
     g_network   = this;
     g_processor = &processor_;
+    g_config    = &config_;
 
     const bool wantStation = config_.stationConfigured();
 
@@ -129,6 +226,11 @@ void Network::begin() {
         res->addHeader("Content-Encoding", "gzip");
         request->send(res);
     });
+
+    // Firmware update. Raw body, not multipart, so a plain
+    //   curl --data-binary @firmware.bin
+    // works as well as the browser does.
+    g_server.on("/api/ota", HTTP_POST, onOtaDone, nullptr, onOtaBody);
 
     g_server.onNotFound([](AsyncWebServerRequest *request) {
         request->redirect("/");

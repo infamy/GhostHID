@@ -62,6 +62,12 @@ bool CommandProcessor::serviceWatchdog(uint32_t timeoutMs) {
     return true;
 }
 
+void CommandProcessor::setLocked(bool locked, const char *reason) {
+    locked_ = locked;
+    lockReason_ = (reason != nullptr) ? reason : "";
+    if (locked_) hid_.releaseAll();
+}
+
 CommandResult CommandProcessor::handleMessage(const char *json, size_t len,
                                               char *outResponse, size_t outSize) {
     if (outResponse != nullptr && outSize > 0) outResponse[0] = '\0';
@@ -123,6 +129,11 @@ CommandResult CommandProcessor::handleMessage(const char *json, size_t len,
         strcmp(type, "key") == 0 || strcmp(type, "text") == 0 ||
         strcmp(type, "mouse_move") == 0 || strcmp(type, "mouse_button") == 0 ||
         strcmp(type, "mouse_wheel") == 0;
+    if (isInput && locked_) {
+        reply(outResponse, outSize,
+              "{\"type\":\"error\",\"error\":\"%s\"}", lockReason_);
+        return CommandResult::BadRequest;
+    }
     if (isInput && !hid_.ready()) {
         reply(outResponse, outSize,
               "{\"type\":\"error\",\"error\":\"usb not ready - target has not "

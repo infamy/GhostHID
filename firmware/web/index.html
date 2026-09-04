@@ -177,6 +177,24 @@ td code{white-space:nowrap}
     </section>
 
     <section>
+      <h2>Firmware update</h2>
+      <p class="hint" style="margin:0 0 8px">
+        Upload <code>firmware.bin</code> — <b>not</b> <code>ghosthid-merged.bin</code>,
+        which is for USB flashing only. The device writes to its spare slot and only
+        switches over once the image validates, so a failed or interrupted upload
+        leaves the running firmware untouched.
+      </p>
+      <input id="ota_file" type="file" accept=".bin">
+      <div class="row" style="margin-top:9px">
+        <button id="ota_go" class="grow">Upload &amp; reboot</button>
+      </div>
+      <div style="margin-top:9px;background:#0e1016;border:1px solid var(--line);border-radius:6px;height:8px;overflow:hidden">
+        <div id="ota_bar" style="height:100%;width:0;background:var(--accent);transition:width .15s"></div>
+      </div>
+      <div id="ota_log" style="font-family:ui-monospace,monospace;font-size:11px;color:var(--dim);margin-top:7px"></div>
+    </section>
+
+    <section>
       <h2>Connection</h2>
       <label>Token used by this browser</label>
       <div class="row">
@@ -269,6 +287,25 @@ td code{white-space:nowrap}
         stored value. Secrets are <b>write-only</b> — <code>get_config</code> reports
         only whether each is set. Settings persist in NVS and survive reflashing.
       </p>
+    </section>
+
+    <section>
+      <h2>5 · Firmware update</h2>
+      <pre>POST /api/ota?token=&lt;token&gt;
+Content-Type: application/octet-stream
+Body: raw firmware.bin
+
+→ {"type":"ota_ok","rebooting":true}
+→ {"type":"error","error":"not an ESP32 app image …"}   (400)
+→ {"type":"error","error":"unauthorized"}               (401)</pre>
+      <p class="hint">
+        The token may also be sent as an <code>X-GhostHID-Token</code> header.
+        Upload <code>firmware.bin</code>, not <code>ghosthid-merged.bin</code>.
+        HID input is locked out for the duration. Writes go to the inactive OTA
+        slot, so an interrupted upload cannot brick the device.
+      </p>
+      <pre>curl -sS --data-binary @firmware.bin \
+  "http://&lt;device&gt;/api/ota?token=&lt;token&gt;"</pre>
     </section>
 
     <section>
@@ -559,6 +596,44 @@ $("#c_save").onclick=function(){
   $("#c_log").textContent="Saving…";
 };
 $("#c_reboot").onclick=function(){ send({type:"reboot"}); };
+
+// --- firmware update --------------------------------------------------------
+$("#ota_go").onclick=function(){
+  var f=$("#ota_file").files[0];
+  if(!f){ $("#ota_log").textContent="Choose a firmware.bin first."; return; }
+  var bar=$("#ota_bar"), out=$("#ota_log");
+
+  // Check the magic byte here rather than after a 30-second upload: an ESP32
+  // app image starts 0xE9, and ghosthid-merged.bin starts 0xFF.
+  var head=new FileReader();
+  head.onload=function(){
+    if(new Uint8Array(head.result)[0]!==0xE9){
+      out.textContent="That is not an ESP32 app image (wrong magic byte). "+
+                      "Upload firmware.bin, not ghosthid-merged.bin.";
+      return;
+    }
+    var xhr=new XMLHttpRequest();
+    xhr.open("POST","/api/ota?token="+encodeURIComponent($("#tok").value));
+    xhr.upload.onprogress=function(e){
+      if(e.lengthComputable){
+        var pct=Math.round(e.loaded/e.total*100);
+        bar.style.width=pct+"%"; out.textContent="Uploading… "+pct+"%";
+      }
+    };
+    xhr.onload=function(){
+      var ok=xhr.status===200;
+      bar.style.width=ok?"100%":"0";
+      try{ var r=JSON.parse(xhr.responseText);
+           out.textContent = ok ? "Image verified — rebooting. This page will reconnect."
+                                : ("Failed: "+(r.error||xhr.status)); }
+      catch(e){ out.textContent = ok?"Rebooting…":("Failed: HTTP "+xhr.status); }
+    };
+    xhr.onerror=function(){ bar.style.width="0"; out.textContent="Upload failed (connection lost)."; };
+    out.textContent="Uploading…";
+    xhr.send(f);
+  };
+  head.readAsArrayBuffer(f.slice(0,1));
+};
 
 connect();
 })();

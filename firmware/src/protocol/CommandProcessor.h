@@ -42,6 +42,12 @@ public:
     // Set when a config change needs a restart to take effect. main() acts on
     // it from loop(), never from inside a network callback.
     bool rebootRequested() const { return rebootRequested_; }
+    void requestReboot() { rebootRequested_ = true; }
+
+    // Locks out HID input for the duration of a firmware update. Injecting
+    // keystrokes into the target while we are rewriting our own flash is not
+    // something we want to find out the consequences of.
+    void setLocked(bool locked, const char *reason);
 
     // Milliseconds since the last message from the controller.
     uint32_t millisSinceLastMessage() const;
@@ -57,6 +63,8 @@ private:
     bool     sessionActive_ = false;
     uint32_t lastMessageMs_ = 0;
     bool     rebootRequested_ = false;
+    bool     locked_ = false;
+    const char *lockReason_ = "";
 };
 
 }  // namespace ghosthid
