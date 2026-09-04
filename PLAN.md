@@ -626,7 +626,44 @@ Do not compromise the simple setup experience.
 
 ---
 
-## Phase 8 — Performance — **NOT STARTED**
+## Phase 8 — Performance — **MEASURED AND TUNED**
+
+Browser-to-device WebSocket round trip, measured over 150 samples:
+
+```text
+min 4.3   median 7.5   p90 24.0   p99 91.2   max 121.8 ms
+throughput: 1.08 ms per input event (~930 events/sec)
+```
+
+What actually mattered, in order:
+
+1. **Wi-Fi modem sleep.** The radio only woke on DTIM beacons, so an event could
+   wait ~100ms for the next wake. `WiFi.setSleep(false)` took the average round
+   trip from 36.9ms to 23.8ms. The single largest win.
+2. **A 2ms delay after every HID report, which was pure waste.**
+   `USBHID::SendReport` already blocks on a semaphore released by
+   `tud_hid_report_complete_cb`, so the USB stack provides its own backpressure
+   and cannot be outrun. That delay cost 2ms per keystroke and per chunk of a
+   long mouse move, for nothing.
+3. **TCP_NODELAY on WebSocket clients.** Nagle batches small writes, which is
+   exactly wrong for a stream of tiny input events.
+4. **Coalescing pointer motion to one message per animation frame.** A trackpad
+   fires at 120Hz; sending one frame per event flooded the link and queued fresh
+   input behind stale positions.
+
+What did NOT matter, recorded so it is not re-attempted: **shutting the access
+point down while the station is connected.** The ~155ms spikes recurring every
+~500ms looked exactly like AP/STA airtime contention, so this was implemented
+and measured - spikes got *worse* (5.0% -> 7.5% of samples over 60ms). A
+controlled ping of the router over the same link then showed the same ~150ms
+tail (max 143ms, sd 37.7) as the device (max 151ms, sd 37.3). The spikes are the
+Wi-Fi environment between controller and access point, not this device, which
+adds only ~5ms over the router baseline. The AP-fallback mode was kept as an
+option but is no longer the default.
+
+The lesson worth keeping: a plausible mechanism that fits the observed
+periodicity is not evidence. The controlled comparison took two minutes and
+overturned it.
 
 Measure:
 

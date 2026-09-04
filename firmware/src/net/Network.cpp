@@ -223,11 +223,7 @@ void Network::begin() {
     // confusing. The MAC-derived suffix keeps two devices distinguishable.
     snprintf(ssid_, sizeof(ssid_), "%s-%s", config_.deviceName(), suffix);
 
-    // WPA2, not an open AP. On an open network every keystroke crosses the air
-    // in cleartext to anyone in range, and the app-layer token is replayable.
-    const bool apOk = WiFi.softAP(ssid_, config_.apPassword());
-    snprintf(apIp_, sizeof(apIp_), "%s", WiFi.softAPIP().toString().c_str());
-    Serial.printf("[wifi] AP  %s : %s (%s)\r\n", ssid_, apOk ? "up" : "FAILED", apIp_);
+    startAp();
 
     if (wantStation) {
         WiFi.begin(config_.staSsid(), config_.staPassword());
@@ -239,6 +235,7 @@ void Network::begin() {
         if (WiFi.status() == WL_CONNECTED) {
             snprintf(staIp_, sizeof(staIp_), "%s", WiFi.localIP().toString().c_str());
             Serial.printf("[wifi] STA %s : up (%s)\r\n", config_.staSsid(), staIp_);
+            staStableSince_ = millis();
         } else {
             // Not fatal: the AP above is already serving.
             staIp_[0] = '\0';
@@ -280,6 +277,56 @@ void Network::begin() {
     if (stationConnected()) Serial.printf("[web] http://%s/\r\n", staIp_);
 }
 
+void Network::startAp() {
+    if (apActive_) return;
+    // WPA2, not an open AP. On an open network every keystroke crosses the air
+    // in cleartext to anyone in range, and the app-layer token is replayable.
+    const bool ok = WiFi.softAP(ssid_, config_.apPassword());
+    snprintf(apIp_, sizeof(apIp_), "%s", WiFi.softAPIP().toString().c_str());
+    apActive_ = ok;
+    Serial.printf("[wifi] AP  %s : %s (%s)\r\n", ssid_, ok ? "up" : "FAILED", apIp_);
+}
+
+void Network::stopAp() {
+    if (!apActive_) return;
+    WiFi.softAPdisconnect(true);
+    WiFi.mode(WIFI_STA);
+    apActive_ = false;
+    apIp_[0] = '\0';
+    Serial.println("[wifi] AP  down - station is up, radio is now dedicated to it");
+}
+
+void Network::serviceRadio() {
+    // Nothing to manage when there is no station to fall back from, or when
+    // the operator has asked for the AP to stay up permanently.
+    if (!config_.stationConfigured() || config_.apAlways()) return;
+
+    const bool staUp = (WiFi.status() == WL_CONNECTED);
+    const uint32_t now = millis();
+
+    if (staUp) {
+        if (staStableSince_ == 0) staStableSince_ = now;
+        // Wait before dropping the AP so a flapping station connection does not
+        // make the radio thrash between the two.
+        if (apActive_ && (now - staStableSince_) > 8000) {
+            stopAp();
+        }
+        if (staIp_[0] == '\0') {
+            snprintf(staIp_, sizeof(staIp_), "%s", WiFi.localIP().toString().c_str());
+        }
+    } else {
+        staStableSince_ = 0;
+        staIp_[0] = '\0';
+        // The station is gone. Bring the AP back so the device stays reachable
+        // - this is the whole reason the AP exists.
+        if (!apActive_) {
+            Serial.println("[wifi] STA lost - raising the AP again");
+            WiFi.mode(WIFI_AP_STA);
+            startAp();
+        }
+    }
+}
+
 bool Network::acquireClientSlot() {
     if (clientCount_ > 0) return false;
     clientCount_++;
@@ -292,6 +339,10 @@ void Network::releaseClientSlot() {
 
 void Network::loop() {
     g_ws.cleanupClients();
+
+    // Cheap, but there is no reason to re-evaluate the radio every few ms.
+    static uint32_t last = 0;
+    if (millis() - last > 1000) { last = millis(); serviceRadio(); }
 }
 
 }  // namespace ghosthid

@@ -38,13 +38,23 @@ public:
     bool acquireClientSlot();
     void releaseClientSlot();
 
+    bool apActive() const { return apActive_; }
+
 private:
+    // Raises or drops the access point as the station connection comes and
+    // goes. Only used when the AP is in fallback mode.
+    void serviceRadio();
+    void startAp();
+    void stopAp();
+
     CommandProcessor &processor_;
     Config           &config_;
     char ssid_[33]  = {};
     char apIp_[16]  = {};
     char staIp_[16] = {};
     uint32_t clientCount_ = 0;
+    bool     apActive_ = false;
+    uint32_t staStableSince_ = 0;
 };
 
 }  // namespace ghosthid

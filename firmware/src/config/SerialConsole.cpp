@@ -37,13 +37,16 @@ void SerialConsole::printHelp() const {
     Serial.println("  wifi <ssid>          network to JOIN (empty disables joining)");
     Serial.println("  wifipass <password>  station password");
     Serial.println("  appass <password>    password for GhostHID's OWN access point (8-63)");
+    Serial.println("  ap always|fallback   keep the AP up, or drop it while joined");
     Serial.println("  token <token>        pairing token (empty value disables auth)");
     Serial.println("  name <name>          device name - sets the AP SSID and mDNS name");
     Serial.println("  reset                erase all settings");
     Serial.println("  reboot               restart to apply changes");
     Serial.println();
-    Serial.println("GhostHID always hosts its own access point. Joining a network is extra,");
-    Serial.println("not instead - so a wrong SSID can never lock you out.");
+    Serial.println("'always' (default) keeps the AP up alongside the joined network, so a");
+    Serial.println("bad config can never lock you out. 'fallback' drops it while joined and");
+    Serial.println("restores it if that connection is lost - measured as no faster here, but");
+    Serial.println("useful on a congested band or to reduce radio surface.");
     Serial.println();
     Serial.println("Values are taken verbatim to end of line, so spaces are fine.");
     Serial.println("Changes save immediately but take effect on reboot.");
@@ -55,9 +58,16 @@ void SerialConsole::printStatus() const {
     Serial.printf("\r\n  GhostHID %s   device name: %s\r\n",
                   GHOSTHID_VERSION, config_.deviceName());
 
-    Serial.printf("\r\n  Own access point        ALWAYS ON\r\n");
+    Serial.printf("\r\n  Own access point        %s\r\n",
+                  config_.apAlways() ? "ALWAYS ON"
+                                     : (network_.apActive() ? "UP (no network joined)"
+                                                            : "STANDBY - returns if the network drops"));
     Serial.printf("    ssid      %s\r\n", network_.ssid());
-    Serial.printf("    address   http://%s/\r\n", network_.apAddress());
+    if (network_.apActive()) {
+        Serial.printf("    address   http://%s/\r\n", network_.apAddress());
+    } else {
+        Serial.printf("    address   -   (radio dedicated to the joined network)\r\n");
+    }
     Serial.printf("    password  (set)\r\n");
 
     Serial.printf("\r\n  Joined network          OPTIONAL\r\n");
@@ -133,6 +143,18 @@ void SerialConsole::execute(char *line) {
             Serial.printf("ok: name = %s  -- type 'reboot' to apply\r\n", value);
         } else {
             Serial.println("error: use letters, digits and hyphens only");
+        }
+    } else if (strcasecmp(line, "ap") == 0) {
+        if (strcasecmp(value, "always") == 0) {
+            config_.setApAlways(true);
+            Serial.println("ok: access point stays up permanently"
+                           "  -- type 'reboot' to apply");
+        } else if (strcasecmp(value, "fallback") == 0) {
+            config_.setApAlways(false);
+            Serial.println("ok: access point drops while the network is joined"
+                           "  -- type 'reboot' to apply");
+        } else {
+            Serial.println("error: use 'ap always' or 'ap fallback'");
         }
     } else if (strcasecmp(line, "reset") == 0) {
         config_.factoryReset();

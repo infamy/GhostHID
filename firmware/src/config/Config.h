@@ -32,6 +32,20 @@ public:
 
     bool stationConfigured() const { return staSsid_[0] != '\0'; }
 
+    // true (default) - the access point stays up permanently.
+    // false - the AP shuts down once the station connects, and returns by
+    //         itself if that connection is lost.
+    //
+    // Defaults to always-on because measurement showed AP+STA sharing is NOT
+    // the latency cost it was assumed to be: with the AP dropped, spikes got
+    // slightly worse (5.0% -> 7.5% over 60ms), and pinging the router over the
+    // same link showed the same ~150ms tail. The spikes are the Wi-Fi
+    // environment, not this radio. So the fallback is kept for the cases where
+    // it genuinely helps - a congested band, or a deployment that wants one
+    // less radio surface - rather than being the default.
+    bool apAlways() const { return apAlways_; }
+    bool setApAlways(bool always);
+
     // Setters persist immediately. Each returns false and changes nothing if
     // the value is invalid, so a bad edit over the network cannot brick the
     // device's own AP.
@@ -61,6 +75,7 @@ private:
     char apPass_[kPassMax + 1]   = {};
     char token_[kTokenMax + 1]   = {};
     char name_[kNameMax + 1]     = {};
+    bool apAlways_ = false;
     bool rebootPending_ = false;
 };
 

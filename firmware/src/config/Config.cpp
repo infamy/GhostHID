@@ -16,6 +16,7 @@ constexpr char kKeyStaPw[]  = "sta_pass";
 constexpr char kKeyApPw[]   = "ap_pass";
 constexpr char kKeyToken[]  = "token";
 constexpr char kKeyName[]   = "name";
+constexpr char kKeyApAlways[] = "ap_always";
 
 Preferences g_prefs;
 
@@ -44,6 +45,8 @@ void Config::begin() {
     loadInto(kKeyApPw,  GHOSTHID_AP_PASSWORD,  apPass_,  sizeof(apPass_));
     loadInto(kKeyToken, GHOSTHID_AUTH_TOKEN,   token_,   sizeof(token_));
     loadInto(kKeyName,  GHOSTHID_MDNS_NAME,    name_,    sizeof(name_));
+
+    apAlways_ = g_prefs.getBool(kKeyApAlways, true);
 
     // A stored AP password that fails validation would bring the AP up open.
     // Fall back rather than do that.
@@ -88,6 +91,13 @@ bool Config::setDeviceName(const char *name) {
     snprintf(name_, sizeof(name_), "%s", name);
     rebootPending_ = true;
     return store(kKeyName, name_);
+}
+
+bool Config::setApAlways(bool always) {
+    apAlways_ = always;
+    g_prefs.putBool(kKeyApAlways, always);
+    rebootPending_ = true;
+    return true;
 }
 
 void Config::factoryReset() {
