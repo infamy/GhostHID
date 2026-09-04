@@ -32,11 +32,19 @@ DEST="$OUT/ghosthid-$ENV_NAME"
 rm -rf "$DEST"; mkdir -p "$DEST"
 cp "$APP" "$MERGED" "$DEST/"
 
-VERSION=$(grep -oE '"[0-9]+\.[0-9]+\.[0-9]+[^"]*"' firmware/include/board_config.h | head -1 | tr -d '"')
+# grep -m1 rather than `grep | head -1`: under `set -o pipefail`, head closing
+# the pipe early gives grep a SIGPIPE and fails the whole substitution. It only
+# works locally because grep usually finishes first - a race, not a guarantee.
+VERSION=$(grep -m1 -oE '"[0-9]+\.[0-9]+\.[0-9]+[^"]*"' firmware/include/board_config.h | tr -d '"')
+[ -n "$VERSION" ] || VERSION="unknown"
 COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo unknown)
-CHIP=esp32s2; [ "$ENV_NAME" = "esp32-s3" ] && CHIP=esp32s3
+CHIP=esp32s2
+[ "$ENV_NAME" = "esp32-s3" ] && CHIP=esp32s3 || true
 
-sum() { command -v sha256sum >/dev/null && sha256sum "$1" | cut -d' ' -f1 || shasum -a 256 "$1" | cut -d' ' -f1; }
+sum() {
+    if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1"; else shasum -a 256 "$1"; fi \
+        | awk '{print $1}'
+}
 
 cat > "$DEST/MANIFEST.txt" <<EOF
 GhostHID $VERSION
