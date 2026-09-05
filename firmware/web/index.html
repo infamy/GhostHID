@@ -79,12 +79,20 @@ nav button.on:active{color:var(--accent);border-bottom:2px solid var(--accent)}
 /* Narrow screens: drop the wordmark and the status text, and let the tabs take
    the width. The dot and the USB badge still carry the state, and `stat` is
    duplicated in the dot's tooltip. */
+/* Narrow screens: give the tabs their own full-width row rather than making
+   them compete with the USB badge and Release button. Shaving padding was not
+   enough - "Settings" was being truncated even on a 440px iPhone Pro Max, so it
+   would have been far worse on a 375px SE. One bar is right on a desktop, where
+   the alternative is three tabs stretched across a 4K screen; on a phone two
+   compact rows is simply correct. */
 @media (max-width:600px){
+  header{flex-wrap:wrap;row-gap:0;padding-bottom:0}
   h1{display:none}
   #kvm{display:none}
   #stat{display:none}
-  nav{flex:1;margin-left:0}
-  nav button{flex:1;padding:8px 4px}
+  nav{order:3;flex:0 0 100%;margin:2px 0 0 -4px;gap:0}
+  nav button{flex:1;padding:9px 4px;font-size:13px}
+  #panic{margin-left:auto}
 }
 
 main{padding:12px var(--gutter);display:grid;gap:12px}
