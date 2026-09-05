@@ -147,16 +147,7 @@ void setup() {
         deskflow.begin();
     }
 
-    // Memory-lean mode: with the screen client enabled and this turned off,
-    // the web server is never started, leaving the heap near its boot state.
-    // Manage the device over the serial console instead.
-    const bool leanMode = config.deskflowEnabled() && !config.webWhenKvm();
-    if (leanMode) {
-        Serial.println("[boot] lean mode: web server not started, serial console only");
-        Serial.println("[boot] it will start anyway if the screen client cannot connect");
-    } else {
-        network.beginServers();
-    }
+    network.beginServers();
     g_heapAfterServer = ESP.getMaxAllocHeap();
     g_bootComplete = true;
 
@@ -167,18 +158,6 @@ void setup() {
 }
 
 void loop() {
-    // Escape hatch for lean mode. If the screen client cannot reach its server,
-    // a device with no web UI and no cable is unreachable - so start the server
-    // after a grace period rather than leaving the operator locked out.
-    static bool leanRescueDone = false;
-    if (!leanRescueDone && !network.serversRunning() && millis() > 90000) {
-        leanRescueDone = true;
-        if (!deskflow.connected()) {
-            Serial.println("[boot] screen client still not connected - starting the web server");
-            network.beginServers();
-        }
-    }
-
     network.loop();
     console.feed();
 

@@ -19,7 +19,7 @@ An ESP32-S2 presents itself to a target computer as a composite USB keyboard,
 relative mouse and absolute pointer, and relays input sent to it over Wi-Fi. The
 target needs no software, drivers, agents or network access of its own.
 
-**Status: v0.4.1**, working end to end — joins your network while keeping its own
+**Status: v0.4.2**, working end to end — joins your network while keeping its own
 access point as a fallback, is driven from a browser or a serial console,
 updates itself over the air, and can join a Deskflow / Barrier / Input Leap
 server as a screen so you simply move the pointer onto it.
@@ -171,31 +171,6 @@ Not covered: an image that boots but breaks networking still needs USB
 recovery. Arduino does not enable ESP-IDF's rollback, so there is no automatic
 revert. See PLAN.md "Known Gaps".
 
-## Lean mode
-
-Optional, and probably not needed. With the screen client running, a TLS session
-leaves about 13KB of contiguous heap - which sounds alarming and measurably is
-not: the web UI still serves its full page in under 90ms, over-the-air updates
-still work with a session live, and no HID reports are refused. Lean mode exists
-for headroom, not because the normal mode is broken.
-
-It trades the web UI away while the KVM is in use:
-
-```
-> lean on
-> reboot
-```
-
-The web server is then **never started** while the screen client is enabled, and
-the device is managed from the serial console. Not starting it is the only thing
-that helps: AsyncTCP never tears its task down, so stopping the server later
-frees nothing measurable (92 bytes, measured). Skipping it keeps the largest
-block near its 135KB boot value rather than dropping to ~47KB.
-
-You cannot be locked out by this. If the screen client has not connected within
-90 seconds of boot — wrong address, server down, network moved — the web server
-starts anyway.
-
 ## Using it from a phone
 
 The web UI is built for touch. On iOS the software keyboard does not deliver
@@ -212,6 +187,19 @@ or Esc at all, so a pure key-capture approach cannot work there. Instead:
 
 The **API** tab documents the full protocol on the device itself, so anyone
 who can reach the page can write a client without this repo.
+
+## Memory
+
+With the screen client connected over TLS the largest contiguous heap block sits
+around 13-15KB, which sounds alarming and measurably is not: the web UI serves
+its full page in under 90ms, over-the-air updates succeed with a session live,
+the heap is stable over time, and no HID reports are refused.
+
+Two things keep it that way. The TLS I/O buffers are reserved at boot, while the
+heap is whole, and handed to mbedTLS through its allocator hook — so a dropped
+session reconnects instead of needing a reboot. And the update endpoint refuses
+to compete: it reports what is using memory, and disconnects the screen client
+first rather than running out midway.
 
 ## Stuck-key safety
 

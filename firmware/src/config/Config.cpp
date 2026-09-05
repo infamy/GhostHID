@@ -26,7 +26,6 @@ constexpr char kKeyDfH[]      = "df_h";
 constexpr char kKeyDfTls[]    = "df_tls";
 constexpr char kKeyDfCa[]     = "df_ca";
 constexpr char kKeyDfTry[]    = "df_try";
-constexpr char kKeyWebKvm[]   = "web_kvm";
 
 Preferences g_prefs;
 
@@ -68,7 +67,6 @@ void Config::begin() {
     dfWidth_  = g_prefs.getUShort(kKeyDfW, 1920);
     dfHeight_ = g_prefs.getUShort(kKeyDfH, 1080);
     dfTls_    = g_prefs.getBool(kKeyDfTls, true);
-    webWhenKvm_ = g_prefs.getBool(kKeyWebKvm, true);
     dfPending_ = g_prefs.getBool(kKeyDfTry, false);
     if (dfPending_) {
         // The previous boot did not survive its handshake attempt. Turn the
@@ -162,13 +160,6 @@ bool Config::setDeskflowScreenSize(uint16_t w, uint16_t h) {
     dfWidth_ = w; dfHeight_ = h;
     g_prefs.putUShort(kKeyDfW, w);
     g_prefs.putUShort(kKeyDfH, h);
-    return true;
-}
-
-bool Config::setWebWhenKvm(bool on) {
-    webWhenKvm_ = on;
-    g_prefs.putBool(kKeyWebKvm, on);
-    rebootPending_ = true;      // only read at startup
     return true;
 }
 

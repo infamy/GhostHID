@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.4.2
+
+### Removed
+
+* **Lean mode.** It skipped the web server entirely while the screen client ran,
+  to buy contiguous heap. Measured on hardware it does what it claimed — 15KB
+  largest block becomes 23.5KB — but that is a 57% gain on a number nothing is
+  failing on, paid for with the whole web interface. It was built on the
+  assumption that 13KB was a crisis; measurement showed it is not.
+
+### Added
+
+* The update endpoint refuses to compete for memory. `GET /api/ota` reports what
+  is connected and how much is free, so a client can warn before sending 800KB
+  rather than after; `POST` returns 409 if the screen client is holding memory,
+  and with `?force=1` disconnects it first rather than hoping there is room.
+  Attempting an update against a screen session in active use had taken a device
+  down. Both the browser and `make ota` ask first.
+
+### Fixed
+
+* `Settings` was truncated to `Setting…` in the top bar on phones. Below 600px
+  the tabs now take a full-width row of their own instead of competing with the
+  USB badge and Release button — tightening the padding was not enough, since it
+  was happening on a 440px iPhone Pro Max and would have been worse on a 375px
+  device.
+* A second controller was refused with close code 1013 and then silently
+  retried, which looked like a flaky connection rather than a deliberate limit.
+  The page now says another controller is connected.
+
 ## 0.4.1
 
 ### Added
