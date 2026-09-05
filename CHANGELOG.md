@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.4.1
+
+### Added
+
+* **Lean mode** (`lean on`). With the screen client enabled, the web server is
+  not started at all, leaving the heap near its boot state and the serial
+  console as the management path. Not starting it is the only thing that helps -
+  AsyncTCP never tears its task down, so stopping the server later frees nothing
+  measurable. It cannot lock anyone out: if the screen client has not connected
+  within 90 seconds of boot, the web server starts regardless.
+  **Not yet verified on hardware.**
+
+### Fixed
+
+* Documentation overstated the memory situation. It claimed the web UI becomes
+  sluggish once a TLS session is established and that updates require stopping
+  the screen client first. Measured, neither holds: the UI serves its full
+  16KB page in 34-86ms, an over-the-air update succeeds with a session live in
+  13.5s and the device reconnects by itself, the heap is stable with no leak,
+  and no HID reports are refused. The earlier update failures predate the TLS
+  buffer reservation, which fixed them as a side effect. 13KB of contiguous
+  heap is tight and worth watching, but nothing measured fails because of it.
+* The repository structure in `PLAN.md` still described directories that were
+  either dropped or never filled.
+
 ## 0.4.0
 
 Adds a Deskflow / Barrier / Input Leap screen client, verified working end to
