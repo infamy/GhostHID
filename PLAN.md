@@ -974,10 +974,26 @@ virtual pointer reaches the target's left edge
 
 ## Better: be a client of an existing server — **IMPLEMENTED**
 
-GhostHID joins a Deskflow / Barrier / Input Leap server as a screen. Verified
-against a live Deskflow server: mutual TLS with a device-generated certificate,
-protocol 1.8 handshake, screen registered, `connected (idle)` awaiting the
-pointer.
+GhostHID joins a Deskflow / Barrier / Input Leap server as a screen. **Working
+end to end** against a live Deskflow 1.8 server over mutual TLS: pointer motion
+and keyboard both reach the target, with zero unrecognised messages and zero
+HID reports refused by the host.
+
+Two things had to be found by reading bytes off the wire rather than the
+protocol headers:
+
+* protocol 1.8 does not send `DKDN` for key-down at all. It uses a distinct
+  wire code `DKDL` (`kMsgDKeyDownLang`), and a server that negotiates 1.8 emits
+  it exclusively with no fallback
+* a macOS server deliberately sends KeyID 0 on key-up and identifies the key
+  only by its physical button, so a client must remember which key it pressed
+  for that button and release that
+
+And the pointer stepping was ours, not the protocol's: the endpoint already
+declares a 1ms polling interval, but the client's service loop measured whether
+it was busy *after* draining the socket - when nothing is pending - so it took
+its slow branch during exactly the motion it was meant to serve. A fixed
+one-tick cadence fixed it; evenness mattered more than rate.
 
 Four things had to be discovered by testing rather than read from the protocol
 headers, all recorded in the commit that added TLS:
