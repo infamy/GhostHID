@@ -24,6 +24,8 @@ constexpr char kKeyDfScreen[] = "df_screen";
 constexpr char kKeyDfW[]      = "df_w";
 constexpr char kKeyDfH[]      = "df_h";
 constexpr char kKeyDfTls[]    = "df_tls";
+constexpr char kKeyDfCa[]     = "df_ca";
+constexpr char kKeyDfTry[]    = "df_try";
 
 Preferences g_prefs;
 
@@ -65,6 +67,23 @@ void Config::begin() {
     dfWidth_  = g_prefs.getUShort(kKeyDfW, 1920);
     dfHeight_ = g_prefs.getUShort(kKeyDfH, 1080);
     dfTls_    = g_prefs.getBool(kKeyDfTls, true);
+    dfPending_ = g_prefs.getBool(kKeyDfTry, false);
+    if (dfPending_) {
+        // The previous boot did not survive its handshake attempt. Turn the
+        // client off so the device comes up reachable, and let a human decide.
+        Serial.println("[config] previous screen-client attempt crashed; disabling it");
+        dfEnabled_ = false;
+        g_prefs.putBool(kKeyDfOn, false);
+        g_prefs.putBool(kKeyDfTry, false);
+        dfPending_ = false;
+    }
+    {
+        String ca = g_prefs.getString(kKeyDfCa, "");
+        if (ca.length() > 0) {
+            dfCa_ = static_cast<char *>(malloc(ca.length() + 1));
+            if (dfCa_ != nullptr) memcpy(dfCa_, ca.c_str(), ca.length() + 1);
+        }
+    }
 
     // A stored AP password that fails validation would bring the AP up open.
     // Fall back rather than do that.
@@ -141,6 +160,26 @@ bool Config::setDeskflowScreenSize(uint16_t w, uint16_t h) {
     dfWidth_ = w; dfHeight_ = h;
     g_prefs.putUShort(kKeyDfW, w);
     g_prefs.putUShort(kKeyDfH, h);
+    return true;
+}
+
+void Config::markDeskflowAttempt(bool inProgress) {
+    g_prefs.putBool(kKeyDfTry, inProgress);
+}
+
+bool Config::setDeskflowServerCert(const char *pem) {
+    if (pem == nullptr) return false;
+    const size_t n = strlen(pem);
+    if (n > 4000) return false;                    // NVS string limit
+    if (n > 0 && strstr(pem, "-----BEGIN CERTIFICATE-----") == nullptr) return false;
+    free(dfCa_);
+    dfCa_ = nullptr;
+    if (n > 0) {
+        dfCa_ = static_cast<char *>(malloc(n + 1));
+        if (dfCa_ == nullptr) return false;
+        memcpy(dfCa_, pem, n + 1);
+    }
+    g_prefs.putString(kKeyDfCa, pem);
     return true;
 }
 

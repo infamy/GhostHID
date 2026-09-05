@@ -10,6 +10,8 @@
 #include "board_config.h"
 #include "config/Config.h"
 #include "net/DeskflowClient.h"
+
+extern uint32_t g_heapAfterBoot, g_heapAfterWifi, g_heapAfterServer;
 #include "hid/HidDevice.h"
 
 namespace ghosthid {
@@ -117,9 +119,14 @@ CommandResult CommandProcessor::handleMessage(const char *json, size_t len,
 
     if (strcmp(type, "status") == 0) {
         reply(outResponse, outSize,
-              "{\"type\":\"status\",\"version\":\"%s\",\"usb\":%s,\"held\":%u}",
+              "{\"type\":\"status\",\"version\":\"%s\",\"usb\":%s,\"held\":%u,"
+              "\"heap_free\":%u,\"heap_largest\":%u,"
+              "\"heap_boot\":%u,\"heap_wifi\":%u,\"heap_server\":%u}",
               GHOSTHID_VERSION, hid_.ready() ? "true" : "false",
-              static_cast<unsigned>(hid_.heldKeyCount()));
+              static_cast<unsigned>(hid_.heldKeyCount()),
+              (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMaxAllocHeap(),
+              (unsigned)g_heapAfterBoot, (unsigned)g_heapAfterWifi,
+              (unsigned)g_heapAfterServer);
         return CommandResult::Ok;
     }
 
@@ -220,7 +227,7 @@ CommandResult CommandProcessor::handleMessage(const char *json, size_t len,
               "\"kvm_on\":%s,\"kvm_host\":\"%s\",\"kvm_port\":%u,"
               "\"kvm_screen\":\"%s\",\"kvm_w\":%u,\"kvm_h\":%u,"
               "\"kvm_state\":\"%s\",\"kvm_server\":\"%s\","
-              "\"kvm_tls\":%s,\"kvm_fp\":\"%s\"}",
+              "\"kvm_tls\":%s,\"kvm_fp\":\"%s\",\"kvm_ca_set\":%s}",
               config_.staSsid(),
               config_.staPassword()[0] ? "true" : "false",
               config_.authToken()[0]   ? "true" : "false",
@@ -236,7 +243,8 @@ CommandResult CommandProcessor::handleMessage(const char *json, size_t len,
               deskflow_ ? deskflow_->statusText() : "unknown",
               deskflow_ ? deskflow_->serverName() : "",
               config_.deskflowTls() ? "true" : "false",
-              deskflow_ ? deskflow_->fingerprint() : "");
+              deskflow_ ? deskflow_->fingerprint() : "",
+              config_.deskflowServerCert()[0] ? "true" : "false");
         return CommandResult::Ok;
     }
 
@@ -281,6 +289,11 @@ CommandResult CommandProcessor::handleMessage(const char *json, size_t len,
             const uint16_t w = (uint16_t)(doc["kvm_w"] | (int)config_.deskflowWidth());
             const uint16_t h = (uint16_t)(doc["kvm_h"] | (int)config_.deskflowHeight());
             if (!config_.setDeskflowScreenSize(w, h)) err = "screen size out of range";
+            else kvmChanged = true;
+        }
+        if (!err && doc["kvm_ca"].is<const char *>()) {
+            if (!config_.setDeskflowServerCert(doc["kvm_ca"].as<const char *>()))
+                err = "server certificate must be PEM and under 4000 bytes";
             else kvmChanged = true;
         }
         if (!err && doc["kvm_tls"].is<bool>()) {

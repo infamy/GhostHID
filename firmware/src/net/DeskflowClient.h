@@ -32,9 +32,12 @@ class DeskflowClient {
 public:
     DeskflowClient(HidDevice &hid, Config &config) : hid_(hid), config_(config) {}
 
-    // Call from loop(). Connects, handshakes and pumps messages; returns
-    // promptly whether or not anything happened.
-    void loop();
+    // Starts the client on its own task. It deliberately does NOT run from
+    // loop(): a TLS handshake blocks for seconds, and doing that on the main
+    // task stalls the web server, starves the WebSocket heartbeat - so a
+    // browser decides it has disconnected and reloads - and breaks any OTA
+    // upload in flight.
+    void begin();
 
     bool connected() const { return state_ == State::Active; }
     // True while the server has handed this screen the pointer.
@@ -49,6 +52,11 @@ public:
     // This device's TLS fingerprint. The server records it on first connection
     // and matches it thereafter, so it is worth showing the user.
     const char *fingerprint() const { return identity_.fingerprint(); }
+
+    // The device's own certificate, so it can be inspected or handed to a
+    // server that wants it up front rather than on first connection.
+    const char *certificatePem() const { return identity_.certificatePem(); }
+    bool ensureIdentity(const char *cn) { return identity_.begin(cn); }
 
     // Compact state for the heartbeat: 0 off, 1 connecting, 2 connected,
     // 3 connected and holding the pointer.
@@ -69,6 +77,9 @@ private:
     void dispatch(const uint8_t *msg, size_t len);
     void sendScreenInfo();
     void disconnect(const char *why);
+    void serviceOnce();                      // one pass: connect, or pump messages
+    void run();                              // task body: serviceOnce forever
+    static void taskEntry(void *self);
 
     HidDevice &hid_;
     Config    &config_;
@@ -86,7 +97,7 @@ private:
     uint32_t lastAttemptMs_ = 0;
     uint32_t backoffMs_ = 2000;
     uint32_t lastTrafficMs_ = 0;
-    char     lastError_[64] = {};
+    char     lastError_[128] = {};
 
     // The 7-byte protocol name the server greeted us with, echoed back so we
     // work with Synergy, Barrier and Deskflow servers without caring which.

@@ -8,6 +8,7 @@
 #include <Update.h>
 
 #include "board_config.h"
+#include "DeskflowClient.h"
 #include "config/Config.h"
 #include "protocol/CommandProcessor.h"
 #include "web/WebAssets.h"
@@ -20,6 +21,7 @@ AsyncWebSocket    g_ws("/ws");
 Network          *g_network = nullptr;
 CommandProcessor *g_processor = nullptr;
 Config           *g_config = nullptr;
+DeskflowClient   *g_deskflow = nullptr;
 
 // Derives a stable 4-hex-digit device suffix from the Wi-Fi MAC, so two
 // GhostHIDs in the same room do not collide.
@@ -147,8 +149,18 @@ void onOtaBody(AsyncWebServerRequest *request, uint8_t *data, size_t len,
         // Stop driving the target before rewriting our own flash.
         g_processor->setLocked(true, "firmware update in progress");
 
+        // An upload that died mid-flight - a dropped connection, a client that
+        // gave up - leaves Update running, and every later attempt then fails
+        // with "could not start" until the device is rebooted. Clear it.
+        if (Update.isRunning()) {
+            Serial.println("[ota] a previous update was left incomplete; aborting it");
+            Update.abort();
+        }
         if (!Update.begin(total > 0 ? total : UPDATE_SIZE_UNKNOWN)) {
-            otaFail(request, 400, "could not start update (image too large?)");
+            char why[96];
+            snprintf(why, sizeof(why),
+                     "could not start update: %s", Update.errorString());
+            otaFail(request, 400, why);
             return;
         }
         g_otaBegun = true;
@@ -197,7 +209,9 @@ void onOtaDone(AsyncWebServerRequest *request) {
 
 }  // namespace
 
-void Network::begin() {
+void Network::attachDeskflow(DeskflowClient *c) { g_deskflow = c; }
+
+void Network::beginRadio() {
     g_network   = this;
     g_processor = &processor_;
     g_config    = &config_;
@@ -251,6 +265,9 @@ void Network::begin() {
         Serial.printf("[mdns] http://%s.local/\r\n", host);
     }
 
+}
+
+void Network::beginServers() {
     // Serve the control UI straight out of flash, pre-gzipped. The AP has no
     // route to the internet, so the page cannot reference any external asset.
     g_server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
@@ -264,6 +281,23 @@ void Network::begin() {
     //   curl --data-binary @firmware.bin
     // works as well as the browser does.
     g_server.on("/api/ota", HTTP_POST, onOtaDone, nullptr, onOtaBody);
+
+    // The device's TLS certificate, for inspection or for a server that wants
+    // it in advance. Token-gated: it is not secret, but it identifies the
+    // device and there is no reason to hand it to anyone who asks.
+    g_server.on("/api/identity", HTTP_GET, [](AsyncWebServerRequest *request) {
+        if (!otaAuthorized(request)) {
+            request->send(401, "application/json",
+                          "{\"type\":\"error\",\"error\":\"unauthorized\"}");
+            return;
+        }
+        if (g_deskflow == nullptr ||
+            !g_deskflow->ensureIdentity(g_config->deskflowScreen())) {
+            request->send(503, "text/plain", "no identity available");
+            return;
+        }
+        request->send(200, "application/x-pem-file", g_deskflow->certificatePem());
+    });
 
     g_server.onNotFound([](AsyncWebServerRequest *request) {
         request->redirect("/");

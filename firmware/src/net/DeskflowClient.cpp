@@ -7,6 +7,9 @@
 #include "config/Config.h"
 #include "hid/HidDevice.h"
 
+#include <mbedtls/oid.h>
+#include <mbedtls/x509_crt.h>
+
 namespace ghosthid {
 namespace {
 
@@ -26,6 +29,33 @@ inline void wr32(uint8_t *p, uint32_t v) {
     p[0] = (uint8_t)(v >> 24); p[1] = (uint8_t)(v >> 16);
     p[2] = (uint8_t)(v >> 8);  p[3] = (uint8_t)v;
 }
+// The common name of a PEM certificate, or an empty string.
+//
+// mbedTLS verifies the hostname against the server's certificate, and these
+// servers use a self-signed certificate with a fixed CN ("Deskflow",
+// "Synergy") while being reached by IP address - so the check fails on a name
+// mismatch even though the certificate is exactly the one we pinned. Since we
+// pinned it, matching its own CN is the correct check to make.
+bool commonNameOf(const char *pem, char *out, size_t outSize) {
+    if (pem == nullptr || pem[0] == '\0') return false;
+    mbedtls_x509_crt crt;
+    mbedtls_x509_crt_init(&crt);
+    bool ok = false;
+    if (mbedtls_x509_crt_parse(&crt, (const unsigned char *)pem, strlen(pem) + 1) == 0) {
+        for (const mbedtls_x509_name *n = &crt.subject; n != nullptr; n = n->next) {
+            if (MBEDTLS_OID_CMP(MBEDTLS_OID_AT_CN, &n->oid) == 0) {
+                const size_t len = n->val.len < outSize - 1 ? n->val.len : outSize - 1;
+                memcpy(out, n->val.p, len);
+                out[len] = '\0';
+                ok = len > 0;
+                break;
+            }
+        }
+    }
+    mbedtls_x509_crt_free(&crt);
+    return ok;
+}
+
 inline bool is(const uint8_t *m, size_t len, const char *code) {
     return len >= 4 && memcmp(m, code, 4) == 0;
 }
@@ -314,7 +344,7 @@ void DeskflowClient::reconnect() {
     lastAttemptMs_ = 0;
 }
 
-void DeskflowClient::loop() {
+void DeskflowClient::serviceOnce() {
     if (!config_.deskflowEnabled()) {
         if (state_ != State::Idle) disconnect("");
         return;
@@ -338,9 +368,21 @@ void DeskflowClient::loop() {
                 backoffMs_ = 30000;
                 return;
             }
-            // The server's certificate is self-signed and trusted by
-            // fingerprint, not by a chain, so verification does not apply.
-            tls_.setInsecure();
+            // Do NOT call setInsecure() here. arduino-esp32 loads the client
+            // certificate only when verification is enabled:
+            //     if (!insecure && cli_cert != NULL && cli_key != NULL)
+            // so setInsecure() silently drops our identity, and the server
+            // rejects the handshake with "peer did not return a certificate".
+            // Pinning the server's certificate keeps verification on, which is
+            // both what makes mutual TLS work and the trust model this protocol
+            // uses in the first place.
+            if (config_.deskflowServerCert()[0] == '\0') {
+                snprintf(lastError_, sizeof(lastError_),
+                         "server certificate not set - paste the server's PEM in settings");
+                backoffMs_ = 30000;
+                return;
+            }
+            tls_.setCACert(config_.deskflowServerCert());
             tls_.setCertificate(identity_.certificatePem());
             tls_.setPrivateKey(identity_.privateKeyPem());
             tls_.setTimeout(12);
@@ -349,13 +391,54 @@ void DeskflowClient::loop() {
             sock_ = &plain_;
         }
 
-        const bool ok = config_.deskflowTls()
-            ? tls_.connect(config_.deskflowHost(), config_.deskflowPort(), 8000)
-            : plain_.connect(config_.deskflowHost(), config_.deskflowPort(), 4000);
+        if (config_.deskflowTls()) {
+            Serial.printf("[deskflow] pre-handshake heap: %u free, %u largest block\r\n",
+                          (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMaxAllocHeap());
+        }
+        bool ok;
+        if (config_.deskflowTls()) {
+            // Resolve first so we can connect by address while presenting the
+            // certificate's own common name for verification.
+            IPAddress addr;
+            if (!addr.fromString(config_.deskflowHost()) &&
+                !WiFi.hostByName(config_.deskflowHost(), addr)) {
+                snprintf(lastError_, sizeof(lastError_), "cannot resolve %s",
+                         config_.deskflowHost());
+                backoffMs_ = backoffMs_ < 30000 ? backoffMs_ * 2 : 30000;
+                return;
+            }
+            char cn[64] = {};
+            const bool haveCn = commonNameOf(config_.deskflowServerCert(), cn, sizeof(cn));
+            tls_.setTimeout(12);
+            ok = tls_.connect(addr, config_.deskflowPort(),
+                              haveCn ? cn : config_.deskflowHost(),
+                              config_.deskflowServerCert(),
+                              identity_.certificatePem(),
+                              identity_.privateKeyPem());
+            if (!ok && haveCn) {
+                Serial.printf("[deskflow] verified against CN '%s'\r\n", cn);
+            }
+        } else {
+            ok = plain_.connect(config_.deskflowHost(), config_.deskflowPort(), 4000);
+        }
         if (!ok) {
-            snprintf(lastError_, sizeof(lastError_), "cannot reach %s:%u%s",
-                     config_.deskflowHost(), (unsigned)config_.deskflowPort(),
-                     config_.deskflowTls() ? " (TLS)" : "");
+            if (config_.deskflowTls()) {
+                // A failed TLS handshake and an unreachable host look identical
+                // from connect()'s return value, so ask mbedTLS what happened.
+                char detail[96] = {};
+                const int err = tls_.lastError(detail, sizeof(detail));
+                snprintf(lastError_, sizeof(lastError_),
+                         "TLS failed (%d) %s [heap %uK free, %uK largest]", err, detail,
+                         (unsigned)(ESP.getFreeHeap() / 1024),
+                         (unsigned)(ESP.getMaxAllocHeap() / 1024));
+                Serial.printf("[deskflow] TLS connect failed: %d %s\r\n", err, detail);
+                Serial.printf("[deskflow] free heap %u, largest block %u\r\n",
+                              (unsigned)ESP.getFreeHeap(),
+                              (unsigned)ESP.getMaxAllocHeap());
+            } else {
+                snprintf(lastError_, sizeof(lastError_), "cannot reach %s:%u",
+                         config_.deskflowHost(), (unsigned)config_.deskflowPort());
+            }
             // Back off up to 30s so a wrong address does not hammer the network.
             backoffMs_ = backoffMs_ < 30000 ? backoffMs_ * 2 : 30000;
             return;
@@ -389,6 +472,26 @@ void DeskflowClient::loop() {
     if (state_ == State::Active && millis() - lastTrafficMs_ > 15000) {
         disconnect("no keep-alive from server");
     }
+}
+
+void DeskflowClient::run() {
+    for (;;) {
+        serviceOnce();
+        // 5ms keeps input latency well under a frame while leaving the CPU to
+        // the Wi-Fi and TCP tasks on this single-core part.
+        vTaskDelay(pdMS_TO_TICKS(5));
+    }
+}
+
+void DeskflowClient::taskEntry(void *self) {
+    static_cast<DeskflowClient *>(self)->run();
+}
+
+void DeskflowClient::begin() {
+    // 8KB of stack: a TLS handshake needs real depth. Priority 1 sits below
+    // the Wi-Fi and TCP stacks, so a blocking handshake yields to them rather
+    // than starving them.
+    xTaskCreate(taskEntry, "deskflow", 8192, this, 1, nullptr);
 }
 
 }  // namespace ghosthid

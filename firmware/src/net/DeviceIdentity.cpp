@@ -19,6 +19,12 @@ namespace {
 constexpr char kNamespace[] = "ghostid";
 constexpr char kKeyCert[]   = "cert";
 constexpr char kKeyKey[]    = "key";
+constexpr char kKeyVer[]    = "ver";
+
+// Bumped when the certificate we generate changes shape. A stored identity from
+// an older version is regenerated rather than kept, which matters because
+// version 1 omitted the X.509 extensions below and was rejected outright.
+constexpr uint32_t kIdentityVersion = 3;
 
 Preferences g_store;
 
@@ -34,8 +40,15 @@ bool DeviceIdentity::begin(const char *commonName) {
     if (ready()) return true;
 
     g_store.begin(kNamespace, /*readOnly=*/false);
+    const uint32_t storedVersion = g_store.getUInt(kKeyVer, 1);
     String cert = g_store.getString(kKeyCert, "");
     String key  = g_store.getString(kKeyKey, "");
+
+    if (storedVersion != kIdentityVersion && cert.length() > 0) {
+        Serial.printf("[identity] stored certificate is version %u, regenerating as %u\r\n",
+                      (unsigned)storedVersion, (unsigned)kIdentityVersion);
+        cert = ""; key = "";
+    }
 
     if (cert.length() > 0 && key.length() > 0) {
         cert_ = dupString(cert);
@@ -106,6 +119,18 @@ bool DeviceIdentity::generate(const char *commonName) {
         if (mbedtls_x509write_crt_set_issuer_name(&crt, subject) != 0) break;
         mbedtls_x509write_crt_set_version(&crt, MBEDTLS_X509_CRT_VERSION_3);
         mbedtls_x509write_crt_set_md_alg(&crt, MBEDTLS_MD_SHA256);
+
+        // These extensions are not decoration. A self-signed certificate has to
+        // validate as its own root, and OpenSSL - which is what Deskflow uses -
+        // will not accept one without CA:TRUE. Omitting them produced a fatal
+        // TLS alert with no explanation from the server.
+        if (mbedtls_x509write_crt_set_basic_constraints(&crt, 1, -1) != 0) break;
+        if (mbedtls_x509write_crt_set_subject_key_identifier(&crt) != 0) break;
+        if (mbedtls_x509write_crt_set_authority_key_identifier(&crt) != 0) break;
+        // Deliberately NO keyUsage extension. mbedtls marks it critical, and a
+        // critical keyUsage constrains what a peer will accept the certificate
+        // for; the certificates these servers generate for themselves carry
+        // none, so carrying one only creates a way to be rejected.
         if (mbedtls_mpi_read_string(&serial, 10, "1") != 0) break;
         if (mbedtls_x509write_crt_set_serial(&crt, &serial) != 0) break;
         // The device has no clock at generation time, so use a fixed window
@@ -123,6 +148,7 @@ bool DeviceIdentity::generate(const char *commonName) {
 
         g_store.putString(kKeyCert, cert_);
         g_store.putString(kKeyKey, key_);
+        g_store.putUInt(kKeyVer, kIdentityVersion);
         computeFingerprint();
         ok = true;
     } while (false);

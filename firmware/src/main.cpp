@@ -80,8 +80,14 @@ bool buttonJustPressed() {
 
 }  // namespace
 
+// Largest contiguous allocation available at each stage of boot. TLS needs a
+// 16KB block, so knowing which stage costs it is the difference between fixing
+// this and guessing at it.
+uint32_t g_heapAfterBoot = 0, g_heapAfterWifi = 0, g_heapAfterServer = 0;
+
 void setup() {
     Serial.begin(115200);
+    g_heapAfterBoot = ESP.getMaxAllocHeap();
     ledBegin();
     buttonBegin();
 
@@ -89,6 +95,7 @@ void setup() {
     // passphrases and token the network layer needs.
     config.begin();
     processor.attachDeskflow(&deskflow);
+    network.attachDeskflow(&deskflow);
 
     hid.begin();
     const bool enumerated = hid.waitUntilReady(10000);
@@ -101,7 +108,32 @@ void setup() {
     // Networking comes up whether or not USB enumerated, so the device stays
     // reachable and diagnosable when plugged into a dumb charger or a port
     // that never configured it.
-    network.begin();
+    network.beginRadio();
+    g_heapAfterWifi = ESP.getMaxAllocHeap();
+
+    // Order matters. A TLS handshake needs a 16KB contiguous block plus more
+    // after it, and starting the web server drops the largest available block
+    // from roughly 135KB to 47KB. So give the screen client its handshake
+    // while the heap is still whole, then start the servers.
+    if (config.deskflowEnabled() && config.deskflowTls()) {
+        // Mark the attempt before making it. If the device does not get as far
+        // as clearing this, the next boot disables the client rather than
+        // looping - the web server must always come up, because it is the only
+        // way back in once the device is not on a cable.
+        config.markDeskflowAttempt(true);
+        deskflow.begin();
+        Serial.println("[boot] giving the screen client the heap before the web server");
+        const uint32_t until = millis() + 8000;
+        while (millis() < until && !deskflow.connected()) delay(100);
+        config.markDeskflowAttempt(false);
+        Serial.printf("[boot] screen client %s\r\n",
+                      deskflow.connected() ? "connected" : "not connected, carrying on");
+    } else {
+        deskflow.begin();
+    }
+
+    network.beginServers();
+    g_heapAfterServer = ESP.getMaxAllocHeap();
 
     Serial.printf("[auth] token %s\r\n",
                   (config.authToken()[0] == '\0') ? "disabled" : "required");
@@ -112,7 +144,6 @@ void setup() {
 void loop() {
     network.loop();
     console.feed();
-    deskflow.loop();
 
     // Reboot requested over the API (config change). Done here rather than in
     // the network callback so the stack is not torn down from inside itself.

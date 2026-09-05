@@ -11,6 +11,7 @@ namespace ghosthid {
 
 class CommandProcessor;
 class Config;
+class DeskflowClient;
 
 class Network {
 public:
@@ -19,7 +20,15 @@ public:
 
     // Brings up the AP (always) plus the station connection (if credentials
     // were compiled in), then starts the WebSocket server.
-    void begin();
+    // Split deliberately. Starting the web server drops the largest
+    // contiguous heap block from ~135K to ~47K, and a TLS handshake needs 16K
+    // in one piece plus more after it. So the radio comes up first, the screen
+    // client gets its handshake in while the heap is still whole, and only then
+    // does the web server start.
+    void beginRadio();
+    void beginServers();
+    void begin() { beginRadio(); beginServers(); }
+    void attachDeskflow(DeskflowClient *c);
 
     // Must be called from loop(): drives cleanup of dead WebSocket clients.
     void loop();

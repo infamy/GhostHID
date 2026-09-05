@@ -60,6 +60,22 @@ public:
     // Deskflow/Barrier/Synergy ship with encryption on, so this defaults true.
     bool        deskflowTls()     const { return dfTls_; }
 
+    // The server's own certificate, pinned. Not optional in practice:
+    // arduino-esp32 only loads a client certificate when verification is
+    // enabled, so skipping verification also silently drops our identity - and
+    // these servers require mutual TLS. Pinning is the protocol's own trust
+    // model anyway, so this is the right thing rather than a workaround.
+    const char *deskflowServerCert() const { return dfCa_ ? dfCa_ : ""; }
+    bool setDeskflowServerCert(const char *pem);
+
+    // Crash guard. The screen client's first TLS handshake happens during boot,
+    // before the web server starts, because it needs an unfragmented heap. If
+    // that crashes the device it would loop forever with no way in over the
+    // network - so a marker is written before the attempt and cleared after.
+    // Finding it still set at boot means the last attempt did not survive.
+    bool deskflowAttemptPending() const { return dfPending_; }
+    void markDeskflowAttempt(bool inProgress);
+
     bool setDeskflowServer(const char *host, uint16_t port);
     bool setDeskflowScreen(const char *name);
     bool setDeskflowScreenSize(uint16_t w, uint16_t h);
@@ -103,6 +119,8 @@ private:
     uint16_t dfWidth_      = 1920;
     uint16_t dfHeight_     = 1080;
     bool     dfTls_        = true;
+    bool     dfPending_    = false;
+    char    *dfCa_         = nullptr;   // heap: a PEM is too big for a member
     bool rebootPending_ = false;
 };
 
