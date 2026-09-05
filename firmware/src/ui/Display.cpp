@@ -6,6 +6,9 @@
 #include <SPI.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_ST7789.h>
+#ifdef GHOSTHID_PIN_RGB
+#include <Adafruit_NeoPixel.h>
+#endif
 
 extern "C" {
 #include "qrcode.h"
@@ -14,8 +17,6 @@ extern "C" {
 namespace ghosthid {
 namespace {
 
-// Pins come from -DGHOSTHID_LCD_* (platformio.ini), matching the Waveshare
-// ESP32-S3-LCD-1.47 wiring.
 constexpr int8_t PIN_SCLK = GHOSTHID_LCD_SCLK;
 constexpr int8_t PIN_MOSI = GHOSTHID_LCD_MOSI;
 constexpr int8_t PIN_CS   = GHOSTHID_LCD_CS;
@@ -23,11 +24,9 @@ constexpr int8_t PIN_DC   = GHOSTHID_LCD_DC;
 constexpr int8_t PIN_RST  = GHOSTHID_LCD_RST;
 constexpr int8_t PIN_BL   = GHOSTHID_LCD_BL;
 
-// Native panel is 172x320; rotation 3 gives a 320x172 landscape.
 constexpr int16_t SCR_W = 320;
 constexpr int16_t SCR_H = 172;
 
-// RGB565 palette (a scope/logic-analyser look, matching the web UI's spirit).
 constexpr uint16_t C_BG    = 0x0000;
 constexpr uint16_t C_CYAN  = 0x07FF;
 constexpr uint16_t C_GREEN = 0x07E8;
@@ -35,14 +34,17 @@ constexpr uint16_t C_RED   = 0xF800;
 constexpr uint16_t C_AMBER = 0xFD20;
 constexpr uint16_t C_GREY  = 0x8410;
 constexpr uint16_t C_WHITE = 0xFFFF;
+constexpr uint16_t C_LINE  = 0x2104;
 
-// Backlight PWM (8-bit duty) and idle timeouts.
 constexpr uint8_t  BL_FULL   = 255;
 constexpr uint8_t  BL_DIM    = 36;
 constexpr uint32_t BL_DIM_MS = 2u * 60 * 1000;
 constexpr uint32_t BL_OFF_MS = 10u * 60 * 1000;
 
 Adafruit_ST7789 tft(&SPI, PIN_CS, PIN_DC, PIN_RST);
+#ifdef GHOSTHID_PIN_RGB
+Adafruit_NeoPixel rgb(1, GHOSTHID_PIN_RGB, NEO_GRB + NEO_KHZ800);
+#endif
 
 enum class Bl : uint8_t { On, Dim, Off };
 Bl       g_bl = Bl::On;
@@ -50,7 +52,6 @@ uint32_t g_blActivity = 0;
 
 void blSet(uint8_t duty) { ledcWrite(PIN_BL, duty); }
 
-// One labelled status line: "label" in grey, "value" in `vc`.
 void line(int16_t y, const char *label, const char *value, uint16_t vc) {
     tft.setTextSize(1);
     tft.setCursor(8, y);
@@ -60,93 +61,184 @@ void line(int16_t y, const char *label, const char *value, uint16_t vc) {
     tft.print(value);
 }
 
+// A small dot marking the physical BOOT button (bottom-right, where it sits) so
+// its "press to cycle pages" role is discoverable.
+void buttonHint(const char *what) {
+    tft.fillCircle(SCR_W - 8, SCR_H - 8, 3, C_CYAN);
+    tft.setTextSize(1);
+    tft.setTextColor(C_GREY);
+    int16_t w = (int16_t)strlen(what) * 6;
+    tft.setCursor(SCR_W - 16 - w, SCR_H - 11);
+    tft.print(what);
+}
+
 }  // namespace
 
 bool Display::begin() {
     if (begun_) return true;
 
-    ledcAttach(PIN_BL, 5000, 8);          // PWM so the backlight can dim (arduino 3.x API)
-    blSet(0);                             // stay dark until the first frame is drawn
+    ledcAttach(PIN_BL, 5000, 8);
+    blSet(0);
 
     SPI.begin(PIN_SCLK, -1, PIN_MOSI, PIN_CS);
-    tft.init(172, 320);                   // native panel dimensions
+    tft.init(172, 320);
     tft.setSPISpeed(40000000);
-    tft.setRotation(3);                   // landscape, 320x172
+    tft.setRotation(3);
     tft.fillScreen(C_BG);
+
+#ifdef GHOSTHID_PIN_RGB
+    rgb.begin();
+    rgb.setBrightness(60);
+    rgb.clear();
+    rgb.show();
+#endif
 
     g_blActivity = millis();
     g_bl = Bl::On;
     blSet(BL_FULL);
     begun_ = true;
+    dirty_ = true;
     return true;
 }
 
 int Display::drawQr(int x, int y, int scale, const char *text) {
     QRCode qr;
-    // Version 4 (33x33 modules) at medium ECC holds ~62 bytes - comfortably more
-    // than a "WIFI:S:...;P:...;;" join string. Buffer sized for that version.
-    static uint8_t buf[256];
+    static uint8_t buf[256];              // >= qrcode_getBufferSize(4)
     if (qrcode_initText(&qr, buf, 4, ECC_MEDIUM, text) != 0) return 0;
 
     const int side = qr.size * scale;
     const int q = scale * 2;              // quiet zone
-    // White field + black modules scans far more reliably than the inverse.
     tft.fillRect(x - q, y - q, side + 2 * q, side + 2 * q, C_WHITE);
-    for (uint8_t j = 0; j < qr.size; ++j) {
-        for (uint8_t i = 0; i < qr.size; ++i) {
-            if (qrcode_getModule(&qr, i, j)) {
+    for (uint8_t j = 0; j < qr.size; ++j)
+        for (uint8_t i = 0; i < qr.size; ++i)
+            if (qrcode_getModule(&qr, i, j))
                 tft.fillRect(x + i * scale, y + j * scale, scale, scale, C_BG);
-            }
-        }
-    }
     return side;
 }
 
-void Display::showStatus(const DisplayStatus &s) {
-    if (!begun_) return;
-    noteActivity();
-    tft.fillScreen(C_BG);
-
-    // --- title -------------------------------------------------------------
+void Display::drawStatusPage(const DisplayStatus &s) {
     tft.setTextSize(2);
     tft.setTextColor(C_CYAN);
     tft.setCursor(8, 6);
     tft.print(s.deviceName && s.deviceName[0] ? s.deviceName : "GhostHID");
-    tft.drawFastHLine(8, 26, 180, 0x2104);
+    tft.drawFastHLine(8, 26, 180, C_LINE);
 
-    // --- left column status ------------------------------------------------
     int16_t y = 38;
     const int16_t dy = 17;
     line(y, "USB  ", s.usbReady ? "ready" : "not ready", s.usbReady ? C_GREEN : C_RED); y += dy;
 
     const bool kvmOff = !s.kvmState || strcmp(s.kvmState, "off") == 0;
+    const bool kvmConn = s.kvmState && strcmp(s.kvmState, "connected") == 0;
     line(y, "KVM  ", kvmOff ? "off" : s.kvmState,
-         kvmOff ? C_GREY : C_CYAN); y += dy;
+         kvmOff ? C_GREY : (kvmConn ? (s.kvmFocus ? C_GREEN : C_CYAN) : C_AMBER)); y += dy;
 
     line(y, "STA  ", (s.staIp && s.staIp[0]) ? s.staIp : "(AP only)",
          (s.staIp && s.staIp[0]) ? C_WHITE : C_GREY); y += dy;
-
     line(y, "AP   ", (s.apIp && s.apIp[0]) ? s.apIp : "-", C_WHITE); y += dy;
 
     char c[24];
     snprintf(c, sizeof(c), "%d", s.clients);
-    line(y, "ctrl ", c, s.clients > 0 ? C_GREEN : C_GREY); y += dy;
+    line(y, "ctrl ", c, s.clients > 0 ? C_GREEN : C_GREY);
 
-    // --- AP join QR (right) ------------------------------------------------
-    // Standard Wi-Fi join payload; a phone camera joins the device's AP from it.
     if (s.apSsid && s.apSsid[0]) {
         char payload[96];
         snprintf(payload, sizeof(payload), "WIFI:S:%s;T:WPA;P:%s;;",
                  s.apSsid, s.apPass ? s.apPass : "");
-        const int qx = 214, qy = 40, scale = 3;
+        const int qx = 214, qy = 34, scale = 3;
         const int side = drawQr(qx, qy, scale, payload);
         if (side > 0) {
             tft.setTextSize(1);
             tft.setTextColor(C_GREY);
             tft.setCursor(qx - 4, qy + side + 8);
-            tft.print("scan to join AP");
+            tft.print("scan: join AP");
         }
     }
+    buttonHint("page");
+}
+
+void Display::drawQrPage(const DisplayStatus &s) {
+    tft.setTextSize(1);
+    tft.setTextColor(C_CYAN);
+    tft.setCursor(8, 6);
+    tft.print("Scan to join this device's Wi-Fi");
+
+    if (s.apSsid && s.apSsid[0]) {
+        char payload[96];
+        snprintf(payload, sizeof(payload), "WIFI:S:%s;T:WPA;P:%s;;",
+                 s.apSsid, s.apPass ? s.apPass : "");
+        // Bigger QR (version 4 = 33 modules, scale 4 = 132px) centred vertically.
+        const int scale = 4, qy = 30;
+        const int side = drawQr(20, qy, scale, payload);
+        (void)side;
+    }
+    // SSID + password in clear on the right, for manual entry.
+    tft.setTextColor(C_GREY); tft.setTextSize(1);
+    tft.setCursor(176, 44); tft.print("SSID");
+    tft.setTextColor(C_WHITE); tft.setCursor(176, 56); tft.print(s.apSsid ? s.apSsid : "");
+    tft.setTextColor(C_GREY);  tft.setCursor(176, 82); tft.print("PASS");
+    tft.setTextColor(C_WHITE); tft.setCursor(176, 94); tft.print(s.apPass ? s.apPass : "");
+    buttonHint("page");
+}
+
+void Display::drawInfoPage(const DisplayStatus &s) {
+    tft.setTextSize(2);
+    tft.setTextColor(C_CYAN);
+    tft.setCursor(8, 6);
+    tft.print("GhostHID");
+    tft.drawFastHLine(8, 26, 180, C_LINE);
+
+    int16_t y = 38;
+    const int16_t dy = 17;
+    line(y, "ver  ", s.version && s.version[0] ? s.version : "?", C_WHITE); y += dy;
+
+    char b[24];
+    snprintf(b, sizeof(b), "%u KB", (unsigned)s.heapFreeKb);
+    line(y, "heap ", b, s.heapFreeKb < 20 ? C_AMBER : C_WHITE); y += dy;
+
+    const uint32_t up = s.uptimeSec;
+    snprintf(b, sizeof(b), "%uh %02um", (unsigned)(up / 3600), (unsigned)((up % 3600) / 60));
+    line(y, "up   ", b, C_WHITE); y += dy;
+
+    line(y, "STA  ", (s.staIp && s.staIp[0]) ? s.staIp : "(AP only)", C_WHITE); y += dy;
+    line(y, "AP   ", (s.apIp && s.apIp[0]) ? s.apIp : "-", C_WHITE);
+    buttonHint("page");
+}
+
+void Display::render(const DisplayStatus &s) {
+    tft.fillScreen(C_BG);
+    switch (page_) {
+        case Page::Status: drawStatusPage(s); break;
+        case Page::Qr:     drawQrPage(s);     break;
+        case Page::Info:   drawInfoPage(s);   break;
+        default:           drawStatusPage(s); break;
+    }
+}
+
+void Display::updateLed(const DisplayStatus &s) {
+#ifdef GHOSTHID_PIN_RGB
+    // Priority: a target that has not enumerated us is the loudest (red); then
+    // an active screen session (green with focus, cyan connected); then a web
+    // controller (cyan); then idle (dim - blue on a network, magenta AP-only).
+    uint32_t c;
+    const bool kvmConn = s.kvmState && strcmp(s.kvmState, "connected") == 0;
+    if (!s.usbReady)              c = rgb.Color(120, 0, 0);
+    else if (kvmConn)            c = rgb.Color(0, 120, s.kvmFocus ? 40 : 90);
+    else if (s.clients > 0)      c = rgb.Color(0, 60, 90);
+    else if (s.staIp && s.staIp[0]) c = rgb.Color(0, 10, 24);
+    else                         c = rgb.Color(24, 0, 20);
+
+    static uint32_t last = 0xFFFFFFFF;
+    if (c != last) { last = c; rgb.setPixelColor(0, c); rgb.show(); }
+#else
+    (void)s;
+#endif
+}
+
+void Display::nextPage() {
+    page_ = static_cast<Page>((static_cast<uint8_t>(page_) + 1) %
+                              static_cast<uint8_t>(Page::COUNT));
+    dirty_ = true;
+    noteActivity();
 }
 
 void Display::noteActivity() {
@@ -154,16 +246,40 @@ void Display::noteActivity() {
     if (g_bl != Bl::On) { g_bl = Bl::On; blSet(BL_FULL); }
 }
 
-void Display::loop() {
+void Display::update(const DisplayStatus &s) {
     if (!begun_) return;
+
+    // Backlight timeout.
     const uint32_t idle = millis() - g_blActivity;
-    const Bl want = idle >= BL_OFF_MS ? Bl::Off
-                  : idle >= BL_DIM_MS ? Bl::Dim
-                                      : Bl::On;
+    const Bl want = idle >= BL_OFF_MS ? Bl::Off : idle >= BL_DIM_MS ? Bl::Dim : Bl::On;
     if (want != g_bl) {
         g_bl = want;
         blSet(want == Bl::On ? BL_FULL : want == Bl::Dim ? BL_DIM : 0);
     }
+
+    // RGB LED, rate-limited to ~5Hz (it change-detects internally too).
+    static uint32_t ledAt = 0;
+    if (millis() - ledAt > 200) { ledAt = millis(); updateLed(s); }
+
+    // LCD: redraw only when the shown state or the page changed. The signature
+    // deliberately excludes uptime/heap on the status/QR pages (they'd force a
+    // constant redraw); the Info page opts them in via a coarse bucket.
+    static uint32_t drawAt = 0;
+    if (millis() - drawAt < 500 && !dirty_) return;
+    drawAt = millis();
+
+    char sig[224];
+    snprintf(sig, sizeof(sig), "%d|%s|%s|%s|%s|%d|%s|%d|%d|%s|%u",
+             (int)page_, s.deviceName, s.apSsid, s.apIp, s.staIp,
+             s.usbReady ? 1 : 0, s.kvmState, s.kvmFocus ? 1 : 0, s.clients,
+             s.version,
+             page_ == Page::Info ? (unsigned)(s.uptimeSec / 30) : 0u);  // Info: refresh ~2x/min
+    static char lastSig[224] = {0};
+    if (!dirty_ && strcmp(sig, lastSig) == 0) return;
+
+    strncpy(lastSig, sig, sizeof(lastSig) - 1);
+    dirty_ = false;
+    render(s);
 }
 
 }  // namespace ghosthid

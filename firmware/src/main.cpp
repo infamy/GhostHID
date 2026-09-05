@@ -71,16 +71,29 @@ bool buttonPressedRaw() {
 #endif
 }
 
-bool buttonJustPressed() {
-    static bool wasPressed = false;
-    static uint32_t lastChangeMs = 0;
-    const bool now = buttonPressedRaw();
-    if (now != wasPressed && (millis() - lastChangeMs) > 50) {
-        lastChangeMs = millis();
-        wasPressed = now;
-        return now;
+// A debounced button with short/long distinction. Long press fires once at the
+// hold threshold (while still held); short press fires on release if it never
+// became a long press. On a board with an LCD, short cycles pages and long is
+// the panic release; without an LCD any press is the panic release.
+enum class BtnEvent : uint8_t { None, Short, Long };
+constexpr uint32_t kBtnLongMs = 800;
+
+BtnEvent buttonEvent() {
+#if GHOSTHID_PIN_BUTTON >= 0
+    static bool wasDown = false;
+    static uint32_t downAt = 0;
+    static bool longFired = false;
+    const bool down = buttonPressedRaw();
+    const uint32_t now = millis();
+    if (down && !wasDown) { wasDown = true; downAt = now; longFired = false; }
+    else if (down && wasDown && !longFired && (now - downAt) >= kBtnLongMs) {
+        longFired = true; return BtnEvent::Long;
+    } else if (!down && wasDown) {
+        wasDown = false;
+        if (!longFired && (now - downAt) > 30) return BtnEvent::Short;
     }
-    return false;
+#endif
+    return BtnEvent::None;
 }
 
 }  // namespace
@@ -175,16 +188,9 @@ void setup() {
 }
 
 #ifdef GHOSTHID_HAS_LCD
-// Push current state to the LCD, but only when it actually changed - a full
-// redraw every tick would flicker and waste SPI time. The KVM field is reduced
-// to off/connecting/connected so a rapidly-toggling focus state does not force
-// constant redraws.
+// Build the current status and hand it to the display, which rate-limits,
+// change-detects and redraws only what changed (LCD + RGB LED).
 void serviceDisplay() {
-    display.loop();                     // backlight timeout, every pass
-    static uint32_t last = 0;
-    if (millis() - last < 750) return;
-    last = millis();
-
     ghosthid::DisplayStatus st;
     st.deviceName = config.deviceName();
     st.apSsid     = network.ssid();
@@ -194,17 +200,12 @@ void serviceDisplay() {
     st.usbReady   = hid.ready();
     st.kvmState   = !config.deskflowEnabled() ? "off"
                     : (deskflow.connected() ? "connected" : "connecting");
+    st.kvmFocus   = deskflow.hasFocus();
     st.clients    = network.clientConnected() ? 1 : 0;
-
-    char sig[192];
-    snprintf(sig, sizeof(sig), "%s|%s|%s|%s|%d|%s|%d",
-             st.deviceName, st.apSsid, st.apIp, st.staIp,
-             st.usbReady ? 1 : 0, st.kvmState, st.clients);
-    static char lastSig[192] = {0};
-    if (strcmp(sig, lastSig) != 0) {
-        strncpy(lastSig, sig, sizeof(lastSig) - 1);
-        display.showStatus(st);
-    }
+    st.version    = GHOSTHID_VERSION;
+    st.heapFreeKb = ESP.getFreeHeap() / 1024;
+    st.uptimeSec  = millis() / 1000;
+    display.update(st);
 }
 #endif
 
@@ -229,10 +230,22 @@ void loop() {
         Serial.println("[watchdog] controller went quiet - released all input");
     }
 
-    // Physical panic button: release everything, no network required.
-    if (buttonJustPressed()) {
-        hid.releaseAll();
-        Serial.println("[button] released all input");
+    // Physical BOOT button. On an LCD board a short press cycles the screen
+    // pages and a long press is the panic release; without an LCD any press is
+    // the panic release. The release path is never lost.
+    switch (buttonEvent()) {
+        case BtnEvent::Short:
+#ifdef GHOSTHID_HAS_LCD
+            display.nextPage();
+            break;
+#endif
+            // fall through: no LCD, a short press is a release
+        case BtnEvent::Long:
+            hid.releaseAll();
+            Serial.println("[button] released all input");
+            break;
+        default:
+            break;
     }
 
     // Solid while a controller is connected, slow pulse when idle.

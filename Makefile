@@ -60,7 +60,7 @@ DOCKER_RUN = docker run --rm -t \
 	$(PIO_ENVVARS) \
 	$(IMAGE)
 
-.PHONY: help image build rebuild clean distclean shell flash flash-factory monitor ports size localini ota dist
+.PHONY: help image build rebuild clean distclean shell flash flash-factory monitor ports size localini ota dist webflasher
 
 help:
 	@echo "GhostHID"
@@ -101,6 +101,18 @@ rebuild: image localini
 # instructions. Identical to what CI publishes.
 dist: build
 	@./scripts/package.sh "$(BUILD_DIR)" "$(ENV)" "$(CURDIR)/dist"
+
+# Build both boards and stage the browser flasher (ESP Web Tools). Serve the
+# webflasher/ dir over HTTPS (or localhost) and open index.html - it flashes the
+# matching image by auto-detected chip family. The .bin files are generated.
+webflasher:
+	@$(MAKE) --no-print-directory build ENV=esp32-s2-key
+	@$(MAKE) --no-print-directory build ENV=esp32-s3-lcd147
+	@cp "$(FIRMWARE)/.pio/build/esp32-s2-key/ghosthid-merged.bin"     webflasher/ghosthid-s2.bin
+	@cp "$(FIRMWARE)/.pio/build/esp32-s3-lcd147/ghosthid-merged.bin"  webflasher/ghosthid-s3.bin
+	@echo "webflasher staged: webflasher/{index.html,manifest.json,ghosthid-s2.bin,ghosthid-s3.bin}"
+	@echo "serve it over HTTPS/localhost (Web Serial needs a secure context):"
+	@echo "    cd webflasher && python3 -m http.server 8000   # then http://localhost:8000/"
 
 size: image localini
 	$(DOCKER_RUN) pio run -e $(ENV) -t size
@@ -162,8 +174,8 @@ flash-factory: $(ESPTOOL)
 	@test -f "$(MERGED)" || { echo "no merged image - run 'make build' first"; exit 1; }
 	@echo "This ERASES stored settings (wifi, token, name)."
 	@set -o pipefail; \
-	"$(ESPTOOL)" --chip esp32s2 --port "$(PORT)" --baud 921600 \
-		write_flash --flash_mode keep --flash_freq keep --flash_size keep \
+	"$(ESPTOOL)" --chip $(CHIP) --port "$(PORT)" --baud 921600 \
+		write_flash --flash_mode $(FLASH_MODE) --flash_freq keep --flash_size $(FLASH_SIZE) \
 		0x0 "$(MERGED)" 2>&1 | tee /tmp/ghosthid-flash.log; \
 	grep -q "Hash of data verified" /tmp/ghosthid-flash.log \
 		&& { echo; echo "Factory flash OK - settings erased."; exit 0; } \

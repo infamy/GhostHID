@@ -6,3 +6,4 @@ firmware/ghosthid_local.ini
 # generated at build time by scripts/embed_web.py
 firmware/src/web/WebAssets.h
 dist/
+webflasher/*.bin
