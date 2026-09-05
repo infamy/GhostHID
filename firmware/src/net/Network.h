@@ -27,6 +27,10 @@ public:
     // does the web server start.
     void beginRadio();
     void beginServers();
+    // Stops the HTTP/WebSocket server. Whether this actually returns the ~88KB
+    // of contiguous heap that starting it consumed is measured, not assumed.
+    void stopServers();
+    bool serversRunning() const { return serversUp_; }
     void begin() { beginRadio(); beginServers(); }
     void attachDeskflow(DeskflowClient *c);
 
@@ -63,6 +67,7 @@ private:
     char staIp_[16] = {};
     uint32_t clientCount_ = 0;
     bool     apActive_ = false;
+    bool     serversUp_ = false;
     uint32_t staStableSince_ = 0;
 };
 

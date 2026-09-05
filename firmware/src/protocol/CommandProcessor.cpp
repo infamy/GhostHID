@@ -122,12 +122,20 @@ CommandResult CommandProcessor::handleMessage(const char *json, size_t len,
         reply(outResponse, outSize,
               "{\"type\":\"status\",\"version\":\"%s\",\"usb\":%s,\"held\":%u,"
               "\"heap_free\":%u,\"heap_largest\":%u,"
-              "\"heap_boot\":%u,\"heap_wifi\":%u,\"heap_server\":%u}",
+              "\"heap_boot\":%u,\"heap_wifi\":%u,\"heap_server\":%u,"
+              "\"stack_main\":%u,\"stack_kvm\":%u,\"stack_async\":%u}",
               GHOSTHID_VERSION, hid_.ready() ? "true" : "false",
               static_cast<unsigned>(hid_.heldKeyCount()),
               (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMaxAllocHeap(),
               (unsigned)g_heapAfterBoot, (unsigned)g_heapAfterWifi,
-              (unsigned)g_heapAfterServer);
+              (unsigned)g_heapAfterServer,
+              // Unused stack, in bytes. Anything with a large margin is memory
+              // sitting idle that could be given back.
+              (unsigned)uxTaskGetStackHighWaterMark(nullptr),
+              (unsigned)(xTaskGetHandle("deskflow")
+                         ? uxTaskGetStackHighWaterMark(xTaskGetHandle("deskflow")) : 0),
+              (unsigned)(xTaskGetHandle("async_tcp")
+                         ? uxTaskGetStackHighWaterMark(xTaskGetHandle("async_tcp")) : 0));
         return CommandResult::Ok;
     }
 

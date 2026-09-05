@@ -307,6 +307,7 @@ void Network::beginServers() {
     g_server.addHandler(&g_ws);
     g_server.begin();
 
+    serversUp_ = true;
     Serial.printf("[web] http://%s/\r\n", apIp_);
     if (stationConnected()) Serial.printf("[web] http://%s/\r\n", staIp_);
 }
@@ -359,6 +360,17 @@ void Network::serviceRadio() {
             startAp();
         }
     }
+}
+
+void Network::stopServers() {
+    if (!serversUp_) return;
+    g_ws.closeAll();
+    g_ws.cleanupClients();
+    g_server.end();
+    serversUp_ = false;
+    clientCount_ = 0;
+    Serial.printf("[web] stopped; heap now %u free, %u largest\r\n",
+                  (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMaxAllocHeap());
 }
 
 bool Network::acquireClientSlot() {

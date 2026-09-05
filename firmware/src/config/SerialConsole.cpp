@@ -43,6 +43,8 @@ void SerialConsole::printHelp() const {
     Serial.println("  kvmscreen <name>     this screen's name in the server layout");
     Serial.println("  kvmsize <w> <h>      target's resolution, so the pointer lands right");
     Serial.println("  kvm on|off           enable or disable the screen client");
+    Serial.println("  web off|on           stop or start the web UI (frees memory for TLS)");
+    Serial.println("  heap                 free and largest-block memory");
     Serial.println("  token <token>        pairing token (empty value disables auth)");
     Serial.println("  name <name>          device name - sets the AP SSID and mDNS name");
     Serial.println("  reset                erase all settings");
@@ -214,6 +216,20 @@ void SerialConsole::execute(char *line) {
             Serial.printf("ok: screen size = %ux%u\r\n", w, h);
         } else {
             Serial.println("error: use 'kvmsize 1920 1080' (320-16384 each)");
+        }
+    } else if (strcasecmp(line, "heap") == 0) {
+        Serial.printf("  free %u, largest block %u\r\n",
+                      (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMaxAllocHeap());
+    } else if (strcasecmp(line, "web") == 0) {
+        if (strcasecmp(value, "off") == 0) {
+            network_.stopServers();
+        } else if (strcasecmp(value, "on") == 0) {
+            network_.beginServers();
+            Serial.printf("  free %u, largest block %u\r\n",
+                          (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMaxAllocHeap());
+        } else {
+            Serial.printf("  web server is %s\r\n",
+                          network_.serversRunning() ? "running" : "stopped");
         }
     } else if (strcasecmp(line, "reset") == 0) {
         config_.factoryReset();
