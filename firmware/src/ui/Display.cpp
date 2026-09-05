@@ -133,33 +133,46 @@ int Display::drawQr(int x, int y, int scale, const char *text) {
     return side;
 }
 
+// Small text pinned to a corner (size 1). rightAlign anchors x at the right edge.
+void corner(int16_t x, int16_t y, const char *s, uint16_t col, bool rightAlign) {
+    tft.setTextSize(1);
+    tft.setTextColor(col);
+    if (rightAlign) x -= (int16_t)strlen(s) * 6;
+    tft.setCursor(x, y);
+    tft.print(s);
+}
+
 void Display::drawStatusPage(const DisplayStatus &s) {
-    // Header: ghost logo + wordmark. The join QR lives on its own page (BOOT to
-    // cycle); this screen is the brand + operational status.
-    drawGhost(8, 6, 34, 40, C_CYAN, C_BG);
+    // The brand is the point: a big white ghost + wordmark, centred, with just a
+    // little status in the corners. The AP-join QR is on page 2 (BOOT to cycle).
+    // Centred vertically between the corner status rows; ghost in the logo's
+    // cyan (matches the favicon), wordmark two-tone below.
+    const int gw = 60, gh = 66, gx = (SCR_W - gw) / 2, gy = 34;
+    drawGhost(gx, gy, gw, gh, C_CYAN, C_BG);
+
+    // Wordmark, two-tone, centred under the ghost: "Ghost" white, "HID" cyan.
     tft.setTextSize(3);
-    tft.setTextColor(C_CYAN);
-    tft.setCursor(52, 14);
-    tft.print("GhostHID");
-    tft.drawFastHLine(6, 50, SCR_W - 12, C_LINE);
+    const char *a = "Ghost", *b = "HID";
+    const int wa = (int)strlen(a) * 18, wb = (int)strlen(b) * 18;
+    const int wx = (SCR_W - (wa + wb)) / 2, wy = gy + gh + 10;
+    tft.setTextColor(C_WHITE); tft.setCursor(wx, wy);       tft.print(a);
+    tft.setTextColor(C_CYAN);  tft.setCursor(wx + wa, wy);  tft.print(b);
 
-    int16_t y = 58;
-    const int16_t dy = 24;
-    line(y, "USB ", s.usbReady ? "ready" : "no", s.usbReady ? C_GREEN : C_RED); y += dy;
+    // --- corners: small operational status ---------------------------------
+    corner(4, 4, s.usbReady ? "USB ok" : "USB --", s.usbReady ? C_GREEN : C_RED, false);
 
-    const bool kvmOff = !s.kvmState || strcmp(s.kvmState, "off") == 0;
+    const bool kvmOff  = !s.kvmState || strcmp(s.kvmState, "off") == 0;
     const bool kvmConn = s.kvmState && strcmp(s.kvmState, "connected") == 0;
-    line(y, "KVM ", kvmOff ? "off" : s.kvmState,
-         kvmOff ? C_GREY : (kvmConn ? (s.kvmFocus ? C_GREEN : C_CYAN) : C_AMBER)); y += dy;
+    corner(SCR_W - 4, 4,
+           kvmOff ? "off" : (kvmConn ? (s.kvmFocus ? "active" : "connected") : "connecting"),
+           kvmOff ? C_GREY : (kvmConn ? C_GREEN : C_AMBER), true);
 
-    line(y, "net ", (s.staIp && s.staIp[0]) ? s.staIp : "AP only",
-         (s.staIp && s.staIp[0]) ? C_WHITE : C_GREY); y += dy;
+    corner(4, SCR_H - 10, (s.staIp && s.staIp[0]) ? s.staIp : "AP only",
+           (s.staIp && s.staIp[0]) ? C_CYAN : C_GREY, false);
 
-    char c[28];
-    snprintf(c, sizeof(c), "%d", s.clients);
-    line(y, "ctl ", c, s.clients > 0 ? C_GREEN : C_GREY);
-
-    buttonHint("page");
+    char c[16];
+    snprintf(c, sizeof(c), "%d ctrl", s.clients);
+    corner(SCR_W - 4, SCR_H - 10, c, s.clients > 0 ? C_GREEN : C_GREY, true);
 }
 
 void Display::drawQrPage(const DisplayStatus &s) {

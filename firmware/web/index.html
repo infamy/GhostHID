@@ -348,6 +348,29 @@ td code{white-space:normal}
       <div id="k_fp" style="font-family:var(--mono);font-size:10px;color:var(--dim);
            word-break:break-all;margin-top:6px"></div>
 
+      <label>Server certificate (required for TLS)</label>
+      <p class="hint" style="margin:0 0 6px">
+        With TLS on, GhostHID pins the server's certificate. Get it either way,
+        then paste it below or upload the file and press Save:
+      </p>
+      <ol class="hint" style="margin:0 0 8px;padding-left:18px">
+        <li><b>Off the wire</b> — on any computer with openssl, replacing
+            <code>SERVER</code> with the server's address:<br>
+            <code>openssl s_client -connect SERVER:24800 &lt;/dev/null | openssl x509 &gt; server.pem</code></li>
+        <li><b>From the server's files</b> — Barrier:
+            <code>~/.local/share/barrier/SSL/Barrier.pem</code>; Deskflow:
+            <code>~/.local/share/deskflow/SSL/Deskflow.pem</code>
+            (on the machine running the server).</li>
+      </ol>
+      <textarea id="k_ca" rows="4" spellcheck="false" autocapitalize="off" autocorrect="off"
+                placeholder="-----BEGIN CERTIFICATE-----&#10;…&#10;-----END CERTIFICATE-----"
+                style="width:100%;font:11px/1.35 var(--mono);background:#0e1a29;color:var(--fg);
+                       border:1px solid var(--line);border-radius:4px;padding:8px"></textarea>
+      <div class="row" style="margin-top:6px">
+        <input id="k_ca_file" type="file" accept=".pem,.crt,.cer" class="grow">
+      </div>
+      <div id="k_ca_state" class="hint" style="margin-top:4px"></div>
+
       <div class="row" style="margin-top:10px">
         <button id="k_on" class="grow">Enable</button>
         <button id="k_off" class="grow">Disable</button>
@@ -705,6 +728,9 @@ function connect(){
         if(m.kvm_server) kvmServerName=m.kvm_server;
         setKvmTls(m.kvm_tls!==false);
         $("#k_fp").textContent = m.kvm_fp ? ("this device's fingerprint: "+m.kvm_fp) : "";
+        $("#k_ca_state").textContent = m.kvm_ca_set
+          ? "✓ a server certificate is stored (paste a new one to replace it)"
+          : "no server certificate stored yet";
         $("#k_state").textContent = (m.kvm_on?"enabled — ":"disabled — ")+(m.kvm_state||"");
       }
       $("#a_ap").textContent = m.ap_always!==false
@@ -1049,6 +1075,13 @@ $("#k_tls_off").onclick=function(){ setKvmTls(false); saveKvm(); };
 $("#k_on").onclick =function(){ setKvm(true);  saveKvm(); };
 $("#k_off").onclick=function(){ setKvm(false); saveKvm(); };
 $("#k_save").onclick=saveKvm;
+// Upload a .pem/.crt file into the certificate box.
+$("#k_ca_file").onchange=function(e){
+  var f=e.target.files[0]; if(!f) return;
+  var r=new FileReader();
+  r.onload=function(){ $("#k_ca").value=(r.result||"").trim(); $("#k_ca_state").textContent="loaded "+f.name+" — press Save"; };
+  r.readAsText(f);
+};
 function saveKvm(){
   var m={type:"set_config", kvm_on:kvmOn, kvm_tls:kvmTls};
   if($("#k_host").value)   m.kvm_host  =$("#k_host").value.trim();
@@ -1056,7 +1089,12 @@ function saveKvm(){
   if($("#k_screen").value) m.kvm_screen=$("#k_screen").value.trim();
   if($("#k_w").value)      m.kvm_w     =parseInt($("#k_w").value,10);
   if($("#k_h").value)      m.kvm_h     =parseInt($("#k_h").value,10);
+  // Only send the certificate when the box has one, so a plain Save (or a
+  // TLS/enable toggle) never clears a stored cert with an empty field.
+  var ca=$("#k_ca").value.trim();
+  if(ca){ m.kvm_ca=ca; }
   send(m);
+  if(ca) $("#k_ca").value="";          // it is write-only; don't keep it on screen
   $("#k_state").textContent="saving…";
   // Settings here apply at once rather than on reboot, so re-read the real
   // connection state a moment later instead of claiming success.
