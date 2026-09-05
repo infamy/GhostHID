@@ -19,6 +19,7 @@ public:
     static constexpr size_t kPassMax  = 64;
     static constexpr size_t kTokenMax = 48;
     static constexpr size_t kNameMax  = 24;
+    static constexpr size_t kHostMax  = 63;
 
     // Opens NVS and loads stored values, falling back to the build-time
     // defaults for anything never set.
@@ -45,6 +46,22 @@ public:
     // less radio surface - rather than being the default.
     bool apAlways() const { return apAlways_; }
     bool setApAlways(bool always);
+
+    // --- Deskflow / Barrier / Input Leap screen client ----------------------
+    // The advertised width and height are the coordinate space the server
+    // addresses this screen in, so they should match the target's real
+    // resolution or the pointer will land in the wrong place.
+    bool        deskflowEnabled() const { return dfEnabled_; }
+    const char *deskflowHost()    const { return dfHost_; }
+    uint16_t    deskflowPort()    const { return dfPort_; }
+    const char *deskflowScreen()  const { return dfScreen_; }
+    uint16_t    deskflowWidth()   const { return dfWidth_; }
+    uint16_t    deskflowHeight()  const { return dfHeight_; }
+
+    bool setDeskflowServer(const char *host, uint16_t port);
+    bool setDeskflowScreen(const char *name);
+    bool setDeskflowScreenSize(uint16_t w, uint16_t h);
+    bool setDeskflowEnabled(bool on);
 
     // Setters persist immediately. Each returns false and changes nothing if
     // the value is invalid, so a bad edit over the network cannot brick the
@@ -76,6 +93,12 @@ private:
     char token_[kTokenMax + 1]   = {};
     char name_[kNameMax + 1]     = {};
     bool apAlways_ = false;
+    bool     dfEnabled_ = false;
+    char     dfHost_[64]   = {};
+    uint16_t dfPort_       = 24800;
+    char     dfScreen_[32] = {};
+    uint16_t dfWidth_      = 1920;
+    uint16_t dfHeight_     = 1080;
     bool rebootPending_ = false;
 };
 

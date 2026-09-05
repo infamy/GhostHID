@@ -15,11 +15,13 @@ namespace ghosthid {
 class Config;
 class CommandProcessor;
 class Network;
+class DeskflowClient;
 
 class SerialConsole {
 public:
-    SerialConsole(Config &config, CommandProcessor &processor, Network &network)
-        : config_(config), processor_(processor), network_(network) {}
+    SerialConsole(Config &config, CommandProcessor &processor, Network &network,
+                  DeskflowClient &deskflow)
+        : config_(config), processor_(processor), network_(network), deskflow_(deskflow) {}
 
     // Prints the banner. Call once after Serial is up.
     void begin();
@@ -37,6 +39,7 @@ private:
     Config           &config_;
     CommandProcessor &processor_;
     Network          &network_;
+    DeskflowClient   &deskflow_;
     char   line_[kLineMax] = {};
     size_t len_ = 0;
 };

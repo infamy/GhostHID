@@ -16,6 +16,7 @@
 #include "config/Config.h"
 #include "config/SerialConsole.h"
 #include "hid/HidDevice.h"
+#include "net/DeskflowClient.h"
 #include "net/Network.h"
 #include "protocol/CommandProcessor.h"
 
@@ -25,7 +26,8 @@ ghosthid::Config           config;
 ghosthid::HidDevice        hid;
 ghosthid::CommandProcessor processor(hid, config);
 ghosthid::Network          network(processor, config);
-ghosthid::SerialConsole    console(config, processor, network);
+ghosthid::DeskflowClient   deskflow(hid, config);
+ghosthid::SerialConsole    console(config, processor, network, deskflow);
 
 // --- Status LED ------------------------------------------------------------
 
@@ -109,6 +111,7 @@ void setup() {
 void loop() {
     network.loop();
     console.feed();
+    deskflow.loop();
 
     // Reboot requested over the API (config change). Done here rather than in
     // the network callback so the stack is not torn down from inside itself.

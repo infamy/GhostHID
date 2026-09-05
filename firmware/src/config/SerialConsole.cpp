@@ -5,6 +5,7 @@
 
 #include "Config.h"
 #include "board_config.h"
+#include "net/DeskflowClient.h"
 #include "net/Network.h"
 #include "protocol/CommandProcessor.h"
 
@@ -38,6 +39,10 @@ void SerialConsole::printHelp() const {
     Serial.println("  wifipass <password>  station password");
     Serial.println("  appass <password>    password for GhostHID's OWN access point (8-63)");
     Serial.println("  ap always|fallback   keep the AP up, or drop it while joined");
+    Serial.println("  kvm <host[:port]>    join a Deskflow/Barrier server as a screen");
+    Serial.println("  kvmscreen <name>     this screen's name in the server layout");
+    Serial.println("  kvmsize <w> <h>      target's resolution, so the pointer lands right");
+    Serial.println("  kvm on|off           enable or disable the screen client");
     Serial.println("  token <token>        pairing token (empty value disables auth)");
     Serial.println("  name <name>          device name - sets the AP SSID and mDNS name");
     Serial.println("  reset                erase all settings");
@@ -90,6 +95,17 @@ void SerialConsole::printStatus() const {
             Serial.printf("    address   FAILED to connect "
                           "(wrong password, or out of range)\r\n");
         }
+    }
+
+    Serial.printf("\r\n  Screen client (Deskflow/Barrier)  %s\r\n",
+                  config_.deskflowEnabled() ? "ENABLED" : "off");
+    if (config_.deskflowEnabled()) {
+        Serial.printf("    server    %s:%u\r\n",
+                      config_.deskflowHost()[0] ? config_.deskflowHost() : "(not set)",
+                      (unsigned)config_.deskflowPort());
+        Serial.printf("    screen    %s   %ux%u\r\n", config_.deskflowScreen(),
+                      (unsigned)config_.deskflowWidth(), (unsigned)config_.deskflowHeight());
+        Serial.printf("    state     %s\r\n", deskflow_.statusText());
     }
 
     Serial.printf("\r\n  Pairing token  %s   (applies immediately, no reboot)\r\n",
@@ -155,6 +171,49 @@ void SerialConsole::execute(char *line) {
                            "  -- type 'reboot' to apply");
         } else {
             Serial.println("error: use 'ap always' or 'ap fallback'");
+        }
+    } else if (strcasecmp(line, "kvm") == 0) {
+        if (strcasecmp(value, "on") == 0 || strcasecmp(value, "off") == 0) {
+            const bool on = (strcasecmp(value, "on") == 0);
+            if (on && config_.deskflowHost()[0] == '\0') {
+                Serial.println("error: set a server first, e.g. 'kvm 192.168.1.10'");
+            } else {
+                config_.setDeskflowEnabled(on);
+                Serial.printf("ok: screen client %s  (takes effect immediately)\r\n",
+                              on ? "enabled" : "disabled");
+            }
+        } else if (value[0] != '\0') {
+            char host[80];
+            snprintf(host, sizeof(host), "%s", value);
+            uint16_t port = 24800;
+            char *colon = strrchr(host, ':');
+            if (colon != nullptr) { *colon = '\0'; port = (uint16_t)atoi(colon + 1); }
+            if (config_.setDeskflowServer(host, port)) {
+                config_.setDeskflowEnabled(true);
+                Serial.printf("ok: screen client -> %s:%u, enabled\r\n",
+                              config_.deskflowHost(), (unsigned)config_.deskflowPort());
+            } else {
+                Serial.println("error: bad host or port");
+            }
+        } else {
+            Serial.printf("  server  %s:%u\r\n",
+                          config_.deskflowHost()[0] ? config_.deskflowHost() : "(not set)",
+                          (unsigned)config_.deskflowPort());
+            Serial.printf("  screen  %s\r\n", config_.deskflowScreen());
+            Serial.printf("  size    %ux%u\r\n", (unsigned)config_.deskflowWidth(),
+                          (unsigned)config_.deskflowHeight());
+            Serial.printf("  state   %s\r\n", deskflow_.statusText());
+        }
+    } else if (strcasecmp(line, "kvmscreen") == 0) {
+        if (config_.setDeskflowScreen(value)) Serial.printf("ok: screen name = %s\r\n", value);
+        else Serial.println("error: name must be 1-31 characters");
+    } else if (strcasecmp(line, "kvmsize") == 0) {
+        unsigned w = 0, h = 0;
+        if (sscanf(value, "%u %u", &w, &h) == 2 &&
+            config_.setDeskflowScreenSize((uint16_t)w, (uint16_t)h)) {
+            Serial.printf("ok: screen size = %ux%u\r\n", w, h);
+        } else {
+            Serial.println("error: use 'kvmsize 1920 1080' (320-16384 each)");
         }
     } else if (strcasecmp(line, "reset") == 0) {
         config_.factoryReset();

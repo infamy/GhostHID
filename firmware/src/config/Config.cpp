@@ -17,6 +17,12 @@ constexpr char kKeyApPw[]   = "ap_pass";
 constexpr char kKeyToken[]  = "token";
 constexpr char kKeyName[]   = "name";
 constexpr char kKeyApAlways[] = "ap_always";
+constexpr char kKeyDfOn[]     = "df_on";
+constexpr char kKeyDfHost[]   = "df_host";
+constexpr char kKeyDfPort[]   = "df_port";
+constexpr char kKeyDfScreen[] = "df_screen";
+constexpr char kKeyDfW[]      = "df_w";
+constexpr char kKeyDfH[]      = "df_h";
 
 Preferences g_prefs;
 
@@ -47,6 +53,16 @@ void Config::begin() {
     loadInto(kKeyName,  GHOSTHID_MDNS_NAME,    name_,    sizeof(name_));
 
     apAlways_ = g_prefs.getBool(kKeyApAlways, true);
+
+    dfEnabled_ = g_prefs.getBool(kKeyDfOn, false);
+    loadInto(kKeyDfHost, "", dfHost_, sizeof(dfHost_));
+    dfPort_ = g_prefs.getUShort(kKeyDfPort, 24800);
+    // Default the screen name to the device name so it is recognisable in a
+    // server's layout without extra configuration.
+    loadInto(kKeyDfScreen, name_, dfScreen_, sizeof(dfScreen_));
+    if (dfScreen_[0] == '\0') snprintf(dfScreen_, sizeof(dfScreen_), "%s", name_);
+    dfWidth_  = g_prefs.getUShort(kKeyDfW, 1920);
+    dfHeight_ = g_prefs.getUShort(kKeyDfH, 1080);
 
     // A stored AP password that fails validation would bring the AP up open.
     // Fall back rather than do that.
@@ -97,6 +113,38 @@ bool Config::setApAlways(bool always) {
     apAlways_ = always;
     g_prefs.putBool(kKeyApAlways, always);
     rebootPending_ = true;
+    return true;
+}
+
+bool Config::setDeskflowServer(const char *host, uint16_t port) {
+    if (host == nullptr || strlen(host) > kHostMax) return false;
+    if (port == 0) return false;
+    snprintf(dfHost_, sizeof(dfHost_), "%s", host);
+    dfPort_ = port;
+    store(kKeyDfHost, dfHost_);
+    g_prefs.putUShort(kKeyDfPort, dfPort_);
+    return true;
+}
+
+bool Config::setDeskflowScreen(const char *screenName) {
+    if (screenName == nullptr || screenName[0] == '\0') return false;
+    if (strlen(screenName) > sizeof(dfScreen_) - 1) return false;
+    snprintf(dfScreen_, sizeof(dfScreen_), "%s", screenName);
+    return store(kKeyDfScreen, dfScreen_);
+}
+
+bool Config::setDeskflowScreenSize(uint16_t w, uint16_t h) {
+    // Guard against nonsense that would make every pointer position wrong.
+    if (w < 320 || h < 240 || w > 16384 || h > 16384) return false;
+    dfWidth_ = w; dfHeight_ = h;
+    g_prefs.putUShort(kKeyDfW, w);
+    g_prefs.putUShort(kKeyDfH, h);
+    return true;
+}
+
+bool Config::setDeskflowEnabled(bool on) {
+    dfEnabled_ = on;
+    g_prefs.putBool(kKeyDfOn, on);
     return true;
 }
 
