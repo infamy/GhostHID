@@ -32,12 +32,16 @@ public:
     // x and y are 0..kAbsoluteAxisMax, spanning the target's whole desktop.
     // `buttons` mirrors the relative mouse's held-button mask so the two
     // collections never disagree about button state.
-    void moveTo(uint16_t x, uint16_t y, uint8_t buttons);
+    // Returns false if the host did not accept the report. Silently discarding
+    // this hid whether stepping was our cadence or dropped reports.
+    bool moveTo(uint16_t x, uint16_t y, uint8_t buttons);
+    uint32_t dropped() const { return dropped_; }
 
     uint16_t _onGetDescriptor(uint8_t *buffer) override;
 
 private:
     USBHID hid_;
+    uint32_t dropped_ = 0;
 };
 
 }  // namespace ghosthid

@@ -519,7 +519,10 @@ void DeskflowClient::serviceOnce() {
             backoffMs_ = backoffMs_ < 30000 ? backoffMs_ * 2 : 30000;
             return;
         }
-        if (!config_.deskflowTls()) plain_.setNoDelay(true);
+        // Both transports: Nagle batching is wrong for a stream of tiny input
+        // events, and the TLS socket was previously left with it enabled.
+        if (config_.deskflowTls()) tls_.setNoDelay(true);
+        else                       plain_.setNoDelay(true);
         state_ = State::Handshaking;
         lastTrafficMs_ = millis();
         Serial.printf("[deskflow] connected to %s:%u%s\r\n",
@@ -589,12 +592,16 @@ void DeskflowClient::flushPointer() {
 }
 
 void DeskflowClient::run() {
+    // A fixed beat, not a conditional one. The previous version measured
+    // "busy" *after* draining, when available() is almost always zero, so it
+    // took the slow branch during active motion - roughly 200Hz delivered at an
+    // uneven interval. Evenness matters more than raw rate here: a steady
+    // cadence reads as smooth motion, a varying one reads as stepping even at
+    // the same average rate.
+    TickType_t last = xTaskGetTickCount();
     for (;;) {
         serviceOnce();
-        // Yield for a single tick while input is flowing, and back off when
-        // idle. Sleeping a fixed 5ms even mid-burst added latency for no gain.
-        const bool busy = (sock_ != nullptr && sock_->connected() && sock_->available() > 0);
-        vTaskDelay(busy ? 1 : pdMS_TO_TICKS(5));
+        vTaskDelayUntil(&last, 1);     // one tick, and it does not drift
     }
 }
 
@@ -603,10 +610,13 @@ void DeskflowClient::taskEntry(void *self) {
 }
 
 void DeskflowClient::begin() {
-    // 8KB of stack: a TLS handshake needs real depth. Priority 1 sits below
-    // the Wi-Fi and TCP stacks, so a blocking handshake yields to them rather
-    // than starving them.
-    xTaskCreate(taskEntry, "deskflow", 8192, this, 1, nullptr);
+    // 8KB of stack: a TLS handshake needs real depth.
+    //
+    // Priority 3 rather than 1. This is a single-core part, so at priority 1
+    // the Wi-Fi and lwIP tasks preempt this one freely and pointer reports go
+    // out late and unevenly. 3 still sits below the networking stacks (which
+    // run higher) but above the idle-ish band, so input is not starved.
+    xTaskCreate(taskEntry, "deskflow", 8192, this, 3, nullptr);
 }
 
 }  // namespace ghosthid

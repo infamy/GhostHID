@@ -116,6 +116,9 @@ public:
     float absoluteX() const { return absX_; }
     float absoluteY() const { return absY_; }
 
+    // Absolute reports the host refused. Should stay at zero.
+    uint32_t droppedReports() const;
+
     void mouseButtonDown(MouseButton button);
     void mouseButtonUp(MouseButton button);
     void mouseClick(MouseButton button, uint32_t holdMs = 20);

@@ -170,6 +170,8 @@ void HidDevice::mouseMove(int32_t dx, int32_t dy) {
     }
 }
 
+uint32_t HidDevice::droppedReports() const { return g_absMouse.dropped(); }
+
 void HidDevice::mouseMoveAbsolute(float x, float y) {
     if (!ready()) return;
 

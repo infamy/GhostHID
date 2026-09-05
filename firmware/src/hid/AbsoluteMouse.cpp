@@ -77,11 +77,13 @@ void AbsoluteMouse::begin() {
     hid_.begin();
 }
 
-void AbsoluteMouse::moveTo(uint16_t x, uint16_t y, uint8_t buttons) {
+bool AbsoluteMouse::moveTo(uint16_t x, uint16_t y, uint8_t buttons) {
     if (x > kAbsoluteAxisMax) x = kAbsoluteAxisMax;
     if (y > kAbsoluteAxisMax) y = kAbsoluteAxisMax;
     AbsReport report = {buttons, x, y, 0};
-    hid_.SendReport(kAbsMouseReportId, &report, sizeof(report));
+    const bool ok = hid_.SendReport(kAbsMouseReportId, &report, sizeof(report));
+    if (!ok) ++dropped_;
+    return ok;
 }
 
 }  // namespace ghosthid
