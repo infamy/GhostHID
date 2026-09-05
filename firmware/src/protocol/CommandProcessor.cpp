@@ -126,7 +126,7 @@ CommandResult CommandProcessor::handleMessage(const char *json, size_t len,
               "\"heap_boot\":%u,\"heap_wifi\":%u,\"heap_server\":%u,"
               "\"stack_main\":%u,\"stack_kvm\":%u,\"stack_async\":%u,"
               "\"n_move\":%u,\"n_key\":%u,\"n_btn\":%u,\"n_other\":%u,"
-              "\"last_unhandled\":\"%s\",\"last_key_raw\":\"%s\",\"last_keydown_raw\":\"%s\",\"last_other_raw\":\"%s\",\"hid_dropped\":%u,\"tls_reserved\":%u,\"tls_blocks_lent\":%u}",
+              "\"last_unhandled\":\"%s\",\"last_key_raw\":\"%s\",\"last_keydown_raw\":\"%s\",\"last_other_raw\":\"%s\",\"hid_dropped\":%u,\"tls_reserved\":%u,\"tls_blocks_lent\":%u,\"lean_mode\":%s}",
               GHOSTHID_VERSION, hid_.ready() ? "true" : "false",
               static_cast<unsigned>(hid_.heldKeyCount()),
               (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMaxAllocHeap(),
@@ -149,7 +149,8 @@ CommandResult CommandProcessor::handleMessage(const char *json, size_t len,
               deskflow_ ? deskflow_->lastOtherRaw() : "",
               (unsigned)hid_.droppedReports(),
               (unsigned)TlsArena::reservedBytes(),
-              (unsigned)TlsArena::inUse());
+              (unsigned)TlsArena::inUse(),
+              config_.webWhenKvm() ? "false" : "true");
         return CommandResult::Ok;
     }
 

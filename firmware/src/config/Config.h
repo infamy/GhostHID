@@ -80,6 +80,17 @@ public:
     bool setDeskflowScreen(const char *name);
     bool setDeskflowScreenSize(uint16_t w, uint16_t h);
     bool setDeskflowEnabled(bool on);
+
+    // When false, the web server is NOT STARTED at all while the screen client
+    // is enabled - a memory-lean mode managed from the serial console.
+    //
+    // Not starting it is the only thing that works: AsyncTCP 3.5.0 never tears
+    // its task down, so stopping the server later frees nothing (measured: 92
+    // bytes). Skipping it keeps the largest contiguous block near its 135KB
+    // boot value instead of dropping to ~47KB, which is the difference between
+    // a TLS session leaving 13KB and leaving something comfortable.
+    bool webWhenKvm() const { return webWhenKvm_; }
+    bool setWebWhenKvm(bool on);
     bool setDeskflowTls(bool on);
 
     // Setters persist immediately. Each returns false and changes nothing if
@@ -120,6 +131,7 @@ private:
     uint16_t dfHeight_     = 1080;
     bool     dfTls_        = true;
     bool     dfPending_    = false;
+    bool     webWhenKvm_   = true;
     char    *dfCa_         = nullptr;   // heap: a PEM is too big for a member
     bool rebootPending_ = false;
 };

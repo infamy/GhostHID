@@ -171,6 +171,27 @@ Not covered: an image that boots but breaks networking still needs USB
 recovery. Arduino does not enable ESP-IDF's rollback, so there is no automatic
 revert. See PLAN.md "Known Gaps".
 
+## Lean mode
+
+With the screen client running, a TLS session leaves only ~13KB of contiguous
+heap and the web UI becomes sluggish. Lean mode trades the web UI away while the
+KVM is in use:
+
+```
+> lean on
+> reboot
+```
+
+The web server is then **never started** while the screen client is enabled, and
+the device is managed from the serial console. Not starting it is the only thing
+that helps: AsyncTCP never tears its task down, so stopping the server later
+frees nothing measurable (92 bytes, measured). Skipping it keeps the largest
+block near its 135KB boot value rather than dropping to ~47KB.
+
+You cannot be locked out by this. If the screen client has not connected within
+90 seconds of boot — wrong address, server down, network moved — the web server
+starts anyway.
+
 ## Using it from a phone
 
 The web UI is built for touch. On iOS the software keyboard does not deliver

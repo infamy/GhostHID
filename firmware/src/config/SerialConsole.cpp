@@ -43,7 +43,8 @@ void SerialConsole::printHelp() const {
     Serial.println("  kvmscreen <name>     this screen's name in the server layout");
     Serial.println("  kvmsize <w> <h>      target's resolution, so the pointer lands right");
     Serial.println("  kvm on|off           enable or disable the screen client");
-    Serial.println("  web off|on           stop or start the web UI (frees memory for TLS)");
+    Serial.println("  web off|on           start or stop the web UI now (this boot only)");
+    Serial.println("  lean on|off          skip the web server entirely while the KVM runs");
     Serial.println("  heap                 free and largest-block memory");
     Serial.println("  token <token>        pairing token (empty value disables auth)");
     Serial.println("  name <name>          device name - sets the AP SSID and mDNS name");
@@ -230,6 +231,18 @@ void SerialConsole::execute(char *line) {
         } else {
             Serial.printf("  web server is %s\r\n",
                           network_.serversRunning() ? "running" : "stopped");
+        }
+    } else if (strcasecmp(line, "lean") == 0) {
+        if (strcasecmp(value, "on") == 0 || strcasecmp(value, "off") == 0) {
+            const bool lean = (strcasecmp(value, "on") == 0);
+            config_.setWebWhenKvm(!lean);
+            Serial.printf("ok: lean mode %s  -- type 'reboot' to apply\r\n",
+                          lean ? "on (web server will not start while the KVM is enabled)"
+                               : "off (web server always starts)");
+        } else {
+            Serial.printf("  lean mode is %s\r\n", config_.webWhenKvm() ? "off" : "on");
+            Serial.println("  when on, the web server is never started while the screen");
+            Serial.println("  client is enabled - it starts anyway if that cannot connect.");
         }
     } else if (strcasecmp(line, "reset") == 0) {
         config_.factoryReset();
