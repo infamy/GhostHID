@@ -20,6 +20,7 @@
 #include "net/TlsArena.h"
 #include "net/Network.h"
 #include "protocol/CommandProcessor.h"
+#include "ui/Display.h"
 
 namespace {
 
@@ -29,6 +30,9 @@ ghosthid::CommandProcessor processor(hid, config);
 ghosthid::Network          network(processor, config);
 ghosthid::DeskflowClient   deskflow(hid, config);
 ghosthid::SerialConsole    console(config, processor, network, deskflow);
+#ifdef GHOSTHID_HAS_LCD
+ghosthid::Display          display;
+#endif
 
 // --- Status LED ------------------------------------------------------------
 
@@ -164,11 +168,52 @@ void setup() {
                   (config.authToken()[0] == '\0') ? "disabled" : "required");
     Serial.println("Press BOOT to release all held input.");
     console.begin();
+
+#ifdef GHOSTHID_HAS_LCD
+    display.begin();
+#endif
 }
+
+#ifdef GHOSTHID_HAS_LCD
+// Push current state to the LCD, but only when it actually changed - a full
+// redraw every tick would flicker and waste SPI time. The KVM field is reduced
+// to off/connecting/connected so a rapidly-toggling focus state does not force
+// constant redraws.
+void serviceDisplay() {
+    display.loop();                     // backlight timeout, every pass
+    static uint32_t last = 0;
+    if (millis() - last < 750) return;
+    last = millis();
+
+    ghosthid::DisplayStatus st;
+    st.deviceName = config.deviceName();
+    st.apSsid     = network.ssid();
+    st.apPass     = config.apPassword();
+    st.apIp       = network.apAddress();
+    st.staIp      = network.staAddress();
+    st.usbReady   = hid.ready();
+    st.kvmState   = !config.deskflowEnabled() ? "off"
+                    : (deskflow.connected() ? "connected" : "connecting");
+    st.clients    = network.clientConnected() ? 1 : 0;
+
+    char sig[192];
+    snprintf(sig, sizeof(sig), "%s|%s|%s|%s|%d|%s|%d",
+             st.deviceName, st.apSsid, st.apIp, st.staIp,
+             st.usbReady ? 1 : 0, st.kvmState, st.clients);
+    static char lastSig[192] = {0};
+    if (strcmp(sig, lastSig) != 0) {
+        strncpy(lastSig, sig, sizeof(lastSig) - 1);
+        display.showStatus(st);
+    }
+}
+#endif
 
 void loop() {
     network.loop();
     console.feed();
+#ifdef GHOSTHID_HAS_LCD
+    serviceDisplay();
+#endif
 
     // Reboot requested over the API (config change). Done here rather than in
     // the network callback so the stack is not torn down from inside itself.

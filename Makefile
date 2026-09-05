@@ -39,6 +39,21 @@ endif
 PIO_ENVVARS = -e PLATFORMIO_CORE_DIR=/pio
 LOCAL_INI  := $(FIRMWARE)/ghosthid_local.ini
 
+# Chip-specific flash geometry. The S3 puts its bootloader at 0x0 (the S2 at
+# 0x1000) and this board's 16MB QIO-flash / OPI-PSRAM module needs the size and
+# mode set explicitly, or it bootloops. Selected by the ENV name.
+ifneq (,$(findstring s3,$(ENV)))
+CHIP        := esp32s3
+BOOT_OFFSET := 0x0
+FLASH_SIZE  := 16MB
+FLASH_MODE  := dio
+else
+CHIP        := esp32s2
+BOOT_OFFSET := 0x1000
+FLASH_SIZE  := keep
+FLASH_MODE  := keep
+endif
+
 DOCKER_RUN = docker run --rm -t \
 	-v "$(FIRMWARE)":/project \
 	-v $(PIO_VOLUME):/pio \
@@ -126,9 +141,9 @@ flash: $(ESPTOOL)
 		test -f "$(BUILD_DIR)/$$f.bin" || { echo "missing $$f.bin - run 'make build' first"; exit 1; }; \
 	done
 	@set -o pipefail; \
-	"$(ESPTOOL)" --chip esp32s2 --port "$(PORT)" --baud 921600 \
-		write_flash --flash_mode keep --flash_freq keep --flash_size keep \
-		0x1000  "$(BUILD_DIR)/bootloader.bin" \
+	"$(ESPTOOL)" --chip $(CHIP) --port "$(PORT)" --baud 921600 \
+		write_flash --flash_mode $(FLASH_MODE) --flash_freq keep --flash_size $(FLASH_SIZE) \
+		$(BOOT_OFFSET) "$(BUILD_DIR)/bootloader.bin" \
 		0x8000  "$(BUILD_DIR)/partitions.bin" \
 		0xe000  "$(BUILD_DIR)/boot_app0.bin" \
 		0x10000 "$(BUILD_DIR)/firmware.bin" \

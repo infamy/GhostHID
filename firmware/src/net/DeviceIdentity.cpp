@@ -12,6 +12,7 @@
 #include <mbedtls/sha256.h>
 #include <mbedtls/x509_crt.h>
 #include <mbedtls/x509_csr.h>
+#include <mbedtls/version.h>   // MBEDTLS_VERSION_MAJOR (2.x on S2, 3.x on S3/pioarduino)
 
 namespace ghosthid {
 namespace {
@@ -131,8 +132,18 @@ bool DeviceIdentity::generate(const char *commonName) {
         // critical keyUsage constrains what a peer will accept the certificate
         // for; the certificates these servers generate for themselves carry
         // none, so carrying one only creates a way to be rejected.
+        // mbedTLS 3.x (pioarduino / arduino-esp32 3.x) dropped the mpi-based
+        // set_serial for a raw-bytes variant; 2.x (espressif32 / S2) has only the
+        // mpi one. Support both so the S2 and S3 builds share this file.
+#if MBEDTLS_VERSION_MAJOR >= 3
+        {
+            unsigned char serialRaw[] = { 0x01 };
+            if (mbedtls_x509write_crt_set_serial_raw(&crt, serialRaw, sizeof(serialRaw)) != 0) break;
+        }
+#else
         if (mbedtls_mpi_read_string(&serial, 10, "1") != 0) break;
         if (mbedtls_x509write_crt_set_serial(&crt, &serial) != 0) break;
+#endif
         // The device has no clock at generation time, so use a fixed window
         // that is comfortably valid. Trust here rests on the fingerprint, not
         // on validity dates.

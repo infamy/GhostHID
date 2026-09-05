@@ -12,7 +12,7 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends git ca-certificates \
  && rm -rf /var/lib/apt/lists/*
 
-ARG PLATFORMIO_VERSION=6.1.16
+ARG PLATFORMIO_VERSION=6.1.19
 RUN pip install --no-cache-dir "platformio==${PLATFORMIO_VERSION}"
 
 ENV PLATFORMIO_CORE_DIR=/pio

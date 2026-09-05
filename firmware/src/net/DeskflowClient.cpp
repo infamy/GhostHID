@@ -692,11 +692,22 @@ void DeskflowClient::taskEntry(void *self) {
 void DeskflowClient::begin() {
     // 8KB of stack: a TLS handshake needs real depth.
     //
-    // Priority 3 rather than 1. This is a single-core part, so at priority 1
-    // the Wi-Fi and lwIP tasks preempt this one freely and pointer reports go
-    // out late and unevenly. 3 still sits below the networking stacks (which
-    // run higher) but above the idle-ish band, so input is not starved.
+    // Priority 3: above the idle-ish band so input is not starved, below the
+    // networking stacks.
+#if CONFIG_FREERTOS_UNICORE
+    // Single-core (ESP32-S2): everything shares one core. Wi-Fi, lwIP, USB and
+    // this task compete; under load this task loses and the screen session
+    // drops. Nothing to pin to - this is the limitation the S3 build solves.
     xTaskCreate(taskEntry, "deskflow", 8192, this, 3, nullptr);
+#else
+    // Dual-core (ESP32-S3): pin the input task to the APP core (1). Wi-Fi and
+    // lwIP run on the PRO core (0), so a Wi-Fi/TLS burst on core 0 can no longer
+    // stall keep-alive handling or pointer reports here. This is the fix for the
+    // single-core CPU starvation that dropped the session under load on the S2
+    // (measured: 166ms ICMP spikes, 48-128ms serviceOnce stalls, all core
+    // contention, not RAM and not RF).
+    xTaskCreatePinnedToCore(taskEntry, "deskflow", 8192, this, 3, nullptr, 1);
+#endif
 }
 
 }  // namespace ghosthid
