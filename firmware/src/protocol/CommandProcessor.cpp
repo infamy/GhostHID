@@ -9,6 +9,7 @@
 #include "Keymap.h"
 #include "board_config.h"
 #include "config/Config.h"
+#include "net/DeskflowClient.h"
 #include "hid/HidDevice.h"
 
 namespace ghosthid {
@@ -214,13 +215,23 @@ CommandResult CommandProcessor::handleMessage(const char *json, size_t len,
         reply(outResponse, outSize,
               "{\"type\":\"config\",\"sta_ssid\":\"%s\",\"sta_pass_set\":%s,"
               "\"ap_pass_set\":true,\"token_set\":%s,\"name\":\"%s\","
-              "\"ap_always\":%s,\"reboot_pending\":%s}",
+              "\"ap_always\":%s,\"reboot_pending\":%s,"
+              "\"kvm_on\":%s,\"kvm_host\":\"%s\",\"kvm_port\":%u,"
+              "\"kvm_screen\":\"%s\",\"kvm_w\":%u,\"kvm_h\":%u,"
+              "\"kvm_state\":\"%s\"}",
               config_.staSsid(),
               config_.staPassword()[0] ? "true" : "false",
               config_.authToken()[0]   ? "true" : "false",
               config_.deviceName(),
               config_.apAlways()      ? "true" : "false",
-              config_.rebootPending() ? "true" : "false");
+              config_.rebootPending() ? "true" : "false",
+              config_.deskflowEnabled() ? "true" : "false",
+              config_.deskflowHost(),
+              (unsigned)config_.deskflowPort(),
+              config_.deskflowScreen(),
+              (unsigned)config_.deskflowWidth(),
+              (unsigned)config_.deskflowHeight(),
+              deskflow_ ? deskflow_->statusText() : "unknown");
         return CommandResult::Ok;
     }
 
@@ -247,6 +258,33 @@ CommandResult CommandProcessor::handleMessage(const char *json, size_t len,
         if (!err && doc["ap_always"].is<bool>()) {
             config_.setApAlways(doc["ap_always"].as<bool>());
         }
+        // Screen-client settings apply immediately - the client is told to
+        // reconnect - so they are deliberately not part of reboot_pending.
+        bool kvmChanged = false;
+        if (!err && (doc["kvm_host"].is<const char *>() || doc["kvm_port"].is<int>())) {
+            const char *host = doc["kvm_host"] | config_.deskflowHost();
+            const uint16_t port = (uint16_t)(doc["kvm_port"] | (int)config_.deskflowPort());
+            if (!config_.setDeskflowServer(host, port)) err = "bad screen server host or port";
+            else kvmChanged = true;
+        }
+        if (!err && doc["kvm_screen"].is<const char *>()) {
+            if (!config_.setDeskflowScreen(doc["kvm_screen"].as<const char *>()))
+                err = "screen name must be 1-31 characters";
+            else kvmChanged = true;
+        }
+        if (!err && (doc["kvm_w"].is<int>() || doc["kvm_h"].is<int>())) {
+            const uint16_t w = (uint16_t)(doc["kvm_w"] | (int)config_.deskflowWidth());
+            const uint16_t h = (uint16_t)(doc["kvm_h"] | (int)config_.deskflowHeight());
+            if (!config_.setDeskflowScreenSize(w, h)) err = "screen size out of range";
+            else kvmChanged = true;
+        }
+        if (!err && doc["kvm_on"].is<bool>()) {
+            const bool on = doc["kvm_on"].as<bool>();
+            if (on && config_.deskflowHost()[0] == '\0') err = "set a server address first";
+            else { config_.setDeskflowEnabled(on); kvmChanged = true; }
+        }
+        if (!err && kvmChanged && deskflow_ != nullptr) deskflow_->reconnect();
+
         if (!err && doc["name"].is<const char *>()) {
             if (!config_.setDeviceName(doc["name"].as<const char *>()))
                 err = "name must be letters, digits or hyphens";

@@ -88,6 +88,7 @@ void setup() {
     // Settings must load before the radio comes up: they carry the SSID,
     // passphrases and token the network layer needs.
     config.begin();
+    processor.attachDeskflow(&deskflow);
 
     hid.begin();
     const bool enumerated = hid.waitUntilReady(10000);

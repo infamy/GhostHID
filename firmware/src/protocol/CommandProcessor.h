@@ -13,6 +13,7 @@ namespace ghosthid {
 
 class HidDevice;
 class Config;
+class DeskflowClient;
 
 enum class CommandResult : uint8_t {
     Ok,
@@ -49,6 +50,10 @@ public:
     // something we want to find out the consequences of.
     void setLocked(bool locked, const char *reason);
 
+    // Optional: lets get_config/status report the screen client's real state
+    // rather than only what is configured.
+    void attachDeskflow(DeskflowClient *client) { deskflow_ = client; }
+
     // Milliseconds since the last message from the controller.
     uint32_t millisSinceLastMessage() const;
 
@@ -59,6 +64,7 @@ public:
 private:
     HidDevice &hid_;
     Config    &config_;
+    DeskflowClient *deskflow_ = nullptr;
     bool     authenticated_ = false;
     bool     sessionActive_ = false;
     uint32_t lastMessageMs_ = 0;

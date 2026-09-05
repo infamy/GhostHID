@@ -38,6 +38,10 @@ public:
     bool hasFocus() const { return hasFocus_; }
     const char *statusText() const;
 
+    // Drops any current session so the next loop() reconnects with whatever
+    // settings are now stored. Called after the server details are edited.
+    void reconnect();
+
 private:
     enum class State : uint8_t { Idle, Connecting, Handshaking, Active };
 

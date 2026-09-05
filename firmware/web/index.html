@@ -284,6 +284,41 @@ td code{white-space:normal}
     </section>
 
     <section>
+      <h2>Screen client (Deskflow / Barrier / Input Leap)</h2>
+      <p class="hint" style="margin:0 0 9px">
+        Join an existing Deskflow, Barrier or Input Leap server as a screen, then
+        move the pointer off the edge of your desktop and onto the machine GhostHID
+        is plugged into. The server does the hard part — capturing input and
+        deciding when the pointer crosses — so this is just another screen in a
+        layout you already have, one that needs nothing installed on it.
+      </p>
+      <label>Server address</label>
+      <div class="row">
+        <input id="k_host" class="grow" placeholder="192.168.1.10" autocapitalize="off" autocorrect="off">
+        <input id="k_port" style="max-width:96px" placeholder="24800" inputmode="numeric">
+      </div>
+      <label>This screen's name in the server layout</label>
+      <input id="k_screen" placeholder="ghosthid" autocapitalize="off" autocorrect="off">
+      <label>Target's screen resolution</label>
+      <div class="row">
+        <input id="k_w" class="grow" placeholder="1920" inputmode="numeric">
+        <span style="align-self:center;color:var(--dim)">×</span>
+        <input id="k_h" class="grow" placeholder="1080" inputmode="numeric">
+      </div>
+      <p class="hint">
+        This must match the resolution of the computer GhostHID is plugged into.
+        The server addresses this screen in that coordinate space, so a wrong value
+        puts the pointer in the wrong place.
+      </p>
+      <div class="row" style="margin-top:10px">
+        <button id="k_on" class="grow">Enable</button>
+        <button id="k_off" class="grow">Disable</button>
+        <button id="k_save">Save</button>
+      </div>
+      <div id="k_state" style="font-family:var(--mono);font-size:11px;color:var(--dim);margin-top:9px"></div>
+    </section>
+
+    <section>
       <h2>Firmware update</h2>
       <p class="hint" style="margin:0 0 8px">
         Upload <code>firmware.bin</code> — <b>not</b> <code>ghosthid-merged.bin</code>,
@@ -588,6 +623,15 @@ function connect(){
       $("#c_name").value=m.name||"";
       $("#a_name").textContent=m.name||"—";
       setApMode(m.ap_always!==false);
+      if(m.kvm_host!==undefined){
+        $("#k_host").value=m.kvm_host||"";
+        $("#k_port").value=m.kvm_port||24800;
+        $("#k_screen").value=m.kvm_screen||"";
+        $("#k_w").value=m.kvm_w||"";
+        $("#k_h").value=m.kvm_h||"";
+        setKvm(!!m.kvm_on);
+        $("#k_state").textContent = (m.kvm_on?"enabled — ":"disabled — ")+(m.kvm_state||"");
+      }
       $("#a_ap").textContent = m.ap_always!==false
         ? "always on — a wrong Wi-Fi setting cannot lock you out"
         : "drops while a network is joined; returns if that connection is lost";
@@ -614,6 +658,9 @@ function connect(){
 // browser-to-device round trip rather than a guess.
 var pingSent=0, rttMs=null;
 setInterval(function(){ if(ready){ pingSent=performance.now(); send({type:"ping"}); } },250);
+setInterval(function(){
+  if(ready && $("#tab-settings").classList.contains("on")) send({type:"get_config"});
+},3000);
 function noteRtt(){
   if(!pingSent) return;
   var r=performance.now()-pingSent; pingSent=0;
@@ -874,6 +921,28 @@ function setApMode(v){
 }
 $("#ap_always").onclick=function(){ setApMode(true); };
 $("#ap_fallback").onclick=function(){ setApMode(false); };
+var kvmOn=false;
+function setKvm(v){
+  kvmOn=v;
+  $("#k_on").classList.toggle("on",v);
+  $("#k_off").classList.toggle("on",!v);
+}
+$("#k_on").onclick =function(){ setKvm(true);  saveKvm(); };
+$("#k_off").onclick=function(){ setKvm(false); saveKvm(); };
+$("#k_save").onclick=saveKvm;
+function saveKvm(){
+  var m={type:"set_config", kvm_on:kvmOn};
+  if($("#k_host").value)   m.kvm_host  =$("#k_host").value.trim();
+  if($("#k_port").value)   m.kvm_port  =parseInt($("#k_port").value,10);
+  if($("#k_screen").value) m.kvm_screen=$("#k_screen").value.trim();
+  if($("#k_w").value)      m.kvm_w     =parseInt($("#k_w").value,10);
+  if($("#k_h").value)      m.kvm_h     =parseInt($("#k_h").value,10);
+  send(m);
+  $("#k_state").textContent="saving…";
+  // Settings here apply at once rather than on reboot, so re-read the real
+  // connection state a moment later instead of claiming success.
+  setTimeout(function(){ send({type:"get_config"}); }, 1200);
+}
 $("#c_reboot").onclick=function(){ send({type:"reboot"}); };
 
 // --- firmware update --------------------------------------------------------

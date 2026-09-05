@@ -293,6 +293,13 @@ void DeskflowClient::disconnect(const char *why) {
     lastAttemptMs_ = millis();
 }
 
+void DeskflowClient::reconnect() {
+    if (state_ != State::Idle) disconnect("settings changed");
+    lastError_[0] = '\0';
+    backoffMs_ = 0;          // retry at once rather than serving out a backoff
+    lastAttemptMs_ = 0;
+}
+
 void DeskflowClient::loop() {
     if (!config_.deskflowEnabled()) {
         if (state_ != State::Idle) disconnect("");
