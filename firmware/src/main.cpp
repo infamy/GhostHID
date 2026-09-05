@@ -85,6 +85,11 @@ bool buttonJustPressed() {
 // this and guessing at it.
 uint32_t g_heapAfterBoot = 0, g_heapAfterWifi = 0, g_heapAfterServer = 0;
 
+// True once the web server is running. After that the largest contiguous heap
+// block is roughly a third of what it was, which is the difference between a
+// TLS handshake succeeding and failing.
+bool g_bootComplete = false;
+
 void setup() {
     Serial.begin(115200);
     g_heapAfterBoot = ESP.getMaxAllocHeap();
@@ -134,6 +139,7 @@ void setup() {
 
     network.beginServers();
     g_heapAfterServer = ESP.getMaxAllocHeap();
+    g_bootComplete = true;
 
     Serial.printf("[auth] token %s\r\n",
                   (config.authToken()[0] == '\0') ? "disabled" : "required");

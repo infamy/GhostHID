@@ -12,6 +12,7 @@
 #include "net/DeskflowClient.h"
 
 extern uint32_t g_heapAfterBoot, g_heapAfterWifi, g_heapAfterServer;
+extern bool g_bootComplete;
 #include "hid/HidDevice.h"
 
 namespace ghosthid {
@@ -300,10 +301,22 @@ CommandResult CommandProcessor::handleMessage(const char *json, size_t len,
             config_.setDeskflowTls(doc["kvm_tls"].as<bool>());
             kvmChanged = true;
         }
+        bool kvmNeedsReboot = false;
         if (!err && doc["kvm_on"].is<bool>()) {
             const bool on = doc["kvm_on"].as<bool>();
             if (on && config_.deskflowHost()[0] == '\0') err = "set a server address first";
-            else { config_.setDeskflowEnabled(on); kvmChanged = true; }
+            else {
+                const bool wasOff = !config_.deskflowEnabled();
+                config_.setDeskflowEnabled(on);
+                kvmChanged = true;
+                // A TLS handshake needs 16KB contiguous. That exists at boot,
+                // before the web server starts, and often does not afterwards -
+                // so enabling it now may connect or may fail on memory, and the
+                // user should not have to guess which.
+                if (on && wasOff && config_.deskflowTls() && g_bootComplete) {
+                    kvmNeedsReboot = ESP.getMaxAllocHeap() < 48 * 1024;
+                }
+            }
         }
         if (!err && kvmChanged && deskflow_ != nullptr) deskflow_->reconnect();
 
@@ -320,8 +333,9 @@ CommandResult CommandProcessor::handleMessage(const char *json, size_t len,
         // Report what actually needs a restart rather than always claiming
         // one: a token change is live on the next connection.
         reply(outResponse, outSize,
-              "{\"type\":\"config_saved\",\"reboot_required\":%s}",
-              config_.rebootPending() ? "true" : "false");
+              "{\"type\":\"config_saved\",\"reboot_required\":%s,\"kvm_reboot\":%s}",
+              (config_.rebootPending() || kvmNeedsReboot) ? "true" : "false",
+              kvmNeedsReboot ? "true" : "false");
         return CommandResult::Ok;
     }
 

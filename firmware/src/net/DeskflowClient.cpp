@@ -427,10 +427,20 @@ void DeskflowClient::serviceOnce() {
                 // from connect()'s return value, so ask mbedTLS what happened.
                 char detail[96] = {};
                 const int err = tls_.lastError(detail, sizeof(detail));
-                snprintf(lastError_, sizeof(lastError_),
-                         "TLS failed (%d) %s [heap %uK free, %uK largest]", err, detail,
-                         (unsigned)(ESP.getFreeHeap() / 1024),
-                         (unsigned)(ESP.getMaxAllocHeap() / 1024));
+                if (err == -32512 /* MBEDTLS_ERR_SSL_ALLOC_FAILED */) {
+                    // Say what to do rather than what went wrong. The handshake
+                    // wants 16KB in one piece; the web server fragments the
+                    // heap, and a reboot connects before it starts.
+                    snprintf(lastError_, sizeof(lastError_),
+                             "not enough contiguous memory (%uK largest, needs 16K) "
+                             "- reboot to connect during startup",
+                             (unsigned)(ESP.getMaxAllocHeap() / 1024));
+                } else {
+                    snprintf(lastError_, sizeof(lastError_),
+                             "TLS failed (%d) %s [heap %uK free, %uK largest]", err, detail,
+                             (unsigned)(ESP.getFreeHeap() / 1024),
+                             (unsigned)(ESP.getMaxAllocHeap() / 1024));
+                }
                 Serial.printf("[deskflow] TLS connect failed: %d %s\r\n", err, detail);
                 Serial.printf("[deskflow] free heap %u, largest block %u\r\n",
                               (unsigned)ESP.getFreeHeap(),
@@ -457,9 +467,10 @@ void DeskflowClient::serviceOnce() {
 
     uint8_t buf[kMaxMessage];
     size_t len = 0;
-    // Drain everything queued: input arrives in bursts and leaving messages
-    // waiting a loop iteration each would add visible lag.
-    int guard = 32;
+    // Drain hard. Pointer motion arrives as a dense burst of DMMV, and leaving
+    // any of it queued shows up directly as lag. The cap only exists so a
+    // pathological peer cannot hold this task forever.
+    int guard = 256;
     while (guard-- > 0 && sock_->available() >= 4) {
         if (!readMessage(buf, sizeof(buf), len)) return;
         if (len == 0) continue;                     // drained an oversized message
@@ -477,9 +488,10 @@ void DeskflowClient::serviceOnce() {
 void DeskflowClient::run() {
     for (;;) {
         serviceOnce();
-        // 5ms keeps input latency well under a frame while leaving the CPU to
-        // the Wi-Fi and TCP tasks on this single-core part.
-        vTaskDelay(pdMS_TO_TICKS(5));
+        // Yield for a single tick while input is flowing, and back off when
+        // idle. Sleeping a fixed 5ms even mid-burst added latency for no gain.
+        const bool busy = (sock_ != nullptr && sock_->connected() && sock_->available() > 0);
+        vTaskDelay(busy ? 1 : pdMS_TO_TICKS(5));
     }
 }
 

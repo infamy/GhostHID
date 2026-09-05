@@ -698,6 +698,11 @@ function connect(){
       setReboot(!!m.reboot_pending);
     } else if(m.type==="config_saved"){
       clearDirty();
+      if(m.kvm_reboot){
+        $("#k_state").textContent =
+          "Saved. Reboot to connect \u2014 the encrypted handshake needs a block of "+
+          "memory that is only free before the web server starts.";
+      }
       setReboot(!!m.reboot_required);
       $("#c_log").textContent = m.reboot_required
         ? "Saved. These settings need a reboot to take effect."
