@@ -972,7 +972,27 @@ virtual pointer reaches the target's left edge
         -> release capture, cursor returns to the controller
 ```
 
-## Better: be a client of an existing server
+## Better: be a client of an existing server — **IMPLEMENTED**
+
+GhostHID joins a Deskflow / Barrier / Input Leap server as a screen. Verified
+against a live Deskflow server: mutual TLS with a device-generated certificate,
+protocol 1.8 handshake, screen registered, `connected (idle)` awaiting the
+pointer.
+
+Four things had to be discovered by testing rather than read from the protocol
+headers, all recorded in the commit that added TLS:
+
+* these servers require **mutual** TLS, and arduino-esp32 loads a client
+  certificate only when verification is enabled - so `setInsecure()` silently
+  discards it and the server reports "peer did not return a certificate"
+* verification then fails on hostname, because the server's self-signed
+  certificate carries a fixed common name while being reached by IP. The
+  certificate is pinned, so its own CN is the right thing to verify against
+* a self-signed certificate needs `basicConstraints CA:TRUE` for OpenSSL to
+  accept it as its own root, and must not carry a critical `keyUsage`
+* the handshake needs a 16KB contiguous allocation, and starting the web server
+  drops the largest free block from ~135KB to ~47KB - so the handshake has to
+  happen before the servers start
 
 Rather than building our own edge-crossing, implement a **Deskflow / Barrier /
 Input Leap client**. Those projects already solve the genuinely hard parts -
