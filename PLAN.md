@@ -812,35 +812,34 @@ Open issues in this plan, roughly by importance. Not yet scheduled.
 
 # Repository Structure
 
-Suggested structure:
+As built. The original plan also proposed `controller/`, `docs/`, `tests/` and
+`hardware/`; the Python controller was dropped once the browser UI covered the
+same ground, and the other three were never filled - the README, CHANGELOG and
+the API reference served from the device itself carry that material instead.
 
 ```text
 ghosthid/
 │
 ├── firmware/
+│   ├── include/board_config.h   board/HAL configuration and first-boot defaults
 │   ├── src/
-│   ├── include/
-│   ├── usb/
-│   ├── wifi/
-│   ├── protocol/
-│   └── web/
+│   │   ├── config/              NVS settings and the serial setup console
+│   │   ├── hid/                 the only code that touches USB
+│   │   ├── net/                 Wi-Fi, web server, OTA, screen client, TLS identity
+│   │   ├── protocol/            transport-agnostic command handling
+│   │   └── main.cpp             wiring and boot order
+│   ├── web/index.html           the control UI, embedded into the image
+│   ├── scripts/                 PlatformIO pre/post build steps
+│   └── Dockerfile               build environment
 │
-├── controller/
-│   ├── ghosthid/
-│   └── examples/
+├── scripts/                     packaging and release helpers
+├── assets/                      logo and repository avatar
+├── .gitea/workflows/            CI and release
 │
-├── docs/
-│   ├── protocol.md
-│   ├── hardware.md
-│   ├── setup.md
-│   └── architecture.md
-│
-├── hardware/
-│   └── esp32-s2-key/
-│
-├── tests/
-│
+├── CHANGELOG.md
 ├── LICENSE
+├── THIRD-PARTY-LICENSES.md
+├── PLAN.md
 └── README.md
 ```
 
