@@ -12,6 +12,9 @@
 #include <stdint.h>
 #include <stddef.h>
 
+#include <freertos/FreeRTOS.h>
+#include <freertos/semphr.h>
+
 namespace ghosthid {
 
 // Named keycodes, so callers never need to include a USB header. Values match
@@ -144,6 +147,15 @@ private:
     void sendMouseReport(int8_t dx, int8_t dy, int8_t wheel, int8_t pan);
     void trackKeyDown(uint8_t key);
     void trackKeyUp(uint8_t key);
+
+    // Serialises every method that touches the USB report state. HidDevice is
+    // called from at least two FreeRTOS tasks - the WebSocket handler on
+    // async_tcp and the Deskflow client on its own task - and the framework's
+    // keyboard report is a shared object mutated read-modify-write *before* the
+    // report is sent. Without this, releaseAll() racing a keyDown() can re-send
+    // the very key it just cleared and leave it stuck on the target, which is
+    // the one failure this whole layer exists to prevent.
+    SemaphoreHandle_t mutex_ = nullptr;
 
     // A USB boot keyboard reports at most 6 simultaneous non-modifier keys
     // plus 8 modifiers; 16 slots covers any legitimate state with headroom.

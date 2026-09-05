@@ -93,6 +93,15 @@ bool g_bootComplete = false;
 
 void setup() {
     Serial.begin(115200);
+    // Never let the USB-CDC console block the firmware. arduino-esp32's USBCDC
+    // blocks Serial.write() when a host has the port open but is not draining it
+    // fast enough - e.g. a serial monitor over a slow (SSH) link. A blocked
+    // write stalls whatever task is logging; during a screen-client reconnect
+    // that is the Deskflow task, which then misses keep-alives and is dropped by
+    // the server, which triggers another reconnect and more logging - a
+    // self-sustaining stall loop. Timeout 0 makes the console drop output rather
+    // than ever block on it, so attaching a monitor can never wedge the device.
+    Serial.setTxTimeoutMs(0);
     g_heapAfterBoot = ESP.getMaxAllocHeap();
     ledBegin();
     buttonBegin();

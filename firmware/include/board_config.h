@@ -12,7 +12,7 @@
 // Identity
 // ---------------------------------------------------------------------------
 
-#define GHOSTHID_VERSION "0.4.2"
+#define GHOSTHID_VERSION "0.5.0"
 
 // How the target computer sees us in its USB device list.
 //
@@ -49,6 +49,26 @@
 // A single USB HID relative-mouse report carries a signed 8-bit delta, so any
 // larger movement must be split across several reports. See HidDevice::mouseMove.
 #define GHOSTHID_MOUSE_MAX_STEP 127
+
+// Upper bound on a single mouse_move / mouse_wheel command, clamped at the
+// protocol boundary. HidDevice splits a large delta into 127-px reports, each
+// of which blocks on the USB completion semaphore; an unclamped int32 (the API
+// used to accept the full range) is millions of blocking reports inside one
+// network callback, which trips the 5s task watchdog and reboots the device.
+// A move larger than a couple of desktops is never a real input event.
+#ifndef GHOSTHID_MOUSE_MAX_MOVE
+#define GHOSTHID_MOUSE_MAX_MOVE 8192
+#endif
+#ifndef GHOSTHID_WHEEL_MAX
+#define GHOSTHID_WHEEL_MAX 64
+#endif
+
+// Upper bound on a single `text` command, in characters. Each character is a
+// press+release (two blocking reports); an unbounded string in one frame is the
+// same watchdog hazard as an unclamped mouse move.
+#ifndef GHOSTHID_TEXT_MAX
+#define GHOSTHID_TEXT_MAX 256
+#endif
 
 // Extra delay between consecutive HID reports (ms).
 //
@@ -103,6 +123,16 @@
 // seconds has already autorepeated or fired a chord on the target.
 #ifndef GHOSTHID_HEARTBEAT_TIMEOUT_MS
 #define GHOSTHID_HEARTBEAT_TIMEOUT_MS 750
+#endif
+
+// The same backstop for the screen-client (Deskflow) path, which cannot use the
+// 750ms figure: there is no per-key heartbeat, only the server's ~1s keep-alive
+// traffic, so the shortest silence we can call "dead" without false-firing
+// between keep-alives is a couple of intervals. If input is held and no server
+// traffic (keep-alive included) arrives for this long, release everything.
+// Still far below the 15s keep-alive timeout that governs a plain disconnect.
+#ifndef GHOSTHID_KVM_HELD_TIMEOUT_MS
+#define GHOSTHID_KVM_HELD_TIMEOUT_MS 2500
 #endif
 
 // Station mode (PLAN.md Mode B). If GHOSTHID_STA_SSID is a non-empty string,

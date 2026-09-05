@@ -190,14 +190,29 @@ CommandResult CommandProcessor::handleMessage(const char *json, size_t len,
 
     if (strcmp(type, "text") == 0) {
         const char *text = doc["text"] | "";
-        hid_.typeText(text);
+        // Bound the length: each character is two blocking USB reports, and an
+        // unbounded string in one frame would hold this network callback long
+        // enough to trip the task watchdog. Copy the capped prefix so we never
+        // walk past the limit.
+        char buf[GHOSTHID_TEXT_MAX + 1];
+        size_t n = 0;
+        for (const char *p = text; *p && n < GHOSTHID_TEXT_MAX; ++p) buf[n++] = *p;
+        buf[n] = '\0';
+        hid_.typeText(buf);
         return CommandResult::Ok;
     }
 
     // --- mouse --------------------------------------------------------------
     if (strcmp(type, "mouse_move") == 0) {
-        // Accept the full int32 range; HidDevice splits it across reports.
-        hid_.mouseMove(doc["dx"] | 0, doc["dy"] | 0);
+        // Clamp at the boundary. HidDevice splits a delta across 127-px reports,
+        // each blocking on USB; an unclamped int32 is a watchdog-tripping flood
+        // of reports inside this callback. A real move is never this large.
+        int32_t dx = doc["dx"] | 0, dy = doc["dy"] | 0;
+        if (dx >  GHOSTHID_MOUSE_MAX_MOVE) dx =  GHOSTHID_MOUSE_MAX_MOVE;
+        if (dx < -GHOSTHID_MOUSE_MAX_MOVE) dx = -GHOSTHID_MOUSE_MAX_MOVE;
+        if (dy >  GHOSTHID_MOUSE_MAX_MOVE) dy =  GHOSTHID_MOUSE_MAX_MOVE;
+        if (dy < -GHOSTHID_MOUSE_MAX_MOVE) dy = -GHOSTHID_MOUSE_MAX_MOVE;
+        hid_.mouseMove(dx, dy);
         return CommandResult::Ok;
     }
 
@@ -227,8 +242,16 @@ CommandResult CommandProcessor::handleMessage(const char *json, size_t len,
     }
 
     if (strcmp(type, "mouse_wheel") == 0) {
-        hid_.mouseWheel(doc["delta"] | 0);
-        if (doc["pan"].is<int>()) hid_.mousePan(doc["pan"].as<int>());
+        int32_t d = doc["delta"] | 0;
+        if (d >  GHOSTHID_WHEEL_MAX) d =  GHOSTHID_WHEEL_MAX;
+        if (d < -GHOSTHID_WHEEL_MAX) d = -GHOSTHID_WHEEL_MAX;
+        hid_.mouseWheel(d);
+        if (doc["pan"].is<int>()) {
+            int32_t p = doc["pan"].as<int>();
+            if (p >  GHOSTHID_WHEEL_MAX) p =  GHOSTHID_WHEEL_MAX;
+            if (p < -GHOSTHID_WHEEL_MAX) p = -GHOSTHID_WHEEL_MAX;
+            hid_.mousePan(p);
+        }
         return CommandResult::Ok;
     }
 

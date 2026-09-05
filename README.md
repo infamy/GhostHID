@@ -19,7 +19,7 @@ An ESP32-S2 presents itself to a target computer as a composite USB keyboard,
 relative mouse and absolute pointer, and relays input sent to it over Wi-Fi. The
 target needs no software, drivers, agents or network access of its own.
 
-**Status: v0.4.2**, working end to end — joins your network while keeping its own
+**Status: v0.5.0**, working end to end — joins your network while keeping its own
 access point as a fallback, is driven from a browser or a serial console,
 updates itself over the air, and can join a Deskflow / Barrier / Input Leap
 server as a screen so you simply move the pointer onto it.

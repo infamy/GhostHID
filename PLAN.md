@@ -899,6 +899,58 @@ These are NOT MVP requirements.
 
 Potential future features:
 
+### Hardening deferred from the 0.5.0 audit
+
+Done in 0.5.0: HID mutex, protocol-boundary clamps, deferred socket/cert
+teardown, WS slot ownership, reply-buffer sizing, Deskflow held-input watchdog,
+OTA pointer/auth/empty-POST fixes, and the UI's actively-wrong cases. Still open,
+none blocking stability, all best verified with the device on USB:
+
+* **Dedicated HID task behind a queue.** The mutex makes the current design
+  *safe*; a single owning task would make cross-task HID access *impossible* and
+  move all blocking USB work off the async_tcp task structurally. The WebSocket
+  and Deskflow paths would only enqueue. This subsumes the mutex and the clamps.
+* **`SendReport` return-checking + release retry.** `USBHIDKeyboard` discards the
+  send result, so a failed key *release* (host asleep, KVM switched away) is
+  never retried. Needs dropping to the raw `USBHID::SendReport` or folding into
+  the HID-task refactor above; treat a failed release as still-held.
+* **`esp_http_server` in place of ESPAsyncWebServer.** Available in Arduino mode
+  today; reclaimable server task stack, a `stop()` that actually frees, far less
+  per-request fragmentation, and it makes `web off` honest. ~2-3 days.
+* **`framework = arduino, espidf`** for `CONFIG_MBEDTLS_ASYMMETRIC_CONTENT_LEN`
+  (halves TlsArena's 34 KB and frees ~12 KB per session) plus the WiFi/lwIP/task
+  sdkconfig wins. Gated on a half-day TinyUSB-enumeration spike first.
+* **UI P1/P2 and accessibility** from the design audit: disconnected veil,
+  absolute-mode crosshair, live-typing echo, `for=`/`aria-pressed` labels,
+  `:focus-visible`, the token-sync-on-save lockout fix, and the copy fixes
+  (capture "types every key" overclaim, device-name-renames-the-AP warning).
+
+### Standard / known keyboard USB identity (VID:PID)
+
+Enumerate as a *recognized* keyboard instead of Espressif's `0x303A:0x4004`, so
+EDR / endpoint-protection and BadUSB defenses don't flag an unknown HID device
+on insert. This is the same reason real KVMs pick a deliberate identity -- a
+legit-device concern, not evasion: the device still enumerates openly as a
+keyboard, it just carries a plausible one. Resolves Known Gap #7.
+
+How / constraints:
+
+* VID/PID are **compile-time only** (`-DUSB_VID` / `-DUSB_PID` in
+  `platformio.ini`). The core's `USB.cpp` reads them before `setup()` runs, so
+  this can NOT be a runtime NVS/web setting -- ship it as build presets, not a
+  toggle. Also set `-DUSB_MANUFACTURER` / `-DUSB_PRODUCT` (and consider
+  `bcdDevice`) to match the chosen identity so the strings don't contradict it.
+* **Licensing:** a USB-IF VID belongs to its owner. Do NOT hardcode a third
+  party's VID:PID into public release builds -- that's impersonation and can
+  collide with the real vendor's driver. Acceptable paths:
+  (a) keep Espressif's default as the shipped identity;
+  (b) expose a documented `ghosthid_local.ini` override so the *user* sets
+      their own VID:PID for their own private build;
+  (c) use a generic HID-composite identity that isn't tied to a live vendor.
+* Cheap to implement (four build flags + a preset), but the choice is a policy
+  decision, not a code one -- pick (b) as the default posture.
+
+
 ### BLE
 
 Allow a phone or computer to connect over BLE.

@@ -1,5 +1,60 @@
 # Changelog
 
+## 0.5.0
+
+Stability hardening from a three-part audit (concurrency, memory, UI). The
+theme: HID reports, the TLS socket and config buffers were touched by three
+FreeRTOS tasks with no synchronisation, and blocking USB/TLS work ran inside the
+async network callback.
+
+### Fixed
+
+* **Stuck keys under concurrency.** `HidDevice` had no lock, yet was called from
+  the WebSocket handler (async_tcp task) and the Deskflow client (its own task).
+  The framework's keyboard report is a shared object mutated read-modify-write
+  *before* the report is sent, so `releaseAll()` racing a `keyDown()` could
+  re-assert the key it had just cleared and leave it held on the target — the
+  exact failure the whole layer exists to prevent. Every method that touches the
+  report is now serialised by a mutex.
+* **Watchdog panic reboot.** `mouse_move` accepted the full int32 range and
+  `text` any length; each becomes a flood of blocking USB reports inside one
+  network callback, which tripped the 5 s task watchdog. Both are now clamped at
+  the protocol boundary.
+* **Cross-task use-after-free.** `reconnect()` / `suspend()`, called from the
+  network task, tore down the socket and TLS state (freeing the two 17 KB
+  TlsArena blocks) under the Deskflow task mid-handshake. They now raise a flag
+  the Deskflow task acts on itself. The pinned CA PEM was likewise freed by
+  `set_config` while mbedTLS was parsing it; the client now works from a private
+  copy taken under a lock.
+* **A second tab released the first controller's keys.** A refused second
+  WebSocket connection's disconnect ran the same handler as the owner's,
+  dropping every held key and de-authenticating the live controller. Only the
+  owning client's own disconnect now ends the session.
+* **Truncated JSON.** `get_config` with a long screen-client error ran past the
+  512-byte reply buffer, so the browser threw on parse every poll — worst
+  exactly when the device had a TLS error to report. Buffer raised to 1 KB.
+* **Held keys on the Deskflow path.** A server that died mid-keypress (power
+  cut, Wi-Fi loss, no TCP FIN) left a key down until the 15 s keep-alive
+  timeout. A 2.5 s held-input backstop now releases it, and `readExactly`
+  enforces a true deadline so a trickling peer cannot hold a key indefinitely.
+* **OTA dangling pointer** (`g_otaError` pointed at a freed stack frame),
+  **OTA auth ordering** (an unauthenticated POST could drop the screen session
+  and stall the async task before the token was checked), and an **empty POST**
+  that rebooted the device having written nothing.
+* **UI, actively-wrong cases:** the physical-keyboard capture typed into *any*
+  focused field — so switching to Settings with capture on typed your Wi-Fi
+  password into the target; an on-screen mouse button could stick down on a
+  press-drag-release (no pointer capture); mouse buttons were unreachable by
+  keyboard; and a rejected token was invisible on a phone (the state word was
+  hidden below 600px). Key/F-key grids could also clip on narrow phones.
+
+### Deferred (tracked in PLAN.md)
+
+* The deeper structural fix — a dedicated HID task behind a queue so only one
+  task ever touches the report — plus `SendReport` return-checking, the
+  `esp_http_server` swap, and the ESP-IDF-from-source memory wins. None blocks
+  stability; all are best done with the device on the bench for verification.
+
 ## 0.4.2
 
 ### Removed

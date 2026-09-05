@@ -67,9 +67,22 @@ inline int8_t clampStep(int32_t v) {
     return static_cast<int8_t>(v);
 }
 
+// RAII lock for the HID mutex. Tolerates a null handle (before begin()) so the
+// single-threaded boot path works without a special case.
+struct Lock {
+    SemaphoreHandle_t m;
+    explicit Lock(SemaphoreHandle_t mm) : m(mm) {
+        if (m) xSemaphoreTake(m, portMAX_DELAY);
+    }
+    ~Lock() { if (m) xSemaphoreGive(m); }
+    Lock(const Lock &) = delete;
+    Lock &operator=(const Lock &) = delete;
+};
+
 }  // namespace
 
 void HidDevice::begin() {
+    if (!mutex_) mutex_ = xSemaphoreCreateMutex();
     if (begun_) return;
 
     g_keyboard.begin();
@@ -120,6 +133,7 @@ void HidDevice::trackKeyUp(uint8_t key) {
 }
 
 void HidDevice::keyDown(uint8_t key) {
+    Lock lk(mutex_);
     if (!ready()) return;
     g_keyboard.press(key);
     trackKeyDown(key);
@@ -127,6 +141,7 @@ void HidDevice::keyDown(uint8_t key) {
 }
 
 void HidDevice::keyUp(uint8_t key) {
+    Lock lk(mutex_);
     if (!ready()) return;
     g_keyboard.release(key);
     trackKeyUp(key);
@@ -134,12 +149,16 @@ void HidDevice::keyUp(uint8_t key) {
 }
 
 void HidDevice::tapKey(uint8_t key, uint32_t holdMs) {
+    // No lock here: this composes the locking keyDown/keyUp, and holding the
+    // mutex across delay(holdMs) would block every other task from the HID for
+    // the hold duration.
     keyDown(key);
     delay(holdMs);
     keyUp(key);
 }
 
 void HidDevice::typeText(const char *text) {
+    Lock lk(mutex_);
     if (!ready() || text == nullptr) return;
     for (const char *p = text; *p != '\0'; ++p) {
         const unsigned char c = static_cast<unsigned char>(*p);
@@ -157,6 +176,14 @@ void HidDevice::sendMouseReport(int8_t dx, int8_t dy, int8_t wheel, int8_t pan) 
     reportGap();
 }
 
+// The pointer-motion methods below are deliberately LOCKLESS. They are the hot
+// path (up to ~200 reports/sec during a drag) and they touch only the mouse /
+// absolute-mouse report objects, never the shared keyboard report that the
+// mutex exists to protect. Serialising them against the keyboard path added
+// contention that showed up as choppy motion and delayed the screen client's
+// keep-alive replies enough for the server to drop it. A stale read of
+// heldMouseButtons_ here (written under the lock by the button methods) costs at
+// most one frame of wrong button state, which is cosmetic and self-correcting.
 void HidDevice::mouseMove(int32_t dx, int32_t dy) {
     if (!ready()) return;
     // Split large movements across as many reports as needed. Without this a
@@ -173,7 +200,7 @@ void HidDevice::mouseMove(int32_t dx, int32_t dy) {
 uint32_t HidDevice::droppedReports() const { return g_absMouse.dropped(); }
 
 void HidDevice::mouseMoveAbsolute(float x, float y) {
-    if (!ready()) return;
+    if (!ready()) return;   // lockless hot path - see note above mouseMove
 
     if (x < 0.0f) x = 0.0f; else if (x > 1.0f) x = 1.0f;
     if (y < 0.0f) y = 0.0f; else if (y > 1.0f) y = 1.0f;
@@ -189,6 +216,7 @@ void HidDevice::mouseMoveAbsolute(float x, float y) {
 }
 
 void HidDevice::mouseButtonDown(MouseButton button) {
+    Lock lk(mutex_);
     if (!ready()) return;
     const uint8_t mask = mouseButtonMask(button);
     g_mouse.press(mask);
@@ -197,6 +225,7 @@ void HidDevice::mouseButtonDown(MouseButton button) {
 }
 
 void HidDevice::mouseButtonUp(MouseButton button) {
+    Lock lk(mutex_);
     if (!ready()) return;
     const uint8_t mask = mouseButtonMask(button);
     g_mouse.release(mask);
@@ -205,12 +234,15 @@ void HidDevice::mouseButtonUp(MouseButton button) {
 }
 
 void HidDevice::mouseClick(MouseButton button, uint32_t holdMs) {
+    // No lock: composes the locking button methods, and the mutex must not be
+    // held across delay(holdMs).
     mouseButtonDown(button);
     delay(holdMs);
     mouseButtonUp(button);
 }
 
 void HidDevice::mouseWheel(int32_t delta) {
+    if (!ready()) return;   // lockless hot path - see note above mouseMove
     while (delta != 0) {
         const int8_t step = clampStep(delta);
         sendMouseReport(0, 0, step, 0);
@@ -219,6 +251,7 @@ void HidDevice::mouseWheel(int32_t delta) {
 }
 
 void HidDevice::mousePan(int32_t delta) {
+    if (!ready()) return;   // lockless hot path - see note above mouseMove
     while (delta != 0) {
         const int8_t step = clampStep(delta);
         sendMouseReport(0, 0, 0, step);
@@ -229,11 +262,16 @@ void HidDevice::mousePan(int32_t delta) {
 // --- Safety ----------------------------------------------------------------
 
 void HidDevice::releaseAll() {
+    Lock lk(mutex_);
     if (!begun_) return;
 
     // Always send the release reports even if our bookkeeping says nothing is
     // held: our state can drift from the host's (e.g. after a reset), and a
     // stuck Ctrl on the target computer is far worse than a redundant report.
+    //
+    // The lock is what makes this actually safe: without it, a keyDown() on
+    // another task could slip in between releaseAll()'s zeroing of the report
+    // and its send, re-asserting a key we just cleared. See the mutex_ comment.
     g_keyboard.releaseAll();
     g_mouse.release(MOUSE_LEFT | MOUSE_RIGHT | MOUSE_MIDDLE);
 
@@ -242,6 +280,14 @@ void HidDevice::releaseAll() {
 }
 
 bool HidDevice::anythingHeld() const {
+    // Deliberately lockless. This is a watchdog gate read from two tasks (the
+    // main loop's stuck-key backstop and the Deskflow held-input check) at up to
+    // ~1.5kHz combined; taking the mutex here put those reads in contention with
+    // the pointer-report writes on the hot path, which showed up directly as
+    // choppy motion. Each field is an aligned word/byte (an atomic load on this
+    // core), and a momentarily-stale read only ever costs the watchdog one extra
+    // cycle - harmless. The writers still hold the mutex, which is where the
+    // actual race was.
     return heldKeyCount_ > 0 || heldMouseButtons_ != 0;
 }
 

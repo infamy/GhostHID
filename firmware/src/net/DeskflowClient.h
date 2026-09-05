@@ -40,6 +40,10 @@ public:
     void begin();
 
     bool connected() const { return state_ == State::Active; }
+    // True while any memory-holding session is up (connecting, handshaking or
+    // active). The OTA path waits on this going false after suspend() so it does
+    // not begin an update while the ~34KB TLS session is still allocated.
+    bool busy() const { return state_ != State::Idle; }
     // True while the server has handed this screen the pointer.
     bool hasFocus() const { return hasFocus_; }
     const char *statusText() const;
@@ -117,7 +121,22 @@ private:
     bool     hasFocus_ = false;
     uint32_t lastAttemptMs_ = 0;
     uint32_t backoffMs_ = 2000;
+    // Updated on every message from the server, keep-alives included. The
+    // held-input watchdog uses it: if input is held and this stops advancing,
+    // the server has gone silent and whatever is down must be released.
     uint32_t lastTrafficMs_ = 0;
+
+    // reconnect()/suspend() are called from the network task; acting on them
+    // there would tear down the socket and TLS state under this task mid-read.
+    // Instead they set a flag that serviceOnce() acts on, on this task.
+    volatile bool reconnectReq_ = false;
+    volatile bool suspendReq_   = false;
+
+    // A private copy of the pinned CA PEM, taken under Config's lock at connect
+    // time. mbedTLS reads the CA buffer during the handshake; using Config's own
+    // buffer let a set_config on the network task free it mid-parse. Alive only
+    // for the session, freed on disconnect.
+    char *caCopy_ = nullptr;
     char     lastError_[128] = {};
     uint32_t nMove_ = 0, nKey_ = 0, nBtn_ = 0, nOther_ = 0;
     char     lastUnhandled_[8] = {};

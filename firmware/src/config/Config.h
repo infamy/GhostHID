@@ -10,6 +10,9 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include <freertos/FreeRTOS.h>
+#include <freertos/semphr.h>
+
 namespace ghosthid {
 
 class Config {
@@ -65,8 +68,18 @@ public:
     // enabled, so skipping verification also silently drops our identity - and
     // these servers require mutual TLS. Pinning is the protocol's own trust
     // model anyway, so this is the right thing rather than a workaround.
+    // Direct pointer to the pinned CA PEM. Only safe to read on a task that
+    // cannot race setDeskflowServerCert(); the screen client, which runs on its
+    // own task while set_config runs on the network task, must use
+    // copyServerCert() instead - a mid-connect free() of this buffer under
+    // mbedTLS was a use-after-free.
     const char *deskflowServerCert() const { return dfCa_ ? dfCa_ : ""; }
     bool setDeskflowServerCert(const char *pem);
+
+    // Copies the pinned CA PEM into `dst` under the CA lock, so it is safe to
+    // call from another task even while setDeskflowServerCert() is replacing the
+    // buffer. Returns the length copied (0 if none / truncated to fit).
+    size_t copyServerCert(char *dst, size_t cap) const;
 
     // Crash guard. The screen client's first TLS handshake happens during boot,
     // before the web server starts, because it needs an unfragmented heap. If
@@ -121,6 +134,10 @@ private:
     bool     dfTls_        = true;
     bool     dfPending_    = false;
     char    *dfCa_         = nullptr;   // heap: a PEM is too big for a member
+    // Guards dfCa_ against a free()/malloc() on the network task racing a read
+    // on the screen-client task. Created lazily so a static Config is valid
+    // before begin() runs.
+    mutable SemaphoreHandle_t caLock_ = nullptr;
     bool rebootPending_ = false;
 };
 

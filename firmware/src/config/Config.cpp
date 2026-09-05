@@ -47,6 +47,7 @@ bool Config::validApPassword(const char *p) {
 }
 
 void Config::begin() {
+    if (!caLock_) caLock_ = xSemaphoreCreateMutex();
     g_prefs.begin(kNamespace, /*readOnly=*/false);
 
     loadInto(kKeySsid,  GHOSTHID_STA_SSID,     staSsid_, sizeof(staSsid_));
@@ -172,15 +173,40 @@ bool Config::setDeskflowServerCert(const char *pem) {
     const size_t n = strlen(pem);
     if (n > 4000) return false;                    // NVS string limit
     if (n > 0 && strstr(pem, "-----BEGIN CERTIFICATE-----") == nullptr) return false;
-    free(dfCa_);
-    dfCa_ = nullptr;
+
+    // Build the replacement first, then swap under the lock. The screen client
+    // reads dfCa_ from another task; freeing it out from under a live read was a
+    // use-after-free, so the old buffer is not freed until the pointer no longer
+    // points at it. copyServerCert() takes the same lock.
+    char *next = nullptr;
     if (n > 0) {
-        dfCa_ = static_cast<char *>(malloc(n + 1));
-        if (dfCa_ == nullptr) return false;
-        memcpy(dfCa_, pem, n + 1);
+        next = static_cast<char *>(malloc(n + 1));
+        if (next == nullptr) return false;
+        memcpy(next, pem, n + 1);
     }
+    char *old = nullptr;
+    if (caLock_) xSemaphoreTake(caLock_, portMAX_DELAY);
+    old = dfCa_;
+    dfCa_ = next;
+    if (caLock_) xSemaphoreGive(caLock_);
+    free(old);
+
     g_prefs.putString(kKeyDfCa, pem);
     return true;
+}
+
+size_t Config::copyServerCert(char *dst, size_t cap) const {
+    if (dst == nullptr || cap == 0) return 0;
+    if (caLock_) xSemaphoreTake(caLock_, portMAX_DELAY);
+    size_t n = 0;
+    if (dfCa_ != nullptr) {
+        n = strlen(dfCa_);
+        if (n > cap - 1) n = cap - 1;
+        memcpy(dst, dfCa_, n);
+    }
+    dst[n] = '\0';
+    if (caLock_) xSemaphoreGive(caLock_);
+    return n;
 }
 
 bool Config::setDeskflowTls(bool on) {

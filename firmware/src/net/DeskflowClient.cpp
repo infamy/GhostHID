@@ -131,9 +131,12 @@ bool DeskflowClient::readExactly(uint8_t *dst, size_t len, uint32_t timeoutMs) {
     size_t got = 0;
     while (got < len) {
         if (!sock_->connected()) return false;
+        // Hard total deadline, checked every pass. Previously it was only tested
+        // on a zero-length read, so a peer dribbling one byte at a time could
+        // hold this task - and any key it was holding - indefinitely.
+        if (millis() - start > timeoutMs) return false;
         const int n = sock_->read(dst + got, len - got);
         if (n > 0) { got += n; continue; }
-        if (millis() - start > timeoutMs) return false;
         delay(1);
     }
     return true;
@@ -150,12 +153,17 @@ bool DeskflowClient::readMessage(uint8_t *buf, size_t cap, size_t &outLen) {
 
     if (len > cap) {
         // Almost certainly a clipboard transfer. We have no clipboard to offer,
-        // so drain it rather than dropping the connection over it.
-        uint8_t sink[64];
+        // so drain it rather than dropping the connection over it. Drain into the
+        // caller's full buffer, not a 64-byte sink: Barrier resends the whole
+        // clipboard every time focus enters this screen, and draining tens of KB
+        // 64 bytes at a time blocked this task long enough (tens of ms) that
+        // incoming data piled up in lwIP and the largest heap block collapsed,
+        // killing the session. cap (512) bytes per read is 8x fewer iterations
+        // and reuses memory already on the stack.
         uint32_t left = len;
         while (left > 0) {
-            const size_t chunk = left < sizeof(sink) ? left : sizeof(sink);
-            if (!readExactly(sink, chunk, 2000)) { disconnect("drain failed"); return false; }
+            const size_t chunk = left < cap ? left : cap;
+            if (!readExactly(buf, chunk, 2000)) { disconnect("drain failed"); return false; }
             left -= chunk;
         }
         outLen = 0;
@@ -399,25 +407,42 @@ void DeskflowClient::disconnect(const char *why) {
     haveAbs_ = false;
     relDx_ = relDy_ = 0;
     if (sock_) sock_->stop();
+    // Free the session's private copy of the CA PEM now the socket is gone.
+    free(caCopy_);
+    caCopy_ = nullptr;
     state_ = State::Idle;
     lastAttemptMs_ = millis();
 }
 
+// suspend()/reconnect() run on the *network* task. They must not touch the
+// socket or TLS state, which this client's own task is reading - a cross-task
+// sock_->stop() frees the mbedTLS contexts (and the two TlsArena blocks) out
+// from under a live handshake. So they only raise a flag; serviceOnce() acts on
+// it on this task.
 void DeskflowClient::suspend() {
-    if (state_ != State::Idle) disconnect("suspended for a firmware update");
-    // Long backoff so it does not race the update for memory.
-    backoffMs_ = 60000;
-    lastAttemptMs_ = millis();
+    suspendReq_ = true;
 }
 
 void DeskflowClient::reconnect() {
-    if (state_ != State::Idle) disconnect("settings changed");
-    lastError_[0] = '\0';
-    backoffMs_ = 0;          // retry at once rather than serving out a backoff
-    lastAttemptMs_ = 0;
+    reconnectReq_ = true;
 }
 
 void DeskflowClient::serviceOnce() {
+    // Act on cross-task requests here, on our own task, before anything else.
+    if (suspendReq_) {
+        suspendReq_ = false;
+        if (state_ != State::Idle) disconnect("suspended for a firmware update");
+        backoffMs_ = 60000;     // long, so it does not race an update for memory
+        lastAttemptMs_ = millis();
+    }
+    if (reconnectReq_) {
+        reconnectReq_ = false;
+        if (state_ != State::Idle) disconnect("settings changed");
+        lastError_[0] = '\0';
+        backoffMs_ = 0;         // retry at once rather than serving out a backoff
+        lastAttemptMs_ = 0;
+    }
+
     if (!config_.deskflowEnabled()) {
         if (state_ != State::Idle) disconnect("");
         return;
@@ -449,13 +474,28 @@ void DeskflowClient::serviceOnce() {
             // Pinning the server's certificate keeps verification on, which is
             // both what makes mutual TLS work and the trust model this protocol
             // uses in the first place.
-            if (config_.deskflowServerCert()[0] == '\0') {
+            // Take a private copy of the pinned CA under Config's lock. mbedTLS
+            // reads this buffer throughout the handshake; a set_config on the
+            // network task replacing Config's own buffer mid-parse was a
+            // use-after-free. Freed on disconnect.
+            free(caCopy_);
+            caCopy_ = static_cast<char *>(malloc(4001));
+            if (caCopy_ == nullptr) {
                 snprintf(lastError_, sizeof(lastError_),
-                         "server certificate not set - paste the server's PEM in settings");
+                         "out of memory for the server certificate");
                 backoffMs_ = 30000;
                 return;
             }
-            tls_.setCACert(config_.deskflowServerCert());
+            config_.copyServerCert(caCopy_, 4001);
+            if (caCopy_[0] == '\0') {
+                snprintf(lastError_, sizeof(lastError_),
+                         "server certificate not set - paste the server's PEM in settings");
+                free(caCopy_);
+                caCopy_ = nullptr;
+                backoffMs_ = 30000;
+                return;
+            }
+            tls_.setCACert(caCopy_);
             tls_.setCertificate(identity_.certificatePem());
             tls_.setPrivateKey(identity_.privateKeyPem());
             tls_.setTimeout(12);
@@ -481,11 +521,11 @@ void DeskflowClient::serviceOnce() {
                 return;
             }
             char cn[64] = {};
-            const bool haveCn = commonNameOf(config_.deskflowServerCert(), cn, sizeof(cn));
+            const bool haveCn = commonNameOf(caCopy_, cn, sizeof(cn));
             tls_.setTimeout(12);
             ok = tls_.connect(addr, config_.deskflowPort(),
                               haveCn ? cn : config_.deskflowHost(),
-                              config_.deskflowServerCert(),
+                              caCopy_,
                               identity_.certificatePem(),
                               identity_.privateKeyPem());
             if (!ok && haveCn) {
@@ -558,6 +598,17 @@ void DeskflowClient::serviceOnce() {
     // difference between tracking the pointer and chasing it.
     flushPointer();
 
+    // Held-input backstop. If something is down and the server has gone silent
+    // (a crash, a power cut, Wi-Fi loss - no TCP FIN), release it well before
+    // the 15s keep-alive timeout below would. Keep-alive traffic normally keeps
+    // lastTrafficMs_ fresh, so this only fires when the server is genuinely gone.
+    if (state_ == State::Active && hid_.anythingHeld() &&
+        millis() - lastTrafficMs_ > GHOSTHID_KVM_HELD_TIMEOUT_MS) {
+        Serial.println("[deskflow] server silent while input held - releasing all");
+        hid_.releaseAll();
+        heldByButtonCount_ = 0;
+    }
+
     // The server sends keep-alives; prolonged silence means the link is dead
     // even though TCP has not noticed yet.
     if (state_ == State::Active && millis() - lastTrafficMs_ > 15000) {
@@ -606,8 +657,30 @@ void DeskflowClient::run() {
     // cadence reads as smooth motion, a varying one reads as stepping even at
     // the same average rate.
     TickType_t last = xTaskGetTickCount();
+    uint32_t statAt = 0, nMovePrev = 0;
+    uint32_t worstPassUs = 0;
     for (;;) {
+        const uint32_t t0 = micros();
         serviceOnce();
+        const uint32_t dt = micros() - t0;
+        if (dt > worstPassUs) worstPassUs = dt;
+
+        // TEMP diagnostic: watch what changes as sustained mouse motion "goes
+        // downhill". Every 2s over serial (non-blocking): heap, this task's
+        // stack headroom, the DMMV rate, refused HID reports, and the slowest
+        // serviceOnce pass in the window. A leak shows as falling heap; USB
+        // backpressure as rising drop / worst-pass; a backlog as a low move rate.
+        const uint32_t now = millis();
+        if (now - statAt > 2000) {
+            Serial.printf("[stat] heap=%u/%u kb stack=%u move/s=%u drop=%u worstpass=%uus state=%d\r\n",
+                          (unsigned)(ESP.getFreeHeap() / 1024),
+                          (unsigned)(ESP.getMaxAllocHeap() / 1024),
+                          (unsigned)uxTaskGetStackHighWaterMark(nullptr),
+                          (unsigned)((nMove_ - nMovePrev) / 2),
+                          (unsigned)hid_.droppedReports(),
+                          (unsigned)worstPassUs, (int)state_);
+            statAt = now; nMovePrev = nMove_; worstPassUs = 0;
+        }
         vTaskDelayUntil(&last, 1);     // one tick, and it does not drift
     }
 }

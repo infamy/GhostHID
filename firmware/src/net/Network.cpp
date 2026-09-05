@@ -36,8 +36,10 @@ void onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *client,
     switch (type) {
         case WS_EVT_CONNECT:
             // One controller at a time. A second connection would let two
-            // peers fight over the same held-key state.
-            if (!g_network->acquireClientSlot()) {
+            // peers fight over the same held-key state. Refuse it here, before
+            // adopting it as the session: its later disconnect must not touch
+            // the owner's state (see WS_EVT_DISCONNECT).
+            if (!g_network->acquireClientSlot(client->id())) {
                 client->close(1013, "busy");
                 return;
             }
@@ -52,7 +54,17 @@ void onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *client,
 
         case WS_EVT_DISCONNECT:
         case WS_EVT_ERROR:
-            g_network->releaseClientSlot();
+            // Only the owning controller's disconnect releases input and ends
+            // the session. A refused second connection (a new tab, or a browser
+            // reconnect racing its own close) also fires this event; acting on
+            // it would drop every held key on the target and de-authenticate
+            // the live controller.
+            if (!g_network->isClientOwner(client->id())) {
+                Serial.printf("[ws] ignoring disconnect of non-owner client %u\r\n",
+                              client->id());
+                break;
+            }
+            g_network->releaseClientSlot(client->id());
             // Immediate release on a clean close; the watchdog only has to
             // cover abrupt link loss, where no event ever arrives.
             g_processor->endSession();
@@ -61,12 +73,20 @@ void onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *client,
             break;
 
         case WS_EVT_DATA: {
+            // Ignore anything from a client we refused: it is not the session.
+            if (!g_network->isClientOwner(client->id())) return;
             AwsFrameInfo *info = static_cast<AwsFrameInfo *>(arg);
             if (info->opcode != WS_TEXT || !info->final || info->index != 0 ||
                 info->len != len) {
                 return;  // ignore fragmented/binary frames for now
             }
-            char response[512];
+            // 1KB, not 512: get_config with a long screen-client error string
+            // and a fingerprint runs to ~650 bytes, and status to ~530. At 512
+            // vsnprintf truncated them into JSON with no closing brace, so the
+            // browser threw on parse every poll - worst exactly when the device
+            // had a TLS error to report. This is on the async_tcp stack, which
+            // has headroom for it.
+            char response[1024];
             g_processor->handleMessage(reinterpret_cast<const char *>(data), len,
                                        response, sizeof(response));
             // Only reply when the processor produced something: key and mouse
@@ -91,19 +111,26 @@ void onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *client,
 // untouched - retry and nothing is lost.
 // ---------------------------------------------------------------------------
 
-const char *g_otaError = nullptr;
-bool        g_otaBegun = false;
-bool        g_otaReplied = false;   // a response was already sent from onOtaBody
+// Owned storage, not a borrowed pointer. This used to be a `const char *` that
+// some call sites set to a `char[]` living on the body handler's stack; by the
+// time onOtaDone read it in a later callback, that frame was long gone and the
+// async task had reused the memory - a dangling read that printed garbage or
+// crashed. Copying into a fixed buffer removes the lifetime problem entirely.
+char g_otaError[128] = {};
+bool g_otaFailed  = false;          // an error was recorded for this upload
+bool g_otaBegun   = false;
+bool g_otaReplied = false;          // a response was already sent from onOtaBody
 
 // Ends the request from inside the body handler. Without this we would keep
 // accepting an 800KB upload we have already decided to reject, and the client
 // sees a reset connection rather than the reason.
 void otaFail(AsyncWebServerRequest *request, int code, const char *why) {
-    g_otaError = why;
+    snprintf(g_otaError, sizeof(g_otaError), "%s", why);
+    g_otaFailed = true;
     if (g_otaReplied) return;
     g_otaReplied = true;
     request->send(code, "application/json",
-                  String("{\"type\":\"error\",\"error\":\"") + why + "\"}");
+                  String("{\"type\":\"error\",\"error\":\"") + g_otaError + "\"}");
 }
 
 // This endpoint installs arbitrary code on a device that types into someone's
@@ -127,8 +154,19 @@ bool otaContended() {
 
 void onOtaBody(AsyncWebServerRequest *request, uint8_t *data, size_t len,
                size_t index, size_t total) {
+    // Authorise before ANY side effect. The contention prologue - which
+    // disconnects the screen client and blocks the async task - used to run
+    // before this check, so an unauthenticated peer could drop the session and
+    // stall the web server just by POSTing. This endpoint installs code that
+    // types into the target; it must do nothing without the token.
+    if (!otaAuthorized(request)) {
+        otaFail(request, 401, "unauthorized");
+        return;
+    }
+
     if (index == 0) {
-        g_otaError = nullptr;
+        g_otaError[0] = '\0';
+        g_otaFailed = false;
         g_otaBegun = false;
         g_otaReplied = false;
 
@@ -144,16 +182,15 @@ void onOtaBody(AsyncWebServerRequest *request, uint8_t *data, size_t len,
         }
         if (otaContended()) {
             Serial.println("[ota] disconnecting the screen client to free memory");
-            g_deskflow->suspend();
-            delay(150);                 // let the socket close and buffers return
+            g_deskflow->suspend();      // raises a flag; its own task tears down
+            // Wait for that task to release the session and return its memory,
+            // rather than a blind delay. Bounded so the async task cannot hang.
+            const uint32_t until = millis() + 1500;
+            while (g_deskflow->busy() && millis() < until) delay(10);
         }
     }
 
-    if (!otaAuthorized(request)) {
-        otaFail(request, 401, "unauthorized");
-        return;
-    }
-    if (g_otaError != nullptr) return;   // already rejected; ignore the rest
+    if (g_otaFailed) return;   // already rejected; ignore the rest
 
     if (index == 0) {
 
@@ -205,7 +242,7 @@ void onOtaBody(AsyncWebServerRequest *request, uint8_t *data, size_t len,
 }
 
 void onOtaDone(AsyncWebServerRequest *request) {
-    if (g_otaError != nullptr) {
+    if (g_otaFailed) {
         if (g_otaBegun) Update.abort();
         g_processor->setLocked(false, nullptr);
         Serial.printf("[ota] failed: %s\r\n", g_otaError);
@@ -214,13 +251,20 @@ void onOtaDone(AsyncWebServerRequest *request) {
             request->send(400, "application/json",
                           String("{\"type\":\"error\",\"error\":\"") + g_otaError + "\"}");
         }
-        g_otaError = nullptr;
+        g_otaFailed = false;
         g_otaBegun = false;
         return;
     }
     if (!otaAuthorized(request)) {
         request->send(401, "application/json",
                       "{\"type\":\"error\",\"error\":\"unauthorized\"}");
+        return;
+    }
+    // An empty or bodyless POST never ran the body handler, so nothing was
+    // written and Update was never begun. Do not reboot on that - just say so.
+    if (!g_otaBegun) {
+        request->send(400, "application/json",
+                      "{\"type\":\"error\",\"error\":\"no firmware received\"}");
         return;
     }
     request->send(200, "application/json",
@@ -408,18 +452,23 @@ void Network::stopServers() {
     g_server.end();
     serversUp_ = false;
     clientCount_ = 0;
+    ownerId_ = 0;
     Serial.printf("[web] stopped; heap now %u free, %u largest\r\n",
                   (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMaxAllocHeap());
 }
 
-bool Network::acquireClientSlot() {
+bool Network::acquireClientSlot(uint32_t clientId) {
     if (clientCount_ > 0) return false;
     clientCount_++;
+    ownerId_ = clientId;
     return true;
 }
 
-void Network::releaseClientSlot() {
-    if (clientCount_ > 0) clientCount_--;
+void Network::releaseClientSlot(uint32_t clientId) {
+    if (clientCount_ > 0 && clientId == ownerId_) {
+        clientCount_--;
+        ownerId_ = 0;
+    }
 }
 
 void Network::loop() {

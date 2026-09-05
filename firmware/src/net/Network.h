@@ -45,11 +45,16 @@ public:
     const char *staAddress() const { return staIp_; }
     bool stationConnected() const { return staIp_[0] != '\0'; }
 
-    // Called by the WebSocket event callback. Returns false if the connection
-    // should be refused because a controller is already attached -- two peers
-    // sharing one held-key state would fight over it.
-    bool acquireClientSlot();
-    void releaseClientSlot();
+    // Called by the WebSocket event callback. acquireClientSlot returns false if
+    // a controller is already attached -- two peers sharing one held-key state
+    // would fight over it. The winning client's id is recorded so a *second*
+    // connection's later disconnect cannot release the first controller's keys
+    // or drop its session: only the owner's own disconnect does that.
+    bool acquireClientSlot(uint32_t clientId);
+    void releaseClientSlot(uint32_t clientId);
+    bool isClientOwner(uint32_t clientId) const {
+        return clientCount_ > 0 && clientId == ownerId_;
+    }
 
     bool apActive() const { return apActive_; }
 
@@ -66,6 +71,7 @@ private:
     char apIp_[16]  = {};
     char staIp_[16] = {};
     uint32_t clientCount_ = 0;
+    uint32_t ownerId_ = 0;        // id of the one accepted controller; 0 = none
     bool     apActive_ = false;
     bool     serversUp_ = false;
     uint32_t staStableSince_ = 0;
