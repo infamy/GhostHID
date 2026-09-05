@@ -23,6 +23,7 @@ constexpr char kKeyDfPort[]   = "df_port";
 constexpr char kKeyDfScreen[] = "df_screen";
 constexpr char kKeyDfW[]      = "df_w";
 constexpr char kKeyDfH[]      = "df_h";
+constexpr char kKeyDfTls[]    = "df_tls";
 
 Preferences g_prefs;
 
@@ -63,6 +64,7 @@ void Config::begin() {
     if (dfScreen_[0] == '\0') snprintf(dfScreen_, sizeof(dfScreen_), "%s", name_);
     dfWidth_  = g_prefs.getUShort(kKeyDfW, 1920);
     dfHeight_ = g_prefs.getUShort(kKeyDfH, 1080);
+    dfTls_    = g_prefs.getBool(kKeyDfTls, true);
 
     // A stored AP password that fails validation would bring the AP up open.
     // Fall back rather than do that.
@@ -139,6 +141,12 @@ bool Config::setDeskflowScreenSize(uint16_t w, uint16_t h) {
     dfWidth_ = w; dfHeight_ = h;
     g_prefs.putUShort(kKeyDfW, w);
     g_prefs.putUShort(kKeyDfH, h);
+    return true;
+}
+
+bool Config::setDeskflowTls(bool on) {
+    dfTls_ = on;
+    g_prefs.putBool(kKeyDfTls, on);
     return true;
 }
 

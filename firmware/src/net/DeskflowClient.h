@@ -18,6 +18,9 @@
 
 #include <WiFi.h>
 #include <WiFiClient.h>
+#include <WiFiClientSecure.h>
+
+#include "DeviceIdentity.h"
 #include <stdint.h>
 
 namespace ghosthid {
@@ -43,6 +46,10 @@ public:
     // are actually talking to rather than guessing at the family.
     const char *serverName() const { return serverName_; }
 
+    // This device's TLS fingerprint. The server records it on first connection
+    // and matches it thereafter, so it is worth showing the user.
+    const char *fingerprint() const { return identity_.fingerprint(); }
+
     // Compact state for the heartbeat: 0 off, 1 connecting, 2 connected,
     // 3 connected and holding the pointer.
     uint8_t stateCode() const;
@@ -65,7 +72,14 @@ private:
 
     HidDevice &hid_;
     Config    &config_;
-    WiFiClient sock_;
+    // Deskflow, Barrier and Synergy all enable TLS by default, with a
+    // self-signed certificate the user accepts by fingerprint. Both transports
+    // are kept because some deployments turn encryption off, and `sock_` points
+    // at whichever is in use.
+    DeviceIdentity    identity_;
+    WiFiClient        plain_;
+    WiFiClientSecure  tls_;
+    Client           *sock_ = nullptr;
 
     State    state_ = State::Idle;
     bool     hasFocus_ = false;

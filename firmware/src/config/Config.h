@@ -57,11 +57,14 @@ public:
     const char *deskflowScreen()  const { return dfScreen_; }
     uint16_t    deskflowWidth()   const { return dfWidth_; }
     uint16_t    deskflowHeight()  const { return dfHeight_; }
+    // Deskflow/Barrier/Synergy ship with encryption on, so this defaults true.
+    bool        deskflowTls()     const { return dfTls_; }
 
     bool setDeskflowServer(const char *host, uint16_t port);
     bool setDeskflowScreen(const char *name);
     bool setDeskflowScreenSize(uint16_t w, uint16_t h);
     bool setDeskflowEnabled(bool on);
+    bool setDeskflowTls(bool on);
 
     // Setters persist immediately. Each returns false and changes nothing if
     // the value is invalid, so a bad edit over the network cannot brick the
@@ -99,6 +102,7 @@ private:
     char     dfScreen_[32] = {};
     uint16_t dfWidth_      = 1920;
     uint16_t dfHeight_     = 1080;
+    bool     dfTls_        = true;
     bool rebootPending_ = false;
 };
 

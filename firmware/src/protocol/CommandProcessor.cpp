@@ -219,7 +219,8 @@ CommandResult CommandProcessor::handleMessage(const char *json, size_t len,
               "\"ap_always\":%s,\"reboot_pending\":%s,"
               "\"kvm_on\":%s,\"kvm_host\":\"%s\",\"kvm_port\":%u,"
               "\"kvm_screen\":\"%s\",\"kvm_w\":%u,\"kvm_h\":%u,"
-              "\"kvm_state\":\"%s\",\"kvm_server\":\"%s\"}",
+              "\"kvm_state\":\"%s\",\"kvm_server\":\"%s\","
+              "\"kvm_tls\":%s,\"kvm_fp\":\"%s\"}",
               config_.staSsid(),
               config_.staPassword()[0] ? "true" : "false",
               config_.authToken()[0]   ? "true" : "false",
@@ -233,7 +234,9 @@ CommandResult CommandProcessor::handleMessage(const char *json, size_t len,
               (unsigned)config_.deskflowWidth(),
               (unsigned)config_.deskflowHeight(),
               deskflow_ ? deskflow_->statusText() : "unknown",
-              deskflow_ ? deskflow_->serverName() : "");
+              deskflow_ ? deskflow_->serverName() : "",
+              config_.deskflowTls() ? "true" : "false",
+              deskflow_ ? deskflow_->fingerprint() : "");
         return CommandResult::Ok;
     }
 
@@ -279,6 +282,10 @@ CommandResult CommandProcessor::handleMessage(const char *json, size_t len,
             const uint16_t h = (uint16_t)(doc["kvm_h"] | (int)config_.deskflowHeight());
             if (!config_.setDeskflowScreenSize(w, h)) err = "screen size out of range";
             else kvmChanged = true;
+        }
+        if (!err && doc["kvm_tls"].is<bool>()) {
+            config_.setDeskflowTls(doc["kvm_tls"].as<bool>());
+            kvmChanged = true;
         }
         if (!err && doc["kvm_on"].is<bool>()) {
             const bool on = doc["kvm_on"].as<bool>();

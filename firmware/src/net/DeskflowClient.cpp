@@ -93,8 +93,8 @@ bool DeskflowClient::readExactly(uint8_t *dst, size_t len, uint32_t timeoutMs) {
     const uint32_t start = millis();
     size_t got = 0;
     while (got < len) {
-        if (!sock_.connected()) return false;
-        const int n = sock_.read(dst + got, len - got);
+        if (!sock_->connected()) return false;
+        const int n = sock_->read(dst + got, len - got);
         if (n > 0) { got += n; continue; }
         if (millis() - start > timeoutMs) return false;
         delay(1);
@@ -103,7 +103,7 @@ bool DeskflowClient::readExactly(uint8_t *dst, size_t len, uint32_t timeoutMs) {
 }
 
 bool DeskflowClient::readMessage(uint8_t *buf, size_t cap, size_t &outLen) {
-    if (sock_.available() < 4) return false;
+    if (sock_->available() < 4) return false;
 
     uint8_t hdr[4];
     if (!readExactly(hdr, 4, 500)) { disconnect("truncated length"); return false; }
@@ -133,9 +133,9 @@ bool DeskflowClient::readMessage(uint8_t *buf, size_t cap, size_t &outLen) {
 void DeskflowClient::sendMessage(const uint8_t *payload, size_t len) {
     uint8_t hdr[4];
     wr32(hdr, (uint32_t)len);
-    sock_.write(hdr, 4);
-    sock_.write(payload, len);
-    sock_.flush();
+    sock_->write(hdr, 4);
+    sock_->write(payload, len);
+    sock_->flush();
 }
 
 void DeskflowClient::sendCode(const char *code) {
@@ -209,6 +209,7 @@ void DeskflowClient::dispatch(const uint8_t *m, size_t len) {
     if (is(m, len, "DSOP")) { return; }                     // options: nothing to set
     if (is(m, len, "DCLP")) { return; }                     // no clipboard on a HID device
     if (is(m, len, "CSEC")) { return; }                     // screensaver
+    if (is(m, len, "LSYN")) { return; }                     // language sync (1.8+)
 
     if (is(m, len, "CINN")) {                               // pointer entered this screen
         if (len >= 12) {
@@ -280,7 +281,14 @@ void DeskflowClient::dispatch(const uint8_t *m, size_t len) {
 
     if (is(m, len, "CBYE")) { disconnect("server closed the session"); return; }
     if (is(m, len, "EBSY")) { disconnect("screen name already in use"); return; }
-    if (is(m, len, "EUNK")) { disconnect("server does not know this screen name"); return; }
+    if (is(m, len, "EUNK")) {
+        // The commonest setup mistake, so say what to do about it.
+        char msg[80];
+        snprintf(msg, sizeof(msg), "server has no screen named '%s'", config_.deskflowScreen());
+        disconnect(msg);
+        backoffMs_ = 30000;     // no point retrying hard; this needs a human
+        return;
+    }
     if (is(m, len, "EBAD")) { disconnect("server reported a protocol violation"); return; }
     if (is(m, len, "EICV")) { disconnect("incompatible protocol version"); return; }
 }
@@ -294,7 +302,7 @@ void DeskflowClient::disconnect(const char *why) {
     }
     if (hasFocus_ || hid_.anythingHeld()) hid_.releaseAll();
     hasFocus_ = false;
-    sock_.stop();
+    if (sock_) sock_->stop();
     state_ = State::Idle;
     lastAttemptMs_ = millis();
 }
@@ -317,29 +325,59 @@ void DeskflowClient::loop() {
         if (millis() - lastAttemptMs_ < backoffMs_) return;
         lastAttemptMs_ = millis();
 
-        if (!sock_.connect(config_.deskflowHost(), config_.deskflowPort(), 4000)) {
-            snprintf(lastError_, sizeof(lastError_), "cannot reach %s:%u",
-                     config_.deskflowHost(), (unsigned)config_.deskflowPort());
+        // Pick the transport before connecting. The certificate is self-signed
+        // and identified by fingerprint in this protocol's own model, so chain
+        // verification is not applicable - setInsecure() is the correct
+        // behaviour here rather than a shortcut.
+        if (config_.deskflowTls()) {
+            // These servers require MUTUAL TLS: without a client certificate
+            // the handshake is refused with "certificate required" and nothing
+            // further happens, which looks exactly like the server ignoring us.
+            if (!identity_.begin(config_.deskflowScreen())) {
+                snprintf(lastError_, sizeof(lastError_), "could not create a TLS identity");
+                backoffMs_ = 30000;
+                return;
+            }
+            // The server's certificate is self-signed and trusted by
+            // fingerprint, not by a chain, so verification does not apply.
+            tls_.setInsecure();
+            tls_.setCertificate(identity_.certificatePem());
+            tls_.setPrivateKey(identity_.privateKeyPem());
+            tls_.setTimeout(12);
+            sock_ = &tls_;
+        } else {
+            sock_ = &plain_;
+        }
+
+        const bool ok = config_.deskflowTls()
+            ? tls_.connect(config_.deskflowHost(), config_.deskflowPort(), 8000)
+            : plain_.connect(config_.deskflowHost(), config_.deskflowPort(), 4000);
+        if (!ok) {
+            snprintf(lastError_, sizeof(lastError_), "cannot reach %s:%u%s",
+                     config_.deskflowHost(), (unsigned)config_.deskflowPort(),
+                     config_.deskflowTls() ? " (TLS)" : "");
             // Back off up to 30s so a wrong address does not hammer the network.
             backoffMs_ = backoffMs_ < 30000 ? backoffMs_ * 2 : 30000;
             return;
         }
-        sock_.setNoDelay(true);
+        if (!config_.deskflowTls()) plain_.setNoDelay(true);
         state_ = State::Handshaking;
         lastTrafficMs_ = millis();
-        Serial.printf("[deskflow] connected to %s:%u\r\n",
-                      config_.deskflowHost(), (unsigned)config_.deskflowPort());
+        Serial.printf("[deskflow] connected to %s:%u%s\r\n",
+                      config_.deskflowHost(), (unsigned)config_.deskflowPort(),
+                      config_.deskflowTls() ? " over TLS" : "");
         return;
     }
 
-    if (!sock_.connected()) { disconnect("connection lost"); return; }
+    if (sock_ == nullptr) { state_ = State::Idle; return; }
+    if (!sock_->connected()) { disconnect("connection lost"); return; }
 
     uint8_t buf[kMaxMessage];
     size_t len = 0;
     // Drain everything queued: input arrives in bursts and leaving messages
     // waiting a loop iteration each would add visible lag.
     int guard = 32;
-    while (guard-- > 0 && sock_.available() >= 4) {
+    while (guard-- > 0 && sock_->available() >= 4) {
         if (!readMessage(buf, sizeof(buf), len)) return;
         if (len == 0) continue;                     // drained an oversized message
         if (state_ == State::Handshaking) handshake(buf, len);

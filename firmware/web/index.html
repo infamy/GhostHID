@@ -318,6 +318,21 @@ td code{white-space:normal}
         The server addresses this screen in that coordinate space, so a wrong value
         puts the pointer in the wrong place.
       </p>
+      <label>Encryption</label>
+      <div class="row">
+        <button id="k_tls_on" class="grow">TLS (default)</button>
+        <button id="k_tls_off" class="grow">Plaintext</button>
+      </div>
+      <p class="hint">
+        Deskflow, Barrier and Synergy enable encryption by default and require the
+        client to present its own certificate. GhostHID generates one on first use
+        and keeps it, so the server recognises the same device each time. The first
+        connection registers this fingerprint with the server; check it matches
+        what the server shows before approving.
+      </p>
+      <div id="k_fp" style="font-family:var(--mono);font-size:10px;color:var(--dim);
+           word-break:break-all;margin-top:6px"></div>
+
       <div class="row" style="margin-top:10px">
         <button id="k_on" class="grow">Enable</button>
         <button id="k_off" class="grow">Disable</button>
@@ -672,6 +687,8 @@ function connect(){
         fill("#k_h",      m.kvm_h);
         setKvm(!!m.kvm_on);
         if(m.kvm_server) kvmServerName=m.kvm_server;
+        setKvmTls(m.kvm_tls!==false);
+        $("#k_fp").textContent = m.kvm_fp ? ("this device's fingerprint: "+m.kvm_fp) : "";
         $("#k_state").textContent = (m.kvm_on?"enabled — ":"disabled — ")+(m.kvm_state||"");
       }
       $("#a_ap").textContent = m.ap_always!==false
@@ -970,11 +987,19 @@ function setKvm(v){
   $("#k_on").classList.toggle("on",v);
   $("#k_off").classList.toggle("on",!v);
 }
+var kvmTls=true;
+function setKvmTls(v){
+  kvmTls=v;
+  $("#k_tls_on").classList.toggle("on",v);
+  $("#k_tls_off").classList.toggle("on",!v);
+}
+$("#k_tls_on").onclick =function(){ setKvmTls(true);  saveKvm(); };
+$("#k_tls_off").onclick=function(){ setKvmTls(false); saveKvm(); };
 $("#k_on").onclick =function(){ setKvm(true);  saveKvm(); };
 $("#k_off").onclick=function(){ setKvm(false); saveKvm(); };
 $("#k_save").onclick=saveKvm;
 function saveKvm(){
-  var m={type:"set_config", kvm_on:kvmOn};
+  var m={type:"set_config", kvm_on:kvmOn, kvm_tls:kvmTls};
   if($("#k_host").value)   m.kvm_host  =$("#k_host").value.trim();
   if($("#k_port").value)   m.kvm_port  =parseInt($("#k_port").value,10);
   if($("#k_screen").value) m.kvm_screen=$("#k_screen").value.trim();
