@@ -52,13 +52,30 @@ uint32_t g_blActivity = 0;
 
 void blSet(uint8_t duty) { ledcWrite(PIN_BL, duty); }
 
-void line(int16_t y, const char *label, const char *value, uint16_t vc) {
-    tft.setTextSize(1);
+// One labelled line at the given text size (2 = 12x16 px, readable on a 1.47").
+void line(int16_t y, const char *label, const char *value, uint16_t vc, uint8_t size = 2) {
+    tft.setTextSize(size);
     tft.setCursor(8, y);
     tft.setTextColor(C_GREY);
     tft.print(label);
     tft.setTextColor(vc);
     tft.print(value);
+}
+
+// The GhostHID mark: a rounded dome, scalloped "feet", two eyes - the favicon,
+// drawn with primitives so there's no bitmap to embed. (x,y) is the top-left.
+void drawGhost(int x, int y, int w, int h, uint16_t col, uint16_t bg) {
+    const int r = w / 2;
+    tft.fillRoundRect(x, y, w, h, r, col);   // rounded top...
+    tft.fillRect(x, y + h - r, w, r, col);   // ...square lower body
+    // Scalloped bottom: carve background semicircles for the ghost's feet.
+    const int n = 3, sw = w / n;
+    for (int i = 0; i < n; ++i)
+        tft.fillCircle(x + sw / 2 + i * sw, y + h, sw / 2 + 1, bg);
+    // Eyes.
+    const int ew = w / 6, eh = h / 4, ey = y + h / 3;
+    tft.fillRect(x + w / 3 - ew / 2,     ey, ew, eh, bg);
+    tft.fillRect(x + 2 * w / 3 - ew / 2, ey, ew, eh, bg);
 }
 
 // A small dot marking the physical BOOT button (bottom-right, where it sits) so
@@ -117,90 +134,76 @@ int Display::drawQr(int x, int y, int scale, const char *text) {
 }
 
 void Display::drawStatusPage(const DisplayStatus &s) {
-    tft.setTextSize(2);
+    // Header: ghost logo + wordmark. The join QR lives on its own page (BOOT to
+    // cycle); this screen is the brand + operational status.
+    drawGhost(8, 6, 34, 40, C_CYAN, C_BG);
+    tft.setTextSize(3);
     tft.setTextColor(C_CYAN);
-    tft.setCursor(8, 6);
-    tft.print(s.deviceName && s.deviceName[0] ? s.deviceName : "GhostHID");
-    tft.drawFastHLine(8, 26, 180, C_LINE);
+    tft.setCursor(52, 14);
+    tft.print("GhostHID");
+    tft.drawFastHLine(6, 50, SCR_W - 12, C_LINE);
 
-    int16_t y = 38;
-    const int16_t dy = 17;
-    line(y, "USB  ", s.usbReady ? "ready" : "not ready", s.usbReady ? C_GREEN : C_RED); y += dy;
+    int16_t y = 58;
+    const int16_t dy = 24;
+    line(y, "USB ", s.usbReady ? "ready" : "no", s.usbReady ? C_GREEN : C_RED); y += dy;
 
     const bool kvmOff = !s.kvmState || strcmp(s.kvmState, "off") == 0;
     const bool kvmConn = s.kvmState && strcmp(s.kvmState, "connected") == 0;
-    line(y, "KVM  ", kvmOff ? "off" : s.kvmState,
+    line(y, "KVM ", kvmOff ? "off" : s.kvmState,
          kvmOff ? C_GREY : (kvmConn ? (s.kvmFocus ? C_GREEN : C_CYAN) : C_AMBER)); y += dy;
 
-    line(y, "STA  ", (s.staIp && s.staIp[0]) ? s.staIp : "(AP only)",
+    line(y, "net ", (s.staIp && s.staIp[0]) ? s.staIp : "AP only",
          (s.staIp && s.staIp[0]) ? C_WHITE : C_GREY); y += dy;
-    line(y, "AP   ", (s.apIp && s.apIp[0]) ? s.apIp : "-", C_WHITE); y += dy;
 
-    char c[24];
+    char c[28];
     snprintf(c, sizeof(c), "%d", s.clients);
-    line(y, "ctrl ", c, s.clients > 0 ? C_GREEN : C_GREY);
+    line(y, "ctl ", c, s.clients > 0 ? C_GREEN : C_GREY);
 
-    if (s.apSsid && s.apSsid[0]) {
-        char payload[96];
-        snprintf(payload, sizeof(payload), "WIFI:S:%s;T:WPA;P:%s;;",
-                 s.apSsid, s.apPass ? s.apPass : "");
-        const int qx = 214, qy = 34, scale = 3;
-        const int side = drawQr(qx, qy, scale, payload);
-        if (side > 0) {
-            tft.setTextSize(1);
-            tft.setTextColor(C_GREY);
-            tft.setCursor(qx - 4, qy + side + 8);
-            tft.print("scan: join AP");
-        }
-    }
     buttonHint("page");
 }
 
 void Display::drawQrPage(const DisplayStatus &s) {
-    tft.setTextSize(1);
+    tft.setTextSize(2);
     tft.setTextColor(C_CYAN);
-    tft.setCursor(8, 6);
-    tft.print("Scan to join this device's Wi-Fi");
+    tft.setCursor(8, 4);
+    tft.print("Join Wi-Fi");
 
     if (s.apSsid && s.apSsid[0]) {
         char payload[96];
         snprintf(payload, sizeof(payload), "WIFI:S:%s;T:WPA;P:%s;;",
                  s.apSsid, s.apPass ? s.apPass : "");
-        // Bigger QR (version 4 = 33 modules, scale 4 = 132px) centred vertically.
-        const int scale = 4, qy = 30;
-        const int side = drawQr(20, qy, scale, payload);
-        (void)side;
+        // Version 4 (33 modules) x scale 4 = 132px on the left.
+        drawQr(8, 32, 4, payload);
     }
-    // SSID + password in clear on the right, for manual entry.
-    tft.setTextColor(C_GREY); tft.setTextSize(1);
-    tft.setCursor(176, 44); tft.print("SSID");
-    tft.setTextColor(C_WHITE); tft.setCursor(176, 56); tft.print(s.apSsid ? s.apSsid : "");
-    tft.setTextColor(C_GREY);  tft.setCursor(176, 82); tft.print("PASS");
-    tft.setTextColor(C_WHITE); tft.setCursor(176, 94); tft.print(s.apPass ? s.apPass : "");
+    // SSID + password in clear on the right, size 2, for manual entry.
+    tft.setTextSize(2);
+    tft.setTextColor(C_GREY);  tft.setCursor(150, 34);  tft.print("SSID");
+    tft.setTextColor(C_WHITE); tft.setCursor(150, 52);  tft.print(s.apSsid ? s.apSsid : "");
+    tft.setTextColor(C_GREY);  tft.setCursor(150, 90);  tft.print("PASS");
+    tft.setTextColor(C_WHITE); tft.setCursor(150, 108); tft.print(s.apPass ? s.apPass : "");
     buttonHint("page");
 }
 
 void Display::drawInfoPage(const DisplayStatus &s) {
-    tft.setTextSize(2);
+    tft.setTextSize(3);
     tft.setTextColor(C_CYAN);
     tft.setCursor(8, 6);
-    tft.print("GhostHID");
-    tft.drawFastHLine(8, 26, 180, C_LINE);
+    tft.print("Info");
+    tft.drawFastHLine(6, 36, SCR_W - 12, C_LINE);
 
-    int16_t y = 38;
-    const int16_t dy = 17;
+    int16_t y = 46;
+    const int16_t dy = 25;
     line(y, "ver  ", s.version && s.version[0] ? s.version : "?", C_WHITE); y += dy;
 
-    char b[24];
-    snprintf(b, sizeof(b), "%u KB", (unsigned)s.heapFreeKb);
+    char b[28];
+    snprintf(b, sizeof(b), "%uK", (unsigned)s.heapFreeKb);
     line(y, "heap ", b, s.heapFreeKb < 20 ? C_AMBER : C_WHITE); y += dy;
 
     const uint32_t up = s.uptimeSec;
-    snprintf(b, sizeof(b), "%uh %02um", (unsigned)(up / 3600), (unsigned)((up % 3600) / 60));
+    snprintf(b, sizeof(b), "%uh%02um", (unsigned)(up / 3600), (unsigned)((up % 3600) / 60));
     line(y, "up   ", b, C_WHITE); y += dy;
 
-    line(y, "STA  ", (s.staIp && s.staIp[0]) ? s.staIp : "(AP only)", C_WHITE); y += dy;
-    line(y, "AP   ", (s.apIp && s.apIp[0]) ? s.apIp : "-", C_WHITE);
+    line(y, "ip   ", (s.staIp && s.staIp[0]) ? s.staIp : "AP only", C_WHITE);
     buttonHint("page");
 }
 
