@@ -109,8 +109,9 @@ CommandResult CommandProcessor::handleMessage(const char *json, size_t len,
     // The pong carries USB state so the controller learns about a target that
     // slept or was unplugged without having to poll separately.
     if (strcmp(type, "ping") == 0) {
-        reply(outResponse, outSize, "{\"type\":\"pong\",\"usb\":%s}",
-              hid_.ready() ? "true" : "false");
+        reply(outResponse, outSize, "{\"type\":\"pong\",\"usb\":%s,\"kvm\":%u}",
+              hid_.ready() ? "true" : "false",
+              (unsigned)(deskflow_ ? deskflow_->stateCode() : 0));
         return CommandResult::Ok;
     }
 
@@ -218,7 +219,7 @@ CommandResult CommandProcessor::handleMessage(const char *json, size_t len,
               "\"ap_always\":%s,\"reboot_pending\":%s,"
               "\"kvm_on\":%s,\"kvm_host\":\"%s\",\"kvm_port\":%u,"
               "\"kvm_screen\":\"%s\",\"kvm_w\":%u,\"kvm_h\":%u,"
-              "\"kvm_state\":\"%s\"}",
+              "\"kvm_state\":\"%s\",\"kvm_server\":\"%s\"}",
               config_.staSsid(),
               config_.staPassword()[0] ? "true" : "false",
               config_.authToken()[0]   ? "true" : "false",
@@ -231,7 +232,8 @@ CommandResult CommandProcessor::handleMessage(const char *json, size_t len,
               config_.deskflowScreen(),
               (unsigned)config_.deskflowWidth(),
               (unsigned)config_.deskflowHeight(),
-              deskflow_ ? deskflow_->statusText() : "unknown");
+              deskflow_ ? deskflow_->statusText() : "unknown",
+              deskflow_ ? deskflow_->serverName() : "");
         return CommandResult::Ok;
     }
 

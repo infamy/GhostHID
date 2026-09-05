@@ -70,6 +70,12 @@ uint8_t keyIdToHid(uint16_t keyId) {
 
 }  // namespace
 
+uint8_t DeskflowClient::stateCode() const {
+    if (!config_.deskflowEnabled()) return 0;
+    if (state_ != State::Active)    return 1;
+    return hasFocus_ ? 3 : 2;
+}
+
 const char *DeskflowClient::statusText() const {
     switch (state_) {
         case State::Idle:        return lastError_[0] ? lastError_ : "not connected";

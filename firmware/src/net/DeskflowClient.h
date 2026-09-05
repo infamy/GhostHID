@@ -38,6 +38,15 @@ public:
     bool hasFocus() const { return hasFocus_; }
     const char *statusText() const;
 
+    // Whatever the server called itself in the handshake - "Synergy",
+    // "Barrier", "Deskflow". Shown in the UI so the badge names the thing you
+    // are actually talking to rather than guessing at the family.
+    const char *serverName() const { return serverName_; }
+
+    // Compact state for the heartbeat: 0 off, 1 connecting, 2 connected,
+    // 3 connected and holding the pointer.
+    uint8_t stateCode() const;
+
     // Drops any current session so the next loop() reconnects with whatever
     // settings are now stored. Called after the server details are edited.
     void reconnect();

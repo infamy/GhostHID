@@ -50,6 +50,12 @@ h1{font-size:14px;margin:0;font-weight:600;white-space:nowrap;letter-spacing:.04
      white-space:nowrap;flex:none}
 #usb.ok{color:var(--ok);border-color:var(--ok)}
 #usb.bad{color:var(--bad);border-color:var(--bad)}
+#kvm{font-size:10px;padding:3px 7px;border-radius:5px;border:1px solid var(--line);
+     white-space:nowrap;flex:none;color:var(--dim)}
+#kvm.wait{color:var(--warn);border-color:var(--warn)}
+#kvm.ok{color:var(--ok);border-color:var(--ok)}
+/* Holding the pointer is the state worth noticing, so it is the only filled one. */
+#kvm.focus{background:var(--ok);color:#02120a;border-color:var(--ok)}
 #panic{min-height:32px;padding:5px 10px;font-size:12px;flex:none;
        border-color:var(--warn);color:var(--warn)}
 #panic:hover{border-color:var(--warn)}
@@ -75,6 +81,7 @@ nav button.on:active{color:var(--accent);border-bottom:2px solid var(--accent)}
    duplicated in the dot's tooltip. */
 @media (max-width:600px){
   h1{display:none}
+  #kvm{display:none}
   #stat{display:none}
   nav{flex:1;margin-left:0}
   nav button{flex:1;padding:8px 4px}
@@ -162,6 +169,7 @@ td code{white-space:normal}
 
   <span id="stat">connecting…</span>
   <span id="usb" class="bad">USB&nbsp;?</span>
+  <span id="kvm" hidden></span>
   <button id="panic" title="Release every key and mouse button currently held down on the target">Release keys</button>
 </header>
 
@@ -573,6 +581,20 @@ function setState(ok,msg){
   stat.textContent=msg;
   dot.title=msg;                 // the only status indicator left on narrow screens
 }
+// 0 off, 1 connecting, 2 connected, 3 connected and holding the pointer.
+var kvmServerName = "";
+function setKvmBadge(code){
+  var el=$("#kvm");
+  if(code===0){ el.hidden=true; return; }
+  el.hidden=false;
+  var name = kvmServerName || "Synergy";
+  if(code===1){ el.className="wait"; el.textContent=name+" …"; }
+  else if(code===2){ el.className="ok"; el.textContent=name; }
+  else { el.className="focus"; el.textContent=name+" ●"; }
+  el.title = code===3 ? "This screen has the pointer"
+           : code===2 ? "Connected to the screen server, pointer is elsewhere"
+           : "Trying to reach the screen server";
+}
 function setUsb(ok){
   var el=$("#usb");
   el.textContent = ok===null?"USB ?":(ok?"USB ready":"USB not ready");
@@ -580,6 +602,24 @@ function setUsb(ok){
   $("#warn").classList.toggle("show", ok===false);
 }
 function send(o){ if(ws&&ws.readyState===1) ws.send(JSON.stringify(o)); }
+
+// Fill an input from the device WITHOUT stealing what someone is typing.
+// The settings tab polls for connection state every few seconds, and writing
+// every field on each poll wiped input mid-keystroke.
+function fill(sel, value){
+  var el = $(sel);
+  if (!el) return;
+  if (el === document.activeElement) return;   // being typed into right now
+  if (el.dataset.dirty === "1") return;        // edited but not yet saved
+  el.value = (value === undefined || value === null) ? "" : value;
+}
+// Mark a field dirty as soon as it is edited, and clean again once saved.
+document.addEventListener("input", function(e){
+  if (e.target && e.target.tagName === "INPUT") e.target.dataset.dirty = "1";
+}, true);
+function clearDirty(){
+  document.querySelectorAll("input").forEach(function(el){ el.dataset.dirty = "0"; });
+}
 
 $("#api-url").textContent = "ws://"+location.host+"/ws";
 $("#tok").value = localStorage.getItem("ghosthid.token") || "ghosthid";
@@ -605,6 +645,7 @@ function connect(){
   ws.onmessage=function(ev){
     var m; try{ m=JSON.parse(ev.data) }catch(e){ return }
     if(m.type==="pong") noteRtt();
+    if(typeof m.kvm==="number") setKvmBadge(m.kvm);
     if(typeof m.usb==="boolean"){
       setUsb(m.usb);
       $("#a_usb").textContent = m.usb
@@ -619,17 +660,18 @@ function connect(){
                 log("authenticated"); send({type:"get_config"}); }
       else { setState(false,"auth rejected"); log("auth rejected — check the token"); }
     } else if(m.type==="config"){
-      $("#c_ssid").value=m.sta_ssid||"";
-      $("#c_name").value=m.name||"";
+      fill("#c_ssid", m.sta_ssid);
+      fill("#c_name", m.name);
       $("#a_name").textContent=m.name||"—";
       setApMode(m.ap_always!==false);
       if(m.kvm_host!==undefined){
-        $("#k_host").value=m.kvm_host||"";
-        $("#k_port").value=m.kvm_port||24800;
-        $("#k_screen").value=m.kvm_screen||"";
-        $("#k_w").value=m.kvm_w||"";
-        $("#k_h").value=m.kvm_h||"";
+        fill("#k_host",   m.kvm_host);
+        fill("#k_port",   m.kvm_port || 24800);
+        fill("#k_screen", m.kvm_screen);
+        fill("#k_w",      m.kvm_w);
+        fill("#k_h",      m.kvm_h);
         setKvm(!!m.kvm_on);
+        if(m.kvm_server) kvmServerName=m.kvm_server;
         $("#k_state").textContent = (m.kvm_on?"enabled — ":"disabled — ")+(m.kvm_state||"");
       }
       $("#a_ap").textContent = m.ap_always!==false
@@ -638,6 +680,7 @@ function connect(){
       $("#c_stapass_set").textContent=m.sta_pass_set?"(set)":"(not set)";
       setReboot(!!m.reboot_pending);
     } else if(m.type==="config_saved"){
+      clearDirty();
       setReboot(!!m.reboot_required);
       $("#c_log").textContent = m.reboot_required
         ? "Saved. These settings need a reboot to take effect."
@@ -650,7 +693,7 @@ function connect(){
       if(/usb not ready/.test(m.error)) setUsb(false);
     }
   };
-  ws.onclose=function(){ setState(false,"disconnected"); setUsb(null);
+  ws.onclose=function(){ setState(false,"disconnected"); setUsb(null); $("#kvm").hidden=true;
                          retryTimer=setTimeout(connect,1200); };
   ws.onerror=function(){ setState(false,"connection error"); };
 }
