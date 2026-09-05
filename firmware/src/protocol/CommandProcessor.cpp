@@ -10,6 +10,7 @@
 #include "board_config.h"
 #include "config/Config.h"
 #include "net/DeskflowClient.h"
+#include "net/TlsArena.h"
 
 extern uint32_t g_heapAfterBoot, g_heapAfterWifi, g_heapAfterServer;
 extern bool g_bootComplete;
@@ -125,7 +126,7 @@ CommandResult CommandProcessor::handleMessage(const char *json, size_t len,
               "\"heap_boot\":%u,\"heap_wifi\":%u,\"heap_server\":%u,"
               "\"stack_main\":%u,\"stack_kvm\":%u,\"stack_async\":%u,"
               "\"n_move\":%u,\"n_key\":%u,\"n_btn\":%u,\"n_other\":%u,"
-              "\"last_unhandled\":\"%s\",\"last_key_raw\":\"%s\",\"last_keydown_raw\":\"%s\",\"last_other_raw\":\"%s\",\"hid_dropped\":%u}",
+              "\"last_unhandled\":\"%s\",\"last_key_raw\":\"%s\",\"last_keydown_raw\":\"%s\",\"last_other_raw\":\"%s\",\"hid_dropped\":%u,\"tls_reserved\":%u,\"tls_inuse\":%u}",
               GHOSTHID_VERSION, hid_.ready() ? "true" : "false",
               static_cast<unsigned>(hid_.heldKeyCount()),
               (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMaxAllocHeap(),
@@ -146,7 +147,9 @@ CommandResult CommandProcessor::handleMessage(const char *json, size_t len,
               deskflow_ ? deskflow_->lastKeyRaw() : "",
               deskflow_ ? deskflow_->lastKeyDownRaw() : "",
               deskflow_ ? deskflow_->lastOtherRaw() : "",
-              (unsigned)hid_.droppedReports());
+              (unsigned)hid_.droppedReports(),
+              (unsigned)TlsArena::reservedBytes(),
+              (unsigned)TlsArena::inUse());
         return CommandResult::Ok;
     }
 

@@ -17,6 +17,7 @@
 #include "config/SerialConsole.h"
 #include "hid/HidDevice.h"
 #include "net/DeskflowClient.h"
+#include "net/TlsArena.h"
 #include "net/Network.h"
 #include "protocol/CommandProcessor.h"
 
@@ -101,6 +102,15 @@ void setup() {
     config.begin();
     processor.attachDeskflow(&deskflow);
     network.attachDeskflow(&deskflow);
+
+    // Reserve the TLS buffers now, while the heap is still whole. Doing it
+    // later is the whole problem: once the web server has run, the largest
+    // free block is around 13KB and a 16KB request cannot be satisfied, so a
+    // dropped session could not reconnect without a reboot. Only reserved when
+    // TLS is actually going to be used, since it is permanent.
+    if (config.deskflowEnabled() && config.deskflowTls()) {
+        ghosthid::TlsArena::begin();
+    }
 
     hid.begin();
     const bool enumerated = hid.waitUntilReady(10000);
