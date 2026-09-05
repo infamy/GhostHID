@@ -120,12 +120,33 @@ bool otaAuthorized(AsyncWebServerRequest *request) {
     return false;
 }
 
+// True when something else is using enough memory that an update is risky.
+bool otaContended() {
+    return g_deskflow != nullptr && g_deskflow->connected();
+}
+
 void onOtaBody(AsyncWebServerRequest *request, uint8_t *data, size_t len,
                size_t index, size_t total) {
     if (index == 0) {
         g_otaError = nullptr;
         g_otaBegun = false;
         g_otaReplied = false;
+
+        // Refuse rather than compete. A TLS screen session holds ~34KB and an
+        // update needs a large contiguous buffer; attempting both at once took
+        // a device down mid-use. `force` accepts the trade explicitly, and then
+        // we free the memory ourselves rather than hoping.
+        if (otaContended() && !request->hasParam("force")) {
+            otaFail(request, 409,
+                    "the screen client is connected and an update needs the memory "
+                    "it is holding - retry with ?force=1 to disconnect it first");
+            return;
+        }
+        if (otaContended()) {
+            Serial.println("[ota] disconnecting the screen client to free memory");
+            g_deskflow->suspend();
+            delay(150);                 // let the socket close and buffers return
+        }
     }
 
     if (!otaAuthorized(request)) {
@@ -281,6 +302,24 @@ void Network::beginServers() {
     //   curl --data-binary @firmware.bin
     // works as well as the browser does.
     g_server.on("/api/ota", HTTP_POST, onOtaDone, nullptr, onOtaBody);
+
+    // Pre-flight: what is currently using memory, so a client can warn before
+    // sending 800KB rather than after.
+    g_server.on("/api/ota", HTTP_GET, [](AsyncWebServerRequest *request) {
+        if (!otaAuthorized(request)) {
+            request->send(401, "application/json",
+                          "{\"type\":\"error\",\"error\":\"unauthorized\"}");
+            return;
+        }
+        char body[220];
+        snprintf(body, sizeof(body),
+                 "{\"type\":\"ota_preflight\",\"screen_client\":%s,"
+                 "\"free\":%u,\"largest\":%u,\"safe\":%s}",
+                 otaContended() ? "true" : "false",
+                 (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMaxAllocHeap(),
+                 otaContended() ? "false" : "true");
+        request->send(200, "application/json", body);
+    });
 
     // The device's TLS certificate, for inspection or for a server that wants
     // it in advance. Token-gated: it is not secret, but it identifies the

@@ -81,6 +81,11 @@ public:
     // settings are now stored. Called after the server details are edited.
     void reconnect();
 
+    // Drops the session and stays down until re-enabled. Used before a firmware
+    // update: the session holds ~34KB and an update needs a large buffer, and
+    // the two together are what crashed a device mid-use.
+    void suspend();
+
 private:
     enum class State : uint8_t { Idle, Connecting, Handshaking, Active };
 

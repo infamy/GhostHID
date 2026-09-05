@@ -403,6 +403,13 @@ void DeskflowClient::disconnect(const char *why) {
     lastAttemptMs_ = millis();
 }
 
+void DeskflowClient::suspend() {
+    if (state_ != State::Idle) disconnect("suspended for a firmware update");
+    // Long backoff so it does not race the update for memory.
+    backoffMs_ = 60000;
+    lastAttemptMs_ = millis();
+}
+
 void DeskflowClient::reconnect() {
     if (state_ != State::Idle) disconnect("settings changed");
     lastError_[0] = '\0';

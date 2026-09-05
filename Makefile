@@ -158,12 +158,23 @@ flash-factory: $(ESPTOOL)
 ota:
 	@test -n "$(IP)" || { echo "IP is required, e.g. make ota IP=192.168.7.113 TOKEN=ghosthid"; exit 1; }
 	@test -f "$(APP_BIN)" || { echo "no firmware.bin - run 'make build' first"; exit 1; }
-	@echo "Uploading $$(du -h "$(APP_BIN)" | cut -f1) to $(IP)…"
-	@curl -sS --fail-with-body -X POST \
+	@# Ask what is using memory before sending the image. An update competing
+	@# with a live screen session is what crashed a device mid-use.
+	@busy=$$(curl -sS -m 10 -H "X-GhostHID-Token: $(TOKEN)" \
+		"http://$(IP)/api/ota" 2>/dev/null | grep -o '"screen_client":true' || true); \
+	if [ -n "$$busy" ] && [ -z "$(FORCE)" ]; then \
+		echo "The screen client is connected and is holding memory this update needs."; \
+		echo "It will reconnect after the reboot. To go ahead:"; \
+		echo "    make ota IP=$(IP) TOKEN=... FORCE=1"; \
+		exit 1; \
+	fi; \
+	q=""; [ -n "$$busy" ] && q="?force=1"; \
+	echo "Uploading $$(du -h "$(APP_BIN)" | cut -f1) to $(IP)…"; \
+	curl -sS --fail-with-body -X POST \
 		-H "Content-Type: application/octet-stream" \
 		-H "X-GhostHID-Token: $(TOKEN)" \
 		--data-binary "@$(APP_BIN)" \
-		"http://$(IP)/api/ota" && echo && echo "Device is rebooting."
+		"http://$(IP)/api/ota$$q" && echo && echo "Device is rebooting."
 
 monitor: $(ESPTOOL)
 	@test -n "$(PORT)" || { echo "PORT is required, e.g. make monitor PORT=/dev/cu.usbmodem01"; exit 1; }

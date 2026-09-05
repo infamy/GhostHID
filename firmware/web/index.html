@@ -723,8 +723,19 @@ function connect(){
       if(/usb not ready/.test(m.error)) setUsb(false);
     }
   };
-  ws.onclose=function(){ setState(false,"disconnected"); setUsb(null); $("#kvm").hidden=true;
-                         retryTimer=setTimeout(connect,1200); };
+  ws.onclose=function(ev){
+    setUsb(null); $("#kvm").hidden=true;
+    // 1013 is the device refusing a second controller. Retrying silently made
+    // that look like a flaky connection rather than a deliberate limit.
+    if(ev && ev.code===1013){
+      setState(false,"another controller is connected");
+      log("refused: only one controller at a time - close the other tab or client");
+      retryTimer=setTimeout(connect,4000);
+    } else {
+      setState(false,"disconnected");
+      retryTimer=setTimeout(connect,1200);
+    }
+  };
   ws.onerror=function(){ setState(false,"connection error"); };
 }
 // Heartbeat doubles as a latency probe, so the number in the bar is the real
@@ -1041,8 +1052,27 @@ $("#ota_go").onclick=function(){
                       "Upload firmware.bin, not ghosthid-merged.bin.";
       return;
     }
+    // Ask the device what is using memory before sending 800KB at it. An
+    // update competing with a live screen session is what took a device down.
+    var tok=encodeURIComponent($("#tok").value);
+    var pre=new XMLHttpRequest();
+    pre.open("GET","/api/ota?token="+tok,false);          // sync: this is a click handler
+    var force="";
+    try{
+      pre.send();
+      var p=JSON.parse(pre.responseText);
+      if(p.screen_client){
+        if(!confirm("The screen client is connected and is holding memory this "+
+                    "update needs.\n\nDisconnect it and continue? It will "+
+                    "reconnect after the device reboots.")){
+          out.textContent="Update cancelled."; return;
+        }
+        force="&force=1";
+      }
+    }catch(e){ /* pre-flight unavailable: carry on and let the POST decide */ }
+
     var xhr=new XMLHttpRequest();
-    xhr.open("POST","/api/ota?token="+encodeURIComponent($("#tok").value));
+    xhr.open("POST","/api/ota?token="+tok+force);
     xhr.upload.onprogress=function(e){
       if(e.lengthComputable){
         var pct=Math.round(e.loaded/e.total*100);
