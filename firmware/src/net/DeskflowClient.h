@@ -44,6 +44,21 @@ public:
     bool hasFocus() const { return hasFocus_; }
     const char *statusText() const;
 
+    // Counts of what the server actually sends. "Keyboard does nothing" and
+    // "keyboard messages never arrive" look identical from the outside.
+    uint32_t countMove()  const { return nMove_; }
+    uint32_t countKey()   const { return nKey_; }
+    uint32_t countBtn()   const { return nBtn_; }
+    uint32_t countOther() const { return nOther_; }
+    const char *lastUnhandled() const { return lastUnhandled_; }
+    // Raw hex of the last key message. Guessing at field offsets from a format
+    // string was wrong once already; this shows the actual bytes.
+    const char *lastKeyRaw() const { return lastKeyRaw_; }
+    const char *lastKeyDownRaw() const { return lastKeyDownRaw_; }
+    // Kept separate: the key paths were overwriting the shared field, hiding
+    // the very code we needed to see.
+    const char *lastOtherRaw() const { return lastOtherRaw_; }
+
     // Whatever the server called itself in the handshake - "Synergy",
     // "Barrier", "Deskflow". Shown in the UI so the badge names the thing you
     // are actually talking to rather than guessing at the family.
@@ -78,6 +93,7 @@ private:
     void sendScreenInfo();
     void disconnect(const char *why);
     void serviceOnce();                      // one pass: connect, or pump messages
+    void flushPointer();                     // emit the coalesced pointer position
     void run();                              // task body: serviceOnce forever
     static void taskEntry(void *self);
 
@@ -98,6 +114,31 @@ private:
     uint32_t backoffMs_ = 2000;
     uint32_t lastTrafficMs_ = 0;
     char     lastError_[128] = {};
+    uint32_t nMove_ = 0, nKey_ = 0, nBtn_ = 0, nOther_ = 0;
+    char     lastUnhandled_[8] = {};
+    char     lastKeyRaw_[40] = {};
+    char     lastKeyDownRaw_[40] = {};
+    char     lastOtherRaw_[40] = {};
+
+    // Physical button -> the HID key we pressed for it. On key-up the server
+    // sends KeyID 0 and identifies the key only by its button, so without this
+    // there is nothing to release and every key sticks down.
+    struct HeldKey { uint16_t button; uint8_t hid; };
+    static constexpr size_t kMaxHeld = 12;
+    HeldKey heldByButton_[kMaxHeld] = {};
+    size_t  heldByButtonCount_ = 0;
+
+    void rememberKey(uint16_t button, uint8_t hid);
+    uint8_t forgetKey(uint16_t button);
+
+    // Pointer motion is coalesced rather than replayed. Each HID report blocks
+    // until the host collects it, roughly a USB frame, while the server streams
+    // positions faster than that - so sending every one means delivering a
+    // backlog of stale positions, which is what stutter is. Only the newest
+    // position matters; relative deltas sum.
+    bool    haveAbs_ = false;
+    int32_t absX_ = 0, absY_ = 0;
+    int32_t relDx_ = 0, relDy_ = 0;
 
     // The 7-byte protocol name the server greeted us with, echoed back so we
     // work with Synergy, Barrier and Deskflow servers without caring which.

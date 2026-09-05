@@ -95,6 +95,13 @@ uint8_t keyIdToHid(uint16_t keyId) {
     for (const KeyMap &k : kSpecialKeys) {
         if (k.keyId == keyId) return k.hid;
     }
+    // Fallback for a server that sets high bits on an otherwise plain
+    // character. Better to type the right key than to drop it silently.
+    const uint16_t low = keyId & 0x00FF;
+    if ((keyId & 0xFF00) != 0 && low >= 0x20 && low <= 0x7E &&
+        (keyId & 0xFF00) != 0xEF00) {
+        return (uint8_t)low;
+    }
     return 0;
 }
 
@@ -243,9 +250,9 @@ void DeskflowClient::dispatch(const uint8_t *m, size_t len) {
 
     if (is(m, len, "CINN")) {                               // pointer entered this screen
         if (len >= 12) {
-            const uint16_t x = rd16(m + 4), y = rd16(m + 6);
-            hid_.mouseMoveAbsolute((float)x / config_.deskflowWidth(),
-                                   (float)y / config_.deskflowHeight());
+            absX_ = (int16_t)rd16(m + 4);
+            absY_ = (int16_t)rd16(m + 6);
+            haveAbs_ = true;
         }
         hasFocus_ = true;
         return;
@@ -260,19 +267,22 @@ void DeskflowClient::dispatch(const uint8_t *m, size_t len) {
     }
 
     if (is(m, len, "DMMV") && len >= 8) {                   // absolute move
-        const int16_t x = rdS16(m + 4), y = rdS16(m + 6);
-        hid_.mouseMoveAbsolute((float)x / config_.deskflowWidth(),
-                               (float)y / config_.deskflowHeight());
+        ++nMove_;
+        absX_ = rdS16(m + 4);
+        absY_ = rdS16(m + 6);
+        haveAbs_ = true;                                    // emitted after the drain
         return;
     }
 
     if (is(m, len, "DMRM") && len >= 8) {                   // relative move
-        hid_.mouseMove(rdS16(m + 4), rdS16(m + 6));
+        ++nMove_;
+        relDx_ += rdS16(m + 4);
+        relDy_ += rdS16(m + 6);
         return;
     }
 
     if ((is(m, len, "DMDN") || is(m, len, "DMUP")) && len >= 5) {
-        const bool down = (m[3] == 'N');
+        const bool down = is(m, len, "DMDN");
         MouseButton b;
         switch (m[4]) {                                     // 1 left, 2 middle, 3 right
             case 1:  b = MouseButton::Left;   break;
@@ -280,6 +290,10 @@ void DeskflowClient::dispatch(const uint8_t *m, size_t len) {
             case 3:  b = MouseButton::Right;  break;
             default: return;
         }
+        ++nBtn_;
+        // Flush first: a click has to happen where the pointer now is, not
+        // where it was before the pending motion was applied.
+        flushPointer();
         if (down) hid_.mouseButtonDown(b); else hid_.mouseButtonUp(b);
         return;
     }
@@ -292,11 +306,48 @@ void DeskflowClient::dispatch(const uint8_t *m, size_t len) {
         return;
     }
 
-    if ((is(m, len, "DKDN") || is(m, len, "DKUP")) && len >= 10) {
-        const uint16_t keyId = rd16(m + 4);
-        const uint8_t code = keyIdToHid(keyId);
-        if (code == 0) return;                              // nothing sensible to send
-        if (m[3] == 'N') hid_.keyDown(code); else hid_.keyUp(code);
+    // DKDL is protocol 1.8's key-down: a distinct wire code, not a variant of
+    // DKDN (kMsgDKeyDownLang = "DKDL%2i%2i%2i%s"). A 1.8 server sends only
+    // DKDL for key-down and never DKDN, which is why key-ups arrived alone.
+    // The first three fields sit at the same offsets in both; DKDL appends a
+    // length-prefixed language string we have no use for.
+    if (is(m, len, "DKDL") || is(m, len, "DKDN") || is(m, len, "DKUP")) {
+        ++nKey_;
+        const bool down = is(m, len, "DKDL") || is(m, len, "DKDN");
+        {
+            char *dst = down ? lastKeyDownRaw_ : lastKeyRaw_;
+            size_t n = len < 16 ? len : 16;
+            char *w = dst;
+            for (size_t i = 0; i < n && (w - dst) < 36; ++i) w += snprintf(w, 4, "%02x", m[i]);
+            *w = '\0';
+        }
+        if (len < 10) {
+            snprintf(lastUnhandled_, sizeof(lastUnhandled_), "K%u", (unsigned)len);
+            return;
+        }
+        const uint16_t keyId  = rd16(m + 4);
+        const uint16_t button = rd16(m + 8);
+
+        if (down) {
+            uint8_t code = keyIdToHid(keyId);
+            if (code == 0) {
+                snprintf(lastUnhandled_, sizeof(lastUnhandled_), "k%04x", (unsigned)keyId);
+                return;
+            }
+            // Remember which HID key this physical button produced, because the
+            // matching key-up will not say.
+            rememberKey(button, code);
+            hid_.keyDown(code);
+        } else {
+            // Key-up carries KeyID 0 and identifies the key by button alone.
+            uint8_t code = forgetKey(button);
+            if (code == 0) code = keyIdToHid(keyId);   // fall back if we missed the down
+            if (code == 0) {
+                snprintf(lastUnhandled_, sizeof(lastUnhandled_), "u%04x", (unsigned)button);
+                return;
+            }
+            hid_.keyUp(code);
+        }
         return;
     }
 
@@ -321,6 +372,18 @@ void DeskflowClient::dispatch(const uint8_t *m, size_t len) {
     }
     if (is(m, len, "EBAD")) { disconnect("server reported a protocol violation"); return; }
     if (is(m, len, "EICV")) { disconnect("incompatible protocol version"); return; }
+
+    // Anything else: remember the code so an unexpected message is visible
+    // rather than silently ignored.
+    ++nOther_;
+    {
+        size_t n = len < 16 ? len : 16;
+        char *w = lastOtherRaw_;
+        for (size_t i = 0; i < n && (w - lastOtherRaw_) < 36; ++i) {
+            w += snprintf(w, 4, "%02x", m[i]);
+        }
+        *w = '\0';
+    }
 }
 
 // --- lifecycle -------------------------------------------------------------
@@ -332,6 +395,9 @@ void DeskflowClient::disconnect(const char *why) {
     }
     if (hasFocus_ || hid_.anythingHeld()) hid_.releaseAll();
     hasFocus_ = false;
+    heldByButtonCount_ = 0;
+    haveAbs_ = false;
+    relDx_ = relDy_ = 0;
     if (sock_) sock_->stop();
     state_ = State::Idle;
     lastAttemptMs_ = millis();
@@ -478,10 +544,47 @@ void DeskflowClient::serviceOnce() {
         else                              dispatch(buf, len);
     }
 
+    // One pointer report per pass, carrying the newest position. This is the
+    // difference between tracking the pointer and chasing it.
+    flushPointer();
+
     // The server sends keep-alives; prolonged silence means the link is dead
     // even though TCP has not noticed yet.
     if (state_ == State::Active && millis() - lastTrafficMs_ > 15000) {
         disconnect("no keep-alive from server");
+    }
+}
+
+void DeskflowClient::rememberKey(uint16_t button, uint8_t hid) {
+    for (size_t i = 0; i < heldByButtonCount_; ++i) {
+        if (heldByButton_[i].button == button) { heldByButton_[i].hid = hid; return; }
+    }
+    if (heldByButtonCount_ < kMaxHeld) {
+        heldByButton_[heldByButtonCount_++] = {button, hid};
+    }
+}
+
+uint8_t DeskflowClient::forgetKey(uint16_t button) {
+    for (size_t i = 0; i < heldByButtonCount_; ++i) {
+        if (heldByButton_[i].button == button) {
+            const uint8_t hid = heldByButton_[i].hid;
+            heldByButton_[i] = heldByButton_[--heldByButtonCount_];
+            return hid;
+        }
+    }
+    return 0;
+}
+
+void DeskflowClient::flushPointer() {
+    if (haveAbs_) {
+        const float w = config_.deskflowWidth() > 0 ? config_.deskflowWidth() : 1;
+        const float h = config_.deskflowHeight() > 0 ? config_.deskflowHeight() : 1;
+        hid_.mouseMoveAbsolute((float)absX_ / w, (float)absY_ / h);
+        haveAbs_ = false;
+    }
+    if (relDx_ != 0 || relDy_ != 0) {
+        hid_.mouseMove(relDx_, relDy_);
+        relDx_ = relDy_ = 0;
     }
 }
 

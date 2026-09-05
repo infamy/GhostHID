@@ -123,7 +123,9 @@ CommandResult CommandProcessor::handleMessage(const char *json, size_t len,
               "{\"type\":\"status\",\"version\":\"%s\",\"usb\":%s,\"held\":%u,"
               "\"heap_free\":%u,\"heap_largest\":%u,"
               "\"heap_boot\":%u,\"heap_wifi\":%u,\"heap_server\":%u,"
-              "\"stack_main\":%u,\"stack_kvm\":%u,\"stack_async\":%u}",
+              "\"stack_main\":%u,\"stack_kvm\":%u,\"stack_async\":%u,"
+              "\"n_move\":%u,\"n_key\":%u,\"n_btn\":%u,\"n_other\":%u,"
+              "\"last_unhandled\":\"%s\",\"last_key_raw\":\"%s\",\"last_keydown_raw\":\"%s\",\"last_other_raw\":\"%s\"}",
               GHOSTHID_VERSION, hid_.ready() ? "true" : "false",
               static_cast<unsigned>(hid_.heldKeyCount()),
               (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMaxAllocHeap(),
@@ -135,7 +137,15 @@ CommandResult CommandProcessor::handleMessage(const char *json, size_t len,
               (unsigned)(xTaskGetHandle("deskflow")
                          ? uxTaskGetStackHighWaterMark(xTaskGetHandle("deskflow")) : 0),
               (unsigned)(xTaskGetHandle("async_tcp")
-                         ? uxTaskGetStackHighWaterMark(xTaskGetHandle("async_tcp")) : 0));
+                         ? uxTaskGetStackHighWaterMark(xTaskGetHandle("async_tcp")) : 0),
+              (unsigned)(deskflow_ ? deskflow_->countMove()  : 0),
+              (unsigned)(deskflow_ ? deskflow_->countKey()   : 0),
+              (unsigned)(deskflow_ ? deskflow_->countBtn()   : 0),
+              (unsigned)(deskflow_ ? deskflow_->countOther() : 0),
+              deskflow_ ? deskflow_->lastUnhandled() : "",
+              deskflow_ ? deskflow_->lastKeyRaw() : "",
+              deskflow_ ? deskflow_->lastKeyDownRaw() : "",
+              deskflow_ ? deskflow_->lastOtherRaw() : "");
         return CommandResult::Ok;
     }
 
