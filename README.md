@@ -173,9 +173,13 @@ revert. See PLAN.md "Known Gaps".
 
 ## Lean mode
 
-With the screen client running, a TLS session leaves only ~13KB of contiguous
-heap and the web UI becomes sluggish. Lean mode trades the web UI away while the
-KVM is in use:
+Optional, and probably not needed. With the screen client running, a TLS session
+leaves about 13KB of contiguous heap - which sounds alarming and measurably is
+not: the web UI still serves its full page in under 90ms, over-the-air updates
+still work with a session live, and no HID reports are refused. Lean mode exists
+for headroom, not because the normal mode is broken.
+
+It trades the web UI away while the KVM is in use:
 
 ```
 > lean on

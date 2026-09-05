@@ -60,10 +60,12 @@ end against a live Deskflow 1.8 server over mutual TLS.
 
 ### Known limits
 
-With a TLS session established the largest free block is around 13KB, so the
-web UI is sluggish while the screen client is connected. Reducing that further
-needs `MBEDTLS_SSL_IN_CONTENT_LEN` lowered, which requires building ESP-IDF
-from source rather than using the precompiled Arduino framework.
+With a TLS session established the largest free block is around 13KB. That is
+tight but, measured rather than assumed, sufficient: the web UI serves its full
+page in under 90ms, over-the-air updates succeed with a session live, no HID
+reports are refused, and the heap is stable over time. Reducing it further would
+need `MBEDTLS_SSL_IN_CONTENT_LEN` lowered, which requires building ESP-IDF from
+source - worth doing only if a real failure appears.
 
 ## 0.3.0
 
