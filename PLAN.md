@@ -1083,14 +1083,22 @@ during development and the difference is where the bugs were hiding.
 * absolute positioning enumerates - report ID 7, `81 02` (Absolute), 16-bit
   axes over 0..32767, alongside the relative pointer's `81 06` / +/-127 - and
   **moves the pointer on a real target**, confirmed by hand
+* **Windows and Linux targets both accept the device and respond to input.**
+  That closes definition-of-done item 14, and means the composite descriptor
+  works across all three desktop platforms rather than only the one it was
+  developed against
+* four separate boards flashed from blank, each taking a distinct MAC-derived
+  identity (BA98, BF78, C0E4, C3BC), so several can share a network
 
 **Implemented but NOT yet verified on hardware** - do not claim these work:
 
-* relative mouse movement on a target (absolute is confirmed)
-* a controller associating with the device's own AP (Mode A)
-* release-on-disconnect and the 750 ms watchdog actually firing
-* anything on iOS
-* anything on Windows or Linux - only macOS has been used as a target
+* release-on-disconnect and the 750 ms watchdog actually firing. This is the
+  safety property the whole design rests on and it has never once been observed
+  working, which makes it the most conspicuous gap left
+* a controller associating with the device's own AP (Mode A) rather than over a
+  joined network
+* anything on iOS - the touch UI and sticky modifiers are untried on real
+  hardware
 
 GhostHID v0.1 is complete when:
 
@@ -1107,7 +1115,7 @@ GhostHID v0.1 is complete when:
 11. Python can scroll.
 12. Disconnecting the controller automatically releases all held keys/buttons.
 13. No software is installed on the target computer.
-14. Basic operation works on Windows and Linux.
+14. Basic operation works on Windows and Linux. **DONE**
 15. The project can be flashed onto another ESP32-S2/S3 with minimal configuration changes.
 
 ---
