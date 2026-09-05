@@ -1,7 +1,11 @@
 // A small reservation of large blocks for mbedTLS.
 //
-// A TLS session needs two allocations of roughly 16.7KB each, and they must be
-// contiguous. That is easy at boot and unreliable later: by the time the web
+// ONE TLS session needs TWO allocations of roughly 16.7KB each, and they must
+// be contiguous. mbedTLS keeps a separate input and output buffer per session,
+// and CONFIG_MBEDTLS_ASYMMETRIC_CONTENT_LEN is not set in this SDK, so both are
+// the full MBEDTLS_SSL_IN_CONTENT_LEN of 16384 plus record overhead. Two blocks
+// is therefore the correct reservation for a single session - the firmware only
+// ever creates one WiFiClientSecure and cannot have two sessions at once. That is easy at boot and unreliable later: by the time the web
 // server has started and run for a while, the largest free block is around
 // 13KB, so a session that drops cannot be re-established without a reboot.
 //
@@ -28,7 +32,8 @@ public:
 
     static bool active();
     static size_t reservedBytes();
-    // Blocks currently lent to mbedTLS. Should be 2 while a session is up.
+    // Blocks currently lent to mbedTLS. Reads 2 for ONE established session
+    // (its input and output buffers), not one per session.
     static size_t inUse();
 };
 

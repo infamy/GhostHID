@@ -1,5 +1,70 @@
 # Changelog
 
+## 0.4.0
+
+Adds a Deskflow / Barrier / Input Leap screen client, verified working end to
+end against a live Deskflow 1.8 server over mutual TLS.
+
+### Added
+
+* **Screen client.** GhostHID joins an existing Deskflow, Barrier or Input Leap
+  server as a screen, so you move the pointer off the edge of your desktop and
+  onto the machine it is plugged into, keyboard following. Those projects
+  already solve the hard half - capturing and suppressing input on the
+  controller, detecting edge crossings, multi-monitor layout, on every desktop
+  OS - so GhostHID is simply another screen in a layout you already have, one
+  that needs nothing installed on it.
+* **Mutual TLS with a device identity.** These servers require client
+  certificates. The device generates an EC P-256 key and self-signed
+  certificate on first use and keeps them in NVS, so a server recognises the
+  same device each time. The fingerprint is shown in the settings tab.
+* Configuration for all of it in the web UI and over serial, plus a top-bar
+  badge showing the connection state, labelled with the name the server gave in
+  its handshake.
+* Per-message diagnostics in `status`: counts by message type, the last
+  unrecognised message, refused HID reports, per-task stack headroom and heap
+  by boot stage.
+
+### Changed
+
+* **Pointer motion is much smoother.** Two causes, both ours. Every incoming
+  position produced a USB report, and each report blocks until the host
+  collects it, so a backlog of stale positions was being replayed instead of
+  the current one - motion is now coalesced to the newest position. And the
+  service loop measured whether it was busy *after* draining the socket, when
+  nothing is pending, so it took its slow branch during exactly the motion it
+  was meant to serve; it now runs on a fixed one-tick cadence. Evenness
+  mattered more than rate: the endpoint already polls at 1ms.
+* The screen-client task runs at a higher priority, since at the lowest it was
+  freely preempted by Wi-Fi and lwIP on this single-core part.
+* `setNoDelay` is now applied to the TLS socket, not only the plaintext one.
+* AsyncTCP's task stack halved to 8KB. Its stack is a permanent contiguous
+  allocation - AsyncTCP 3.5.0 never tears the task down, which is why stopping
+  the web server frees nothing - so its size is subtracted from the largest
+  block a TLS handshake can obtain. Measured use is ~2.4KB.
+* The TLS I/O buffers are reserved at boot, while the heap is whole, and handed
+  to mbedTLS through its allocator hook. This does not reduce memory use; it
+  takes the two 16KB allocations out of the fragmentation game, so a dropped
+  session can reconnect instead of requiring a reboot.
+
+### Fixed
+
+* Keyboard input did not work at all. Protocol 1.8 does not send `DKDN`: it
+  uses a distinct wire code `DKDL`, and a server negotiating 1.8 emits it
+  exclusively. Separately, a macOS server sends KeyID 0 on key-up and
+  identifies the key only by its physical button, so the client must remember
+  which key it pressed for that button and release that.
+* Settings fields were overwritten mid-keystroke by the status poll.
+* Enabling the screen client after boot reported success when it could not
+  actually connect for want of contiguous memory; it now says so.
+
+### Known limits
+
+With a TLS session established the largest free block is around 13KB, so the
+web UI is sluggish while the screen client is connected. Reducing that further
+needs `MBEDTLS_SSL_IN_CONTENT_LEN` lowered, which requires building ESP-IDF
+from source rather than using the precompiled Arduino framework.
+
 ## 0.3.0
 
 First release that is genuinely usable rather than a proof of concept. Everything

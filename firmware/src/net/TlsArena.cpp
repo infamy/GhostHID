@@ -12,6 +12,9 @@ namespace {
 
 // mbedTLS asks for MBEDTLS_SSL_IN_CONTENT_LEN (16384) plus record overhead for
 // each of its input and output buffers. 17KB covers both with room to spare.
+//
+// Two blocks serves exactly one session, which is all this firmware can have:
+// there is a single WiFiClientSecure and a single screen server.
 constexpr size_t kBlockSize  = 17 * 1024;
 constexpr size_t kBlockCount = 2;
 
@@ -44,8 +47,9 @@ void *arenaCalloc(size_t n, size_t size) {
             }
         }
         xSemaphoreGive(g_lock);
-        // All blocks lent out: fall through rather than fail, so a second
-        // simultaneous session degrades instead of breaking.
+        // Both blocks lent out. That should not happen with one session, so
+        // rather than fail, fall through to the ordinary heap - a wrong
+        // assumption here should degrade, not break the connection.
     }
     return calloc(n, size);
 }
