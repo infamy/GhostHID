@@ -1,5 +1,66 @@
 # Changelog
 
+## 0.6.0
+
+Adds the ESP32-S3 board with an on-device screen, a browser flasher, and the
+0.5.0 stability work folded in.
+
+### Added
+
+* **ESP32-S3-LCD-1.47 (Waveshare) support.** Dual-core, 16MB flash, 8MB OPI
+  PSRAM, native USB-C HID. Built on the pioarduino platform (arduino-esp32 3.x)
+  because the stock platform's bootloader bootloops this chip revision. The
+  Deskflow task is pinned to the second core so Wi-Fi/TLS can't starve input.
+  Measured: 135KB largest free block and ~10µs service passes, versus the S2's
+  13KB and 48-128ms stalls under load.
+* **On-device status LCD.** A hero screen (cyan ghost logo + GhostHID wordmark,
+  small corner status), an AP-join QR page (scan to join the device's Wi-Fi),
+  and an info page (version/heap/uptime). BOOT short-press cycles pages,
+  long-press is the panic release. RGB status LED (red = no USB, green = screen
+  has focus, cyan = connected, dim = idle).
+* **Browser flasher** (`webflasher/`, ESP Web Tools). Flashes S2 or S3 over Web
+  Serial from Chrome/Edge, auto-detecting the chip. `make webflasher` stages it.
+* **Server-certificate field** in the web UI (paste box + file upload) with
+  generic instructions for obtaining it (the `openssl s_client` one-liner and
+  the Barrier/Deskflow `SSL/*.pem` paths). Previously the firmware said "paste
+  the PEM in settings" with no field to paste into.
+
+### Changed
+
+* **Generic USB identity by default** (`0x1A2C` "USB Keyboard") instead of
+  Espressif's `0x303A:0x4004`, so EDR / BadUSB defences don't flag an unknown
+  dev-board HID on insert. Overridable per build in `ghosthid_local.ini`.
+* Web UI: the tab bar no longer truncates between ~600-820px (it takes its own
+  full-width row earlier); the physical-keyboard capture no longer types into
+  other focused fields (it was typing your Wi-Fi password into the target);
+  on-screen mouse buttons can't stick down; a rejected token is now visible on
+  a phone.
+* `make flash` / `flash-factory` are chip-aware (S3 bootloader at 0x0, DIO,
+  16MB), and the merged image bakes the correct per-chip flash geometry.
+
+### Fixed
+
+* **Stuck keys under concurrency** — `HidDevice` was called from two FreeRTOS
+  tasks with no lock; `releaseAll()` racing a `keyDown()` could re-assert the
+  key it had just cleared. Now serialised by a mutex.
+* **Watchdog reboot** from an unbounded `mouse_move`/`text` flooding blocking
+  USB reports inside one network callback — clamped at the protocol boundary.
+* **Cross-task use-after-free** — `reconnect()`/`suspend()` tore down the TLS
+  socket under the Deskflow task; now deferred to that task. The pinned CA was
+  freed mid-parse by `set_config`; the client now works from a private copy.
+* **A second browser tab released the first controller's keys** — only the
+  owning WebSocket's disconnect now ends the session.
+* **Truncated `get_config` JSON** when a long TLS error was present (reply buffer
+  512→1024).
+* **Deskflow held-input backstop** (2.5s) so a server that dies mid-keypress
+  doesn't leave a key down until the 15s keep-alive; `readExactly` gained a true
+  deadline.
+* **USB-CDC console could block the firmware** when a host held the port open
+  without draining it (a serial monitor over a slow link) — `setTxTimeoutMs(0)`
+  makes console writes drop rather than ever block.
+* OTA: dangling error pointer, auth checked before any side effect, and an empty
+  POST no longer reboots the device.
+
 ## 0.5.0
 
 Stability hardening from a three-part audit (concurrency, memory, UI). The
