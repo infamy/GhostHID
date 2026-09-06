@@ -74,6 +74,19 @@ enum class MouseButton : uint8_t {
     Middle = 2,
 };
 
+// Consumer-control (media) keys. Named here so callers never touch a USB
+// header; HidDevice.cpp maps each to its CONSUMER_CONTROL_* usage.
+enum class MediaKey : uint8_t {
+    VolumeUp, VolumeDown, Mute,
+    PlayPause, Next, Previous, Stop,
+    BrightnessUp, BrightnessDown,
+};
+
+// System-control keys. These act on the host machine's power state.
+enum class SystemKey : uint8_t {
+    Sleep, PowerOff, Wake,
+};
+
 class HidDevice {
 public:
     // Brings up the composite USB device (keyboard + mouse). Call once from
@@ -129,6 +142,33 @@ public:
     // Positive = scroll up / right.
     void mouseWheel(int32_t delta);
     void mousePan(int32_t delta);
+
+    // --- Media / system ----------------------------------------------------
+    // A tap: the key is pressed and released in one call, which is how
+    // consumer/system controls are meant to be sent.
+
+    void mediaKey(MediaKey k);
+    void systemKey(SystemKey k);
+
+    // --- Host feedback -----------------------------------------------------
+    // The host sends an HID *output* report whenever its lock-key state
+    // changes (and once right after it configures the device). Capturing it is
+    // the only proof from the target's own side that our keyboard is not just
+    // enumerated but actually being driven - and it surfaces Caps/Num/Scroll
+    // Lock on a keyboard that has no lights of its own.
+
+    bool capsLock()   const;
+    bool numLock()    const;
+    bool scrollLock() const;
+
+    // Raw host LED bitmap (bit0 Num, bit1 Caps, bit2 Scroll), as the host last
+    // sent it - matches the USB boot-keyboard output report.
+    uint8_t hostLeds() const;
+
+    // Count of output reports the host has sent. Non-zero is hard proof the
+    // target has our keyboard and is processing it; it climbs on every real
+    // lock-key change.
+    uint32_t hostLedReports() const;
 
     // Natural scrolling: invert the wheel (and pan) direction. Applies to every
     // scroll source, so the web trackpad and the screen client agree.

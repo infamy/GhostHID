@@ -152,6 +152,75 @@ bool otaContended() {
     return g_deskflow != nullptr && g_deskflow->connected();
 }
 
+// Append `s` to `out` as a JSON string body (no surrounding quotes), escaping
+// the characters JSON forbids raw - the server certificate is PEM, so it has
+// newlines that would otherwise produce invalid JSON.
+void appendJsonEscaped(String &out, const char *s) {
+    if (s == nullptr) return;
+    for (const char *p = s; *p; ++p) {
+        const char c = *p;
+        switch (c) {
+            case '"':  out += "\\\""; break;
+            case '\\': out += "\\\\"; break;
+            case '\n': out += "\\n";  break;
+            case '\r': out += "\\r";  break;
+            case '\t': out += "\\t";  break;
+            default:
+                if (static_cast<unsigned char>(c) < 0x20) {
+                    char u[7];
+                    snprintf(u, sizeof(u), "\\u%04x", static_cast<unsigned>(c));
+                    out += u;
+                } else {
+                    out += c;
+                }
+        }
+    }
+}
+
+// The importable settings as a JSON document, for provisioning another board.
+// Deliberately excludes secrets (Wi-Fi/AP passwords, auth token) - those stay
+// write-only. The server certificate is the server's *public* cert, not a
+// secret, so it is included: it is the fiddliest part to move by hand.
+String buildExportJson() {
+    String j;
+    j.reserve(2048);
+    j += "{\"ghosthid_export\":1,\"version\":\"";
+    appendJsonEscaped(j, GHOSTHID_VERSION);
+    j += "\",\"name\":\"";
+    appendJsonEscaped(j, g_config->deviceName());
+    j += "\",\"ap_always\":";
+    j += g_config->apAlways() ? "true" : "false";
+    j += ",\"scroll_invert\":";
+    j += g_config->scrollInvert() ? "true" : "false";
+    j += ",\"sta_ssid\":\"";
+    appendJsonEscaped(j, g_config->staSsid());
+    j += "\",\"kvm_on\":";
+    j += g_config->deskflowEnabled() ? "true" : "false";
+    j += ",\"kvm_host\":\"";
+    appendJsonEscaped(j, g_config->deskflowHost());
+    j += "\",\"kvm_port\":";
+    j += g_config->deskflowPort();
+    j += ",\"kvm_screen\":\"";
+    appendJsonEscaped(j, g_config->deskflowScreen());
+    j += "\",\"kvm_w\":";
+    j += g_config->deskflowWidth();
+    j += ",\"kvm_h\":";
+    j += g_config->deskflowHeight();
+    j += ",\"kvm_tls\":";
+    j += g_config->deskflowTls() ? "true" : "false";
+    j += ",\"kvm_ca\":\"";
+    // Copy under the config's lock rather than reading the live pointer: the
+    // Deskflow task can free/replace the cert buffer mid-read.
+    char *cert = static_cast<char *>(malloc(4096));
+    if (cert != nullptr) {
+        g_config->copyServerCert(cert, 4096);
+        appendJsonEscaped(j, cert);
+        free(cert);
+    }
+    j += "\"}";
+    return j;
+}
+
 void onOtaBody(AsyncWebServerRequest *request, uint8_t *data, size_t len,
                size_t index, size_t total) {
     // Authorise before ANY side effect. The contention prologue - which
@@ -380,6 +449,22 @@ void Network::beginServers() {
             return;
         }
         request->send(200, "application/x-pem-file", g_deskflow->certificatePem());
+    });
+
+    // Config export for provisioning another board. Token-gated (same gate as
+    // OTA/identity) because it exposes the SSID and screen-client settings; it
+    // never exposes a password or the auth token.
+    g_server.on("/api/export", HTTP_GET, [](AsyncWebServerRequest *request) {
+        if (!otaAuthorized(request)) {
+            request->send(401, "application/json",
+                          "{\"type\":\"error\",\"error\":\"unauthorized\"}");
+            return;
+        }
+        AsyncWebServerResponse *res =
+            request->beginResponse(200, "application/json", buildExportJson());
+        res->addHeader("Content-Disposition",
+                       "attachment; filename=\"ghosthid-config.json\"");
+        request->send(res);
     });
 
     g_server.onNotFound([](AsyncWebServerRequest *request) {

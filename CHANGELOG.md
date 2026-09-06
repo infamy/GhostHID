@@ -1,5 +1,58 @@
 # Changelog
 
+## 0.6.3
+
+### Added
+
+* **Host lock-LED feedback.** The firmware now reads the HID *output* report the
+  target sends back (the keyboard's Caps/Num/Scroll Lock LED state) and surfaces
+  it three ways: a CAPS/NUM/SCROLL row on the on-device LCD, lit badges in the
+  web UI's new "Target feedback" panel, and a `locks` + `hled` field on every
+  `pong`. A non-zero `hled` (count of output reports the host has sent) is hard
+  proof the target has enumerated GhostHID's keyboard and is actually driving
+  it - the long-standing "is it actually working?" question, answered from the
+  target's own side.
+
+* **Media & system-control keys.** A HID consumer-control collection (volume
+  up/down/mute, play-pause, next/previous, stop, brightness) and a
+  system-control collection (sleep, wake, power off), exposed as buttons in the
+  web UI's Control tab and as `{"type":"media","key":...}` /
+  `{"type":"system","key":...}` messages.
+
+* **Config export / import.** A token-gated `GET /api/export` downloads the
+  board's non-secret settings as JSON - device name, AP behaviour, scroll
+  direction, Wi-Fi SSID and every screen-client setting, *including the server
+  certificate*. "Import settings" on another board applies them in one step.
+  Secrets (Wi-Fi/AP passwords, pairing token) are never exported and are set
+  per-board. Makes provisioning a second, third or fourth board quick.
+
+* **Presenter mode.** A new Present tab: large Next / Prev, Start-show, Black and
+  End controls, plus two timers - total talk time and a per-slide timer that
+  resets on every advance, like a hardware presenter remote. App presets
+  (PowerPoint/Impress, Google Slides, Keynote, PDF) pick the right keys, and the
+  screen is kept awake while the clock runs.
+
+* **3D-printed case** (`hardware/case/`). A parametric OpenSCAD case for the
+  ESP32-S3-LCD-1.47, built to Waveshare's structural drawing: four locating
+  bosses on the Ø2.0 mounting holes, an open USB-A end, side BOOT/RST holes, a
+  snap-fit lid, and the GhostHID ghost as a two-colour inlay. Ships as STLs and a
+  ready-to-slice `ghosthid-case.3mf`.
+
+* **Promo site** (`site/`). A self-contained landing page with live web-UI
+  screenshots and download links for the flasher, firmware and case.
+
+### Changed
+
+* **Settings page tidied** - long explanations trimmed to one-liners and the
+  certificate how-to moved into a collapsible, so the page is far less wordy.
+* Nav tabs now sit on their own row and never truncate on a narrow header.
+
+### Fixed
+
+* **Stale input state after a reconnect.** The web UI now clears sticky modifiers
+  and physical-keyboard capture whenever it (re)connects, so a device reboot/OTA
+  can no longer leave combos (e.g. Ctrl+C) misbehaving until a manual refresh.
+
 ## 0.6.2
 
 ### Added

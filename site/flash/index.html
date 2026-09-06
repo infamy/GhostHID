@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Flash GhostHID</title>
+<style>
+  :root{--bg:#01050b;--panel:#070e18;--line:#1a2c42;--fg:#cfe3f5;--dim:#7d97b0;
+        --ok:#4dffa6;--bad:#ff4d6d;--accent:#00e5ff;--warn:#ffb454;
+        --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.6 var(--mono);
+       background-image:linear-gradient(#060e1a 1px,transparent 1px),
+                        linear-gradient(90deg,#060e1a 1px,transparent 1px);
+       background-size:28px 28px}
+  main{max-width:720px;margin:0 auto;padding:32px 20px 64px}
+  h1{font-size:26px;letter-spacing:.04em;margin:0 0 2px}
+  h1 .g{color:var(--accent)}
+  .sub{color:var(--dim);margin:0 0 28px}
+  section{background:var(--panel);border:1px solid var(--line);border-radius:8px;
+          padding:18px 20px;margin:0 0 16px}
+  h2{font-size:12px;text-transform:uppercase;letter-spacing:.1em;color:var(--dim);margin:0 0 12px}
+  ol{margin:0;padding-left:22px} li{margin:6px 0}
+  kbd{background:#0e1a29;border:1px solid var(--line);border-bottom-width:2px;border-radius:3px;
+      padding:1px 6px;font-size:12px}
+  .flash{display:flex;flex-direction:column;align-items:center;gap:10px;padding:26px 20px}
+  .note{color:var(--dim);font-size:13px}
+  .warn{color:var(--warn)}
+  a{color:var(--accent)}
+  code{background:#000509;border:1px solid var(--line);border-radius:4px;padding:1px 6px;font-size:13px}
+  .unsupported{display:none;background:#2a0d18;border:1px solid var(--bad);color:#ffc2d0;
+               border-radius:6px;padding:12px 14px;margin:0 0 16px}
+  esp-web-install-button{--esp-tools-button-color:#02121a;--esp-tools-button-text-color:#02121a}
+  esp-web-install-button button{background:var(--accent);color:#02121a;border:0;border-radius:6px;
+      font:600 15px var(--mono);padding:12px 28px;cursor:pointer}
+</style>
+
+<main>
+  <h1><span class="g">Ghost</span>HID <span style="font-size:14px;color:var(--dim)">firmware flasher</span></h1>
+  <p class="sub">Flash the board straight from this page — no drivers, no toolchain.</p>
+
+  <div class="unsupported" id="nowebserial">
+    Your browser can't flash over USB. Use <b>desktop Chrome or Edge</b> (Web Serial isn't
+    available in Firefox, Safari, or on mobile).
+  </div>
+
+  <section class="flash">
+    <esp-web-install-button manifest="./manifest.json"></esp-web-install-button>
+    <div class="note">For the ESP32-S3 (Waveshare LCD-1.47). It verifies the chip before flashing.</div>
+  </section>
+
+  <section>
+    <h2>Before you click Install</h2>
+    <ol>
+      <li>Use a <b>data</b> USB-C/USB cable (not charge-only) into the board's <b>native USB</b> port.</li>
+      <li>Put the board in <b>download mode</b> — hold <kbd>BOOT</kbd>, tap <kbd>RST</kbd>, release <kbd>BOOT</kbd>.
+          <span class="note">(If the board has only a BOOT button, hold it while plugging the cable in.)</span></li>
+      <li>Click <b>Install</b> above and pick the serial port in the dialog.</li>
+      <li>When it finishes, tap <kbd>RST</kbd> once to run GhostHID.</li>
+    </ol>
+    <p class="warn">A fresh flash erases stored settings (Wi-Fi, token) — that's expected for a new device.</p>
+  </section>
+
+  <section>
+    <h2>After flashing</h2>
+    <ol>
+      <li>The board raises its own Wi-Fi AP: <code>GhostHID-XXXX</code> (default password <code>ghosthid-setup</code>).</li>
+      <li>On the S3-LCD board, the screen shows a <b>QR code</b> — scan it with your phone camera to join the AP.</li>
+      <li>Join the AP and open <code>http://192.168.4.1/</code> to set your Wi-Fi, token, and KVM options.</li>
+    </ol>
+    <p class="note">Change the AP password and pairing token before putting it on a shared network.</p>
+  </section>
+
+  <p class="note">Source &amp; docs: <a href="https://github.com/infamy/ghosthid">github.com/infamy/ghosthid</a></p>
+</main>
+
+<script type="module" src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js?module"></script>
+<script>
+  // esp-web-tools sets `install-supported`/`install-unsupported` attributes on
+  // its button once it checks Web Serial; surface a clear message when unsupported.
+  window.addEventListener("load", () => {
+    if (!("serial" in navigator)) {
+      document.getElementById("nowebserial").style.display = "block";
+    }
+  });
+</script>
+</html>

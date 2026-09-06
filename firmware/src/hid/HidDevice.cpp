@@ -4,6 +4,8 @@
 #include <USB.h>
 #include <USBHIDKeyboard.h>
 #include <USBHIDMouse.h>
+#include <USBHIDConsumerControl.h>
+#include <USBHIDSystemControl.h>
 
 #include "AbsoluteMouse.h"
 
@@ -41,9 +43,52 @@ static_assert(key::F12        == KEY_F12,         "keycode drift: F12");
 
 namespace {
 
-USBHIDKeyboard g_keyboard;
-USBHIDMouse    g_mouse;
-AbsoluteMouse  g_absMouse;
+USBHIDKeyboard       g_keyboard;
+USBHIDMouse          g_mouse;
+AbsoluteMouse        g_absMouse;
+USBHIDConsumerControl g_consumer;
+USBHIDSystemControl   g_system;
+
+// Host lock-LED state, written from the USB event task and read from any task.
+// Plain aligned words: a torn read is impossible on this core and the worst a
+// stale read costs is one frame of a wrong indicator, so no lock is warranted
+// (matching the lockless read policy documented above mouseMove).
+volatile uint8_t  s_hostLeds       = 0;
+volatile uint32_t s_hostLedReports = 0;
+
+// Fired by the USB stack whenever the host sends a keyboard output report -
+// i.e. the lock-key LED state changed, or the device was just configured. This
+// runs on the Arduino USB event task, not a HID caller, so it only stores.
+void onKeyboardLed(void *, esp_event_base_t, int32_t id, void *data) {
+    if (id != ARDUINO_USB_HID_KEYBOARD_LED_EVENT) return;
+    auto *d = static_cast<arduino_usb_hid_keyboard_event_data_t *>(data);
+    s_hostLeds = d->leds;
+    ++s_hostLedReports;
+}
+
+uint16_t mediaUsage(MediaKey k) {
+    switch (k) {
+        case MediaKey::VolumeUp:       return CONSUMER_CONTROL_VOLUME_INCREMENT;
+        case MediaKey::VolumeDown:     return CONSUMER_CONTROL_VOLUME_DECREMENT;
+        case MediaKey::Mute:           return CONSUMER_CONTROL_MUTE;
+        case MediaKey::PlayPause:      return CONSUMER_CONTROL_PLAY_PAUSE;
+        case MediaKey::Next:           return CONSUMER_CONTROL_SCAN_NEXT;
+        case MediaKey::Previous:       return CONSUMER_CONTROL_SCAN_PREVIOUS;
+        case MediaKey::Stop:           return CONSUMER_CONTROL_STOP;
+        case MediaKey::BrightnessUp:   return CONSUMER_CONTROL_BRIGHTNESS_INCREMENT;
+        case MediaKey::BrightnessDown: return CONSUMER_CONTROL_BRIGHTNESS_DECREMENT;
+    }
+    return 0;
+}
+
+uint8_t systemUsage(SystemKey k) {
+    switch (k) {
+        case SystemKey::Sleep:    return SYSTEM_CONTROL_STANDBY;
+        case SystemKey::PowerOff: return SYSTEM_CONTROL_POWER_OFF;
+        case SystemKey::Wake:     return SYSTEM_CONTROL_WAKE_HOST;
+    }
+    return SYSTEM_CONTROL_NONE;
+}
 
 inline uint8_t mouseButtonMask(MouseButton button) {
     switch (button) {
@@ -88,6 +133,12 @@ void HidDevice::begin() {
     g_keyboard.begin();
     g_mouse.begin();
     g_absMouse.begin();
+    g_consumer.begin();
+    g_system.begin();
+
+    // Listen for the host's keyboard output reports (lock-LED state). This is
+    // our only channel of feedback *from* the target.
+    g_keyboard.onEvent(ARDUINO_USB_HID_KEYBOARD_LED_EVENT, onKeyboardLed);
 
     // NOTE: do not set VID/PID/product name here. When ARDUINO_USB_CDC_ON_BOOT=1
     // the USB stack is already running by the time setup() executes, so these
@@ -260,6 +311,37 @@ void HidDevice::mousePan(int32_t delta) {
         delta -= step;
     }
 }
+
+// --- Media / system --------------------------------------------------------
+// These take the mutex: like the keyboard path they mutate a shared report
+// object read-modify-write, so they must not race releaseAll() or each other.
+
+void HidDevice::mediaKey(MediaKey k) {
+    Lock lk(mutex_);
+    if (!ready()) return;
+    const uint16_t usage = mediaUsage(k);
+    if (usage == 0) return;
+    g_consumer.press(usage);
+    g_consumer.release();
+    reportGap();
+}
+
+void HidDevice::systemKey(SystemKey k) {
+    Lock lk(mutex_);
+    if (!ready()) return;
+    g_system.press(systemUsage(k));
+    g_system.release();
+    reportGap();
+}
+
+// --- Host feedback ---------------------------------------------------------
+
+uint8_t  HidDevice::hostLeds() const       { return s_hostLeds; }
+uint32_t HidDevice::hostLedReports() const { return s_hostLedReports; }
+// Bit order is the USB boot-keyboard output report: b0 Num, b1 Caps, b2 Scroll.
+bool HidDevice::numLock()    const { return (s_hostLeds & 0x01) != 0; }
+bool HidDevice::capsLock()   const { return (s_hostLeds & 0x02) != 0; }
+bool HidDevice::scrollLock() const { return (s_hostLeds & 0x04) != 0; }
 
 // --- Safety ----------------------------------------------------------------
 

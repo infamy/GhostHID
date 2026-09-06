@@ -113,9 +113,16 @@ CommandResult CommandProcessor::handleMessage(const char *json, size_t len,
     // The pong carries USB state so the controller learns about a target that
     // slept or was unplugged without having to poll separately.
     if (strcmp(type, "ping") == 0) {
-        reply(outResponse, outSize, "{\"type\":\"pong\",\"usb\":%s,\"kvm\":%u}",
+        // The pong carries the host lock-LED state (locks) and a count of the
+        // output reports the host has sent (hled). A climbing hled is proof the
+        // target is actually driving our keyboard, not merely powering it - the
+        // one thing nothing else on the wire can tell the controller.
+        reply(outResponse, outSize,
+              "{\"type\":\"pong\",\"usb\":%s,\"kvm\":%u,\"locks\":%u,\"hled\":%u}",
               hid_.ready() ? "true" : "false",
-              (unsigned)(deskflow_ ? deskflow_->stateCode() : 0));
+              (unsigned)(deskflow_ ? deskflow_->stateCode() : 0),
+              (unsigned)hid_.hostLeds(),
+              (unsigned)hid_.hostLedReports());
         return CommandResult::Ok;
     }
 
@@ -161,7 +168,8 @@ CommandResult CommandProcessor::handleMessage(const char *json, size_t len,
         strcmp(type, "key") == 0 || strcmp(type, "text") == 0 ||
         strcmp(type, "mouse_move") == 0 || strcmp(type, "mouse_abs") == 0 ||
         strcmp(type, "mouse_button") == 0 ||
-        strcmp(type, "mouse_wheel") == 0;
+        strcmp(type, "mouse_wheel") == 0 ||
+        strcmp(type, "media") == 0 || strcmp(type, "system") == 0;
     if (isInput && locked_) {
         reply(outResponse, outSize,
               "{\"type\":\"error\",\"error\":\"%s\"}", lockReason_);
@@ -252,6 +260,49 @@ CommandResult CommandProcessor::handleMessage(const char *json, size_t len,
             if (p < -GHOSTHID_WHEEL_MAX) p = -GHOSTHID_WHEEL_MAX;
             hid_.mousePan(p);
         }
+        return CommandResult::Ok;
+    }
+
+    // --- media / system -----------------------------------------------------
+    // Consumer-control (media) keys. Sent as a tap by the HID layer.
+    if (strcmp(type, "media") == 0) {
+        const char *k = doc["key"] | "";
+        MediaKey mk;
+        bool ok = true;
+        if      (strcmp(k, "vol_up")      == 0) mk = MediaKey::VolumeUp;
+        else if (strcmp(k, "vol_down")    == 0) mk = MediaKey::VolumeDown;
+        else if (strcmp(k, "mute")        == 0) mk = MediaKey::Mute;
+        else if (strcmp(k, "play_pause")  == 0) mk = MediaKey::PlayPause;
+        else if (strcmp(k, "next")        == 0) mk = MediaKey::Next;
+        else if (strcmp(k, "prev")        == 0) mk = MediaKey::Previous;
+        else if (strcmp(k, "stop")        == 0) mk = MediaKey::Stop;
+        else if (strcmp(k, "bright_up")   == 0) mk = MediaKey::BrightnessUp;
+        else if (strcmp(k, "bright_down") == 0) mk = MediaKey::BrightnessDown;
+        else ok = false;
+        if (!ok) {
+            reply(outResponse, outSize,
+                  "{\"type\":\"error\",\"error\":\"unknown media key\"}");
+            return CommandResult::BadRequest;
+        }
+        hid_.mediaKey(mk);
+        return CommandResult::Ok;
+    }
+
+    // System-control keys - these act on the host's power state.
+    if (strcmp(type, "system") == 0) {
+        const char *k = doc["key"] | "";
+        SystemKey sk;
+        bool ok = true;
+        if      (strcmp(k, "sleep") == 0) sk = SystemKey::Sleep;
+        else if (strcmp(k, "power") == 0) sk = SystemKey::PowerOff;
+        else if (strcmp(k, "wake")  == 0) sk = SystemKey::Wake;
+        else ok = false;
+        if (!ok) {
+            reply(outResponse, outSize,
+                  "{\"type\":\"error\",\"error\":\"unknown system key\"}");
+            return CommandResult::BadRequest;
+        }
+        hid_.systemKey(sk);
         return CommandResult::Ok;
     }
 

@@ -1,0 +1,13 @@
+{
+  "name": "GhostHID",
+  "version": "0.6.3",
+  "new_install_prompt_erase": true,
+  "builds": [
+    {
+      "chipFamily": "ESP32-S3",
+      "parts": [
+        { "path": "ghosthid-s3.bin", "offset": 0 }
+      ]
+    }
+  ]
+}

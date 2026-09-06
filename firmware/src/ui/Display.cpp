@@ -158,6 +158,15 @@ void Display::drawStatusPage(const DisplayStatus &s) {
     tft.setTextColor(C_WHITE); tft.setCursor(wx, wy);       tft.print(a);
     tft.setTextColor(C_CYAN);  tft.setCursor(wx + wa, wy);  tft.print(b);
 
+    // Host lock-LED state, centred under the wordmark: lit green when the target
+    // has the lock on, dim grey otherwise. This is the target talking back.
+    tft.setTextSize(1);
+    int lx = (SCR_W - 86) / 2;
+    const int ly = wy + 30;
+    tft.setTextColor(s.capsLock   ? C_GREEN : C_GREY); tft.setCursor(lx, ly); tft.print("CAPS"); lx += 34;
+    tft.setTextColor(s.numLock    ? C_GREEN : C_GREY); tft.setCursor(lx, ly); tft.print("NUM");  lx += 28;
+    tft.setTextColor(s.scrollLock ? C_GREEN : C_GREY); tft.setCursor(lx, ly); tft.print("SCRL");
+
     // --- corners: small operational status ---------------------------------
     corner(4, 4, s.usbReady ? "USB ok" : "USB --", s.usbReady ? C_GREEN : C_RED, false);
 
@@ -285,10 +294,11 @@ void Display::update(const DisplayStatus &s) {
     drawAt = millis();
 
     char sig[224];
-    snprintf(sig, sizeof(sig), "%d|%s|%s|%s|%s|%d|%s|%d|%d|%s|%u",
+    snprintf(sig, sizeof(sig), "%d|%s|%s|%s|%s|%d|%s|%d|%d|%s|%d%d%d|%u",
              (int)page_, s.deviceName, s.apSsid, s.apIp, s.staIp,
              s.usbReady ? 1 : 0, s.kvmState, s.kvmFocus ? 1 : 0, s.clients,
              s.version,
+             s.capsLock ? 1 : 0, s.numLock ? 1 : 0, s.scrollLock ? 1 : 0,
              page_ == Page::Info ? (unsigned)(s.uptimeSec / 30) : 0u);  // Info: refresh ~2x/min
     static char lastSig[224] = {0};
     if (!dirty_ && strcmp(sig, lastSig) == 0) return;

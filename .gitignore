@@ -7,3 +7,7 @@ firmware/ghosthid_local.ini
 firmware/src/web/WebAssets.h
 dist/
 webflasher/*.bin
+
+# site: large build artifacts (populated from a release for hosting)
+site/flash/*.bin
+site/downloads/*.bin

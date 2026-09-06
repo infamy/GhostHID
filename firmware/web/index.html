@@ -33,7 +33,7 @@ body{margin:0;background:var(--bg);color:var(--fg);
    their contents line up with the 820px content column. Without this the tabs
    stretch across an entire 4K display while the panels below sit centred. */
 :root{--col:820px;--gutter:max(12px, calc((100% - var(--col)) / 2))}
-header{display:flex;align-items:center;gap:10px;
+header{display:flex;align-items:center;gap:10px;flex-wrap:wrap;
        padding:calc(7px + env(safe-area-inset-top)) var(--gutter) 7px;
        background:var(--panel);border-bottom:1px solid var(--line);
        position:sticky;top:0;z-index:20}
@@ -64,11 +64,13 @@ h1{font-size:14px;margin:0;font-weight:600;white-space:nowrap;letter-spacing:.04
 
 /* Tabs live in the same bar as the title. They sit directly after it rather
    than being pushed to an edge, so the eye finds them next to the name. */
-nav{display:flex;gap:2px;flex:0 1 auto;min-width:0;margin-left:6px}
+/* Nav sits on its own full-width row (order:3, after the auto-margin status
+   items), so the tab labels are never squeezed or ellipsised by the badges and
+   Release button competing for the same line. */
+nav{display:flex;gap:2px;flex:1 1 100%;order:3;min-width:0;margin:4px 0 0 -4px}
 nav button{background:none;border:0;border-bottom:2px solid transparent;border-radius:3px 3px 0 0;
            color:var(--dim);padding:8px 14px;font:inherit;font-size:13px;
-           cursor:pointer;min-height:34px;white-space:nowrap;min-width:0;
-           overflow:hidden;text-overflow:ellipsis}
+           cursor:pointer;min-height:34px;white-space:nowrap;flex:0 0 auto}
 nav button,
 nav button:active,
 nav button.on,
@@ -170,6 +172,33 @@ td code{white-space:normal}
   tr{border-bottom:1px solid var(--line);padding:8px 0;display:block}
 }
 .ok{color:var(--ok)}.bad{color:var(--bad)}
+.locks{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.lk{font-size:11px;padding:5px 10px;border-radius:5px;border:1px solid var(--line);
+    color:var(--dim);letter-spacing:.5px;font-weight:600}
+.lk.on{color:#02120a;background:var(--ok);border-color:var(--ok)}
+.hlink{font-size:12px;color:var(--dim)}
+.hlink.on{color:var(--ok);font-weight:600}
+.mgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+details.help{margin:2px 0 8px;font-size:12px}
+details.help>summary{color:var(--accent);cursor:pointer;list-style:none;user-select:none}
+details.help>summary::-webkit-details-marker{display:none}
+details.help>summary::before{content:"▸ ";color:var(--dim)}
+details.help[open]>summary::before{content:"▾ "}
+details.help .hint,details.help ol{margin:6px 0 0}
+/* presenter mode */
+.ptimers{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.pt{background:#0e1a29;border:1px solid var(--line);border-radius:8px;padding:12px 10px;text-align:center}
+.pt-label{font-size:10px;letter-spacing:.12em;color:var(--dim);text-transform:uppercase}
+.pt-val{font:700 clamp(34px,12vw,64px)/1 var(--mono);color:var(--fg);margin-top:5px;
+        font-variant-numeric:tabular-nums}
+.prow{display:flex;align-items:center;gap:8px;margin-top:10px}
+.pcount{flex:1;text-align:center;color:var(--dim);font-size:13px}
+.pbtn-sm{padding:8px 14px;min-height:38px;flex:none}
+.pnav{display:grid;grid-template-columns:1fr 1.35fr;gap:8px}
+.pbig{min-height:118px;font-size:22px;font-weight:700;border-radius:10px}
+.pbig.primary{background:var(--accent);color:#02120a;border-color:var(--accent)}
+select{background:#0e1a29;color:var(--fg);border:1px solid var(--line);border-radius:4px;
+       padding:9px 11px;min-height:var(--tap);width:100%;font:inherit}
 </style>
 
 <header>
@@ -178,6 +207,7 @@ td code{white-space:normal}
 
   <nav>
     <button data-tab="control" class="on">Control</button>
+    <button data-tab="present">Present</button>
     <button data-tab="settings">Settings</button>
     <button data-tab="about">About</button>
   </nav>
@@ -197,6 +227,21 @@ td code{white-space:normal}
 
   <!-- ================= CONTROL ================= -->
   <div class="tab on" id="tab-control">
+    <section>
+      <h2>Target feedback</h2>
+      <p class="hint" style="margin:0 0 8px">
+        These come <b>from the target itself</b> — proof it is actually processing
+        GhostHID's keyboard, not just powering the board. Toggle Caps/Num/Scroll on
+        the target and watch them light here.
+      </p>
+      <div class="locks"><span id="hlink" class="hlink">target link: waiting…</span></div>
+      <div class="locks" style="margin-top:8px">
+        <span id="lk_caps" class="lk">CAPS LOCK</span>
+        <span id="lk_num"  class="lk">NUM LOCK</span>
+        <span id="lk_scrl" class="lk">SCROLL LOCK</span>
+      </div>
+    </section>
+
     <section>
       <h2>Live typing</h2>
       <input id="typebox" placeholder="Tap here, then type — keys go straight to the target"
@@ -254,6 +299,79 @@ td code{white-space:normal}
         <button data-scroll="-3" class="grow">Scroll ↓</button>
       </div>
     </section>
+
+    <section>
+      <h2>Media &amp; power</h2>
+      <div class="mgrid">
+        <button data-media="prev">⏮ Prev</button>
+        <button data-media="play_pause">⏯ Play</button>
+        <button data-media="next">⏭ Next</button>
+        <button data-media="vol_down">🔉 Vol −</button>
+        <button data-media="mute">🔇 Mute</button>
+        <button data-media="vol_up">🔊 Vol +</button>
+      </div>
+      <label>Power</label>
+      <div class="row">
+        <button data-system="sleep" class="grow">Sleep</button>
+        <button data-system="wake" class="grow">Wake</button>
+        <button data-system="power" class="grow" style="border-color:var(--bad);color:var(--bad)">Power off</button>
+      </div>
+      <p class="hint">
+        Media keys land in whatever app is focused. Sleep, Wake and Power off are
+        system controls — the OS decides whether to honour them, and many ignore
+        Wake arriving over USB.
+      </p>
+    </section>
+  </div>
+
+  <!-- ================= PRESENT ================= -->
+  <div class="tab" id="tab-present">
+    <section>
+      <div class="ptimers">
+        <div class="pt">
+          <div class="pt-label">Total</div>
+          <div class="pt-val" id="p_total">0:00</div>
+        </div>
+        <div class="pt">
+          <div class="pt-label">This slide</div>
+          <div class="pt-val" id="p_slide">0:00</div>
+        </div>
+      </div>
+      <div class="prow">
+        <button id="p_play" class="pbtn-sm">Start</button>
+        <div class="pcount">slide <span id="p_num">1</span></div>
+        <button id="p_reset" class="pbtn-sm">Reset</button>
+      </div>
+    </section>
+
+    <section>
+      <div class="pnav">
+        <button id="p_prev" class="pbig">◀ Prev</button>
+        <button id="p_next" class="pbig primary">Next ▶</button>
+      </div>
+      <div class="prow" style="margin-top:10px">
+        <button id="p_start" class="grow">▶ Start show</button>
+        <button id="p_black" class="grow">Black</button>
+        <button id="p_end" class="grow">End (Esc)</button>
+      </div>
+    </section>
+
+    <section>
+      <h2>Application</h2>
+      <select id="p_preset">
+        <option value="ppt">PowerPoint / LibreOffice Impress</option>
+        <option value="gslides">Google Slides</option>
+        <option value="keynote">Keynote (Mac)</option>
+        <option value="pdf">PDF / other full-screen</option>
+      </select>
+      <p class="hint" id="p_help"></p>
+      <p class="hint" id="p_conn"></p>
+      <p class="hint">
+        The two timers run in this browser: <b>Total</b> counts the whole talk,
+        <b>This slide</b> resets every time you go forward or back — like a
+        hardware presenter remote. Next/Prev/Start begin the clock automatically.
+      </p>
+    </section>
   </div>
 
   <!-- ================= SETTINGS ================= -->
@@ -261,8 +379,8 @@ td code{white-space:normal}
     <section>
       <h2>Wi-Fi (station)</h2>
       <p class="hint" style="margin:0 0 8px">
-        Join an existing network. The device's own access point stays up regardless,
-        so a bad setting here can never lock you out.
+        Optional — join an existing network. The AP stays up regardless, so a bad
+        setting can't lock you out.
       </p>
       <label>Network name (SSID)</label>
       <input id="c_ssid" placeholder="leave empty to disable station mode" autocapitalize="off" autocorrect="off">
@@ -278,9 +396,8 @@ td code{white-space:normal}
         <button id="ap_fallback" class="grow">Drop it while joined</button>
       </div>
       <p class="hint">
-        Keeping it up means a wrong Wi-Fi setting can never lock you out. Dropping it
-        dedicates the radio to the joined network and returns the AP by itself if that
-        connection is lost — measured as no faster here, but useful on a congested band.
+        Keep it up so a wrong Wi-Fi setting can't lock you out; drop it to free the
+        radio for the joined network (it returns if that connection is lost).
       </p>
 
       <h2 style="margin-top:16px">Access</h2>
@@ -294,9 +411,8 @@ td code{white-space:normal}
         <button id="c_reboot">Reboot</button>
       </div>
       <p class="hint">
-        Passwords are write-only: the device reports whether one is set, never its
-        value. Leave a field blank to keep the current one. Wi-Fi, AP and name
-        changes need a reboot; a token change is live on the next connection.
+        Passwords are write-only; leave a field blank to keep the current one.
+        Wi-Fi, AP and name changes need a reboot; a token change is live at once.
       </p>
       <div id="c_pending" style="display:none;margin-top:9px;background:#241a08;
            border:1px solid var(--warn);color:#ffe0b0;border-radius:4px;padding:9px;font-size:13px">
@@ -319,11 +435,8 @@ td code{white-space:normal}
     <section>
       <h2>Screen client (Deskflow / Barrier / Input Leap)</h2>
       <p class="hint" style="margin:0 0 9px">
-        Join an existing Deskflow, Barrier or Input Leap server as a screen, then
-        move the pointer off the edge of your desktop and onto the machine GhostHID
-        is plugged into. The server does the hard part — capturing input and
-        deciding when the pointer crosses — so this is just another screen in a
-        layout you already have, one that needs nothing installed on it.
+        Join a Deskflow / Barrier / Input Leap server as another screen and move the
+        pointer onto the machine GhostHID is plugged into. Nothing to install on it.
       </p>
       <label>Server address</label>
       <div class="row">
@@ -338,40 +451,32 @@ td code{white-space:normal}
         <span style="align-self:center;color:var(--dim)">×</span>
         <input id="k_h" class="grow" placeholder="1080" inputmode="numeric">
       </div>
-      <p class="hint">
-        This must match the resolution of the computer GhostHID is plugged into.
-        The server addresses this screen in that coordinate space, so a wrong value
-        puts the pointer in the wrong place.
-      </p>
+      <p class="hint">Must match the target's resolution — the server places the pointer in this space.</p>
       <label>Encryption</label>
       <div class="row">
         <button id="k_tls_on" class="grow">TLS (default)</button>
         <button id="k_tls_off" class="grow">Plaintext</button>
       </div>
       <p class="hint">
-        Deskflow, Barrier and Synergy enable encryption by default and require the
-        client to present its own certificate. GhostHID generates one on first use
-        and keeps it, so the server recognises the same device each time. The first
-        connection registers this fingerprint with the server; check it matches
-        what the server shows before approving.
+        On by default. GhostHID presents its own certificate (made once, kept) —
+        check the fingerprint below matches on the server the first time.
       </p>
       <div id="k_fp" style="font-family:var(--mono);font-size:10px;color:var(--dim);
            word-break:break-all;margin-top:6px"></div>
 
       <label>Server certificate (required for TLS)</label>
-      <p class="hint" style="margin:0 0 6px">
-        With TLS on, GhostHID pins the server's certificate. Get it either way,
-        then paste it below or upload the file and press Save:
-      </p>
-      <ol class="hint" style="margin:0 0 8px;padding-left:18px">
-        <li><b>Off the wire</b> — on any computer with openssl, replacing
-            <code>SERVER</code> with the server's address:<br>
-            <code>openssl s_client -connect SERVER:24800 &lt;/dev/null | openssl x509 &gt; server.pem</code></li>
-        <li><b>From the server's files</b> — Barrier:
-            <code>~/.local/share/barrier/SSL/Barrier.pem</code>; Deskflow:
-            <code>~/.local/share/deskflow/SSL/Deskflow.pem</code>
-            (on the machine running the server).</li>
-      </ol>
+      <p class="hint" style="margin:0 0 6px">Paste it below or upload the file, then Save.</p>
+      <details class="help">
+        <summary>How to get the certificate</summary>
+        <ol class="hint" style="padding-left:18px">
+          <li><b>Off the wire</b> — on any computer with openssl (replace
+              <code>SERVER</code>):<br>
+              <code>openssl s_client -connect SERVER:24800 &lt;/dev/null | openssl x509 &gt; server.pem</code></li>
+          <li><b>From the server</b> — Barrier:
+              <code>~/.local/share/barrier/SSL/Barrier.pem</code>; Deskflow:
+              <code>~/.local/share/deskflow/SSL/Deskflow.pem</code>.</li>
+        </ol>
+      </details>
       <textarea id="k_ca" rows="4" spellcheck="false" autocapitalize="off" autocorrect="off"
                 placeholder="-----BEGIN CERTIFICATE-----&#10;…&#10;-----END CERTIFICATE-----"
                 style="width:100%;font:11px/1.35 var(--mono);background:#0e1a29;color:var(--fg);
@@ -390,12 +495,28 @@ td code{white-space:normal}
     </section>
 
     <section>
+      <h2>Backup &amp; provisioning</h2>
+      <p class="hint" style="margin:0 0 8px">
+        Copy this board's setup to another. Export downloads all settings (incl. the
+        server certificate) as JSON; Import applies them here.
+      </p>
+      <div class="row">
+        <button id="cfg_export" class="grow">Export settings</button>
+        <label for="cfg_import_file" class="grow" style="display:flex">
+          <input id="cfg_import_file" type="file" accept=".json,application/json" style="display:none">
+          <button id="cfg_import" class="grow" type="button">Import settings…</button>
+        </label>
+      </div>
+      <p class="hint">Secrets (passwords, token) are never exported — set those per board.</p>
+      <div id="cfg_io_log" style="font-family:ui-monospace,monospace;font-size:11px;color:var(--dim);margin-top:6px"></div>
+    </section>
+
+    <section>
       <h2>Firmware update</h2>
       <p class="hint" style="margin:0 0 8px">
-        Upload <code>firmware.bin</code> — <b>not</b> <code>ghosthid-merged.bin</code>,
-        which is for USB flashing only. The device writes to its spare slot and only
-        switches over once the image validates, so a failed or interrupted upload
-        leaves the running firmware untouched.
+        Upload <code>firmware.bin</code> (not <code>ghosthid-merged.bin</code>). It
+        writes to the spare slot and only switches over once the image validates, so
+        a failed upload leaves the running firmware untouched.
       </p>
       <input id="ota_file" type="file" accept=".bin">
       <div class="row" style="margin-top:9px">
@@ -514,8 +635,13 @@ td code{white-space:normal}
 
     <section>
       <h2>2 · Keep the link alive</h2>
-      <pre>{"type":"ping"}   → {"type":"pong","usb":true}
+      <pre>{"type":"ping"}   → {"type":"pong","usb":true,"kvm":0,"locks":2,"hled":3}
 {"type":"status"} → {"type":"status","version":"…","usb":true,"held":0}</pre>
+      <p class="hint" style="margin:6px 0 0">
+        <code>locks</code> is the target's lock-LED bitmap (b0 Num, b1 Caps, b2 Scroll);
+        <code>hled</code> counts the output reports the host has sent — non-zero means
+        the target is actually driving GhostHID's keyboard, not just powering it.
+      </p>
       <p class="hint">
         Ping at least every <b>250&nbsp;ms</b>. If input is held and nothing arrives
         for <b>750&nbsp;ms</b>, the device releases everything — the backstop for a
@@ -548,6 +674,12 @@ td code{white-space:normal}
         <tr><td><code>{"type":"mouse_wheel","delta":-1,"pan":0}</code></td>
             <td><code>delta</code> scrolls (positive = up), <code>pan</code> is the
             horizontal wheel.</td></tr>
+        <tr><td><code>{"type":"media","key":"vol_up"}</code></td>
+            <td>Consumer-control tap: <code>vol_up vol_down mute play_pause next prev
+            stop bright_up bright_down</code>.</td></tr>
+        <tr><td><code>{"type":"system","key":"sleep"}</code></td>
+            <td>System-control tap: <code>sleep wake power</code>. The host's OS decides
+            whether to honour these.</td></tr>
         <tr><td><code>{"type":"release_all"}</code></td>
             <td>Release every held key and button. Cheap and idempotent — send it
             whenever your UI loses focus.</td></tr>
@@ -581,6 +713,14 @@ td code{white-space:normal}
         while a token change takes effect on the next connection and reports
         <code>false</code>. <code>ap_always:false</code> drops the access point while a
         network is joined and restores it if that connection is lost.
+      </p>
+      <pre>GET /api/export   (header X-GhostHID-Token: &lt;token&gt;)
+→ {"ghosthid_export":1,"name":"…","kvm_host":"…","kvm_ca":"…", …}</pre>
+      <p class="hint">
+        Downloads the board's non-secret settings — including the server
+        certificate — as JSON, for provisioning another board. Feed it back through
+        <code>set_config</code> (this is what the web UI's Import button does).
+        Passwords and the token are never included.
       </p>
     </section>
 
@@ -644,6 +784,9 @@ function setState(ok,msg){
   stat.textContent=msg;
   $("#rtt").textContent="";      // latency belongs to #rtt; keep #stat the state word
   dot.title=msg;                 // also mirrored here for the desktop tooltip
+  var pc=$("#p_conn");
+  if(pc) pc.textContent = ok ? "" :
+    "Not connected — buttons will not reach the target until the top bar shows connected.";
 }
 // 0 off, 1 connecting, 2 connected, 3 connected and holding the pointer.
 var kvmServerName = "";
@@ -666,6 +809,20 @@ function setUsb(ok){
   $("#warn").classList.toggle("show", ok===false);
 }
 function send(o){ if(ws&&ws.readyState===1) ws.send(JSON.stringify(o)); }
+
+// Host lock-LED state, bit order matching the USB output report.
+function setLocks(b){
+  $("#lk_num").classList.toggle("on",  !!(b&1));
+  $("#lk_caps").classList.toggle("on", !!(b&2));
+  $("#lk_scrl").classList.toggle("on", !!(b&4));
+}
+// hled is a count of output reports the host has sent us. Non-zero means the
+// target has enumerated our keyboard and driven it at least once.
+function setHlink(n){
+  var el=$("#hlink");
+  if(n>0){ el.className="hlink on"; el.textContent="target link: confirmed ●"; }
+  else   { el.className="hlink";    el.textContent="target link: waiting…"; }
+}
 
 // Fill an input from the device WITHOUT stealing what someone is typing.
 // The settings tab polls for connection state every few seconds, and writing
@@ -708,7 +865,11 @@ function connect(){
   ws.onopen=function(){ send({type:"auth",token:$("#tok").value}); };
   ws.onmessage=function(ev){
     var m; try{ m=JSON.parse(ev.data) }catch(e){ return }
-    if(m.type==="pong") noteRtt();
+    if(m.type==="pong"){
+      noteRtt();
+      if(typeof m.locks==="number") setLocks(m.locks);
+      if(typeof m.hled==="number")  setHlink(m.hled);
+    }
     if(typeof m.kvm==="number") setKvmBadge(m.kvm);
     if(typeof m.usb==="boolean"){
       setUsb(m.usb);
@@ -721,6 +882,12 @@ function connect(){
                 localStorage.setItem("ghosthid.token",$("#tok").value);
                 $("#a_ver").textContent = m.version || "—";
                 $("#a_here").textContent = location.host;
+                // Fresh session: the device released everything on its side (a
+                // reboot/OTA or a dropped socket), so clear any client input
+                // state that could now be out of sync - a lingering sticky
+                // modifier or an active capture is what makes combos misbehave
+                // after a reconnect until you refresh.
+                clearMods(); setCapture(false);
                 log("authenticated"); send({type:"get_config"}); }
       else { setState(false,"auth rejected"); log("auth rejected — check the token"); }
     } else if(m.type==="config"){
@@ -769,7 +936,7 @@ function connect(){
     }
   };
   ws.onclose=function(ev){
-    setUsb(null); $("#kvm").hidden=true;
+    setUsb(null); $("#kvm").hidden=true; setLocks(0); setHlink(0); clearMods();
     // 1013 is the device refusing a second controller. Retrying silently made
     // that look like a flaky connection rather than a deliberate limit.
     if(ev && ev.code===1013){
@@ -1039,6 +1206,69 @@ document.querySelectorAll("[data-btn]").forEach(function(b){
 document.querySelectorAll("[data-scroll]").forEach(function(b){
   b.onclick=function(){ send({type:"mouse_wheel",delta:parseInt(b.dataset.scroll,10)}); };
 });
+// Media (consumer-control) and system (power) keys are taps: one message.
+document.querySelectorAll("[data-media]").forEach(function(b){
+  b.onclick=function(){ send({type:"media",key:b.dataset.media}); };
+});
+document.querySelectorAll("[data-system]").forEach(function(b){
+  b.onclick=function(){ send({type:"system",key:b.dataset.system}); };
+});
+
+// --- presenter mode ---------------------------------------------------------
+// Slide control is just keystrokes; the app decides what they mean, so each
+// preset picks the keys. The two timers run entirely in the browser.
+var PRESETS={
+  ppt:    {next:["RIGHT"], prev:["LEFT"], start:["F5"],            black:["b"], end:["ESC"],
+           help:"Next / Prev send → / ←. Start show sends F5, Black toggles with B, End sends Esc."},
+  gslides:{next:["RIGHT"], prev:["LEFT"], start:["CTRL","F5"],     black:["b"], end:["ESC"],
+           help:"Next / Prev send → / ←. Start show sends Ctrl+F5 (Windows/ChromeOS), Black toggles with B."},
+  keynote:{next:["RIGHT"], prev:["LEFT"], start:["GUI","ALT","p"], black:["b"], end:["ESC"],
+           help:"Next / Prev send → / ←. Start show sends ⌘+⌥+P, End sends Esc."},
+  pdf:    {next:["RIGHT"], prev:["LEFT"], start:[],                black:[],    end:["ESC"],
+           help:"Next / Prev send → / ←. Put the viewer full-screen yourself; End sends Esc."}
+};
+var pPreset="ppt";
+// Press each key in order, then release in reverse — same shape as the combos.
+function sendCombo(arr){
+  if(!arr||!arr.length) return;
+  arr.forEach(function(k){ send({type:"key",key:k,pressed:true}); });
+  arr.slice().reverse().forEach(function(k){ send({type:"key",key:k,pressed:false}); });
+}
+var P={running:false,total:0,slide:0,num:1,_t:null,_last:0};
+function pFmt(ms){ var s=Math.max(0,Math.floor(ms/1000));
+  return Math.floor(s/60)+":"+("0"+(s%60)).slice(-2); }
+function pRender(){ $("#p_total").textContent=pFmt(P.total);
+  $("#p_slide").textContent=pFmt(P.slide); $("#p_num").textContent=P.num; }
+function pRun(){ if(P.running) return; P.running=true; P._last=Date.now();
+  P._t=setInterval(function(){ var n=Date.now(), d=n-P._last; P._last=n;
+    P.total+=d; P.slide+=d; pRender(); },250);
+  $("#p_play").textContent="Pause"; pWake(true); }
+function pStop(){ if(!P.running) return; P.running=false; clearInterval(P._t);
+  $("#p_play").textContent="Resume"; pWake(false); }
+function pReset(){ pStop(); P.total=0; P.slide=0; P.num=1; pRender(); $("#p_play").textContent="Start"; }
+function pStep(dir){ P.num=Math.max(1,P.num+dir); P.slide=0; if(!P.running) pRun(); pRender(); }
+$("#p_next").onclick =function(){ sendCombo(PRESETS[pPreset].next);  pStep(1);  };
+$("#p_prev").onclick =function(){ sendCombo(PRESETS[pPreset].prev);  pStep(-1); };
+$("#p_start").onclick=function(){ sendCombo(PRESETS[pPreset].start); pReset(); pRun(); };
+$("#p_black").onclick=function(){ sendCombo(PRESETS[pPreset].black); };
+$("#p_end").onclick  =function(){ sendCombo(PRESETS[pPreset].end);   pStop();  };
+$("#p_play").onclick =function(){ P.running?pStop():pRun(); };
+$("#p_reset").onclick=function(){ pReset(); };
+$("#p_preset").onchange=function(){ pPreset=this.value; $("#p_help").textContent=PRESETS[pPreset].help; };
+$("#p_help").textContent=PRESETS[pPreset].help;
+pRender();
+// Keep the screen awake while the clock runs (best-effort; ignored where unsupported).
+var pWakeLock=null;
+function pWake(on){
+  try{
+    if(on && "wakeLock" in navigator && document.visibilityState==="visible"){
+      navigator.wakeLock.request("screen").then(function(l){ pWakeLock=l; }).catch(function(){});
+    } else if(!on && pWakeLock){ pWakeLock.release().catch(function(){}); pWakeLock=null; }
+  }catch(e){}
+}
+document.addEventListener("visibilitychange",function(){
+  if(document.visibilityState==="visible" && P.running) pWake(true);
+});
 
 // --- settings ---------------------------------------------------------------
 $("#c_save").onclick=function(){
@@ -1121,6 +1351,57 @@ function saveKvm(){
   setTimeout(function(){ send({type:"get_config"}); }, 1200);
 }
 $("#c_reboot").onclick=function(){ send({type:"reboot"}); };
+
+// --- backup & provisioning --------------------------------------------------
+// Export is a token-gated HTTP GET so it can carry the full server certificate
+// without the WebSocket reply-size limit. The token goes in a header, never the
+// URL. The download is a normal browser save of the device's own file.
+$("#cfg_export").onclick=function(){
+  var tok=$("#tok").value||"";
+  fetch("/api/export",{headers: tok ? {"X-GhostHID-Token":tok} : {}})
+    .then(function(r){ if(!r.ok) throw new Error("HTTP "+r.status); return r.text(); })
+    .then(function(txt){
+      var blob=new Blob([txt],{type:"application/json"});
+      var url=URL.createObjectURL(blob);
+      var a=document.createElement("a");
+      a.href=url; a.download=($("#c_name").value||"ghosthid").trim()+"-config.json";
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(function(){ URL.revokeObjectURL(url); },1000);
+      $("#cfg_io_log").textContent="Exported settings to a file.";
+    })
+    .catch(function(e){ $("#cfg_io_log").textContent="Export failed: "+e.message+
+      (tok?"":" — set the pairing token above first."); });
+};
+$("#cfg_import").onclick=function(){ $("#cfg_import_file").click(); };
+$("#cfg_import_file").onchange=function(e){
+  var f=e.target.files[0]; if(!f){ return; }
+  var r=new FileReader();
+  r.onload=function(){
+    var d; try{ d=JSON.parse(r.result); }
+    catch(err){ $("#cfg_io_log").textContent="Import failed: not valid JSON."; return; }
+    if(!d || d.ghosthid_export!==1){
+      $("#cfg_io_log").textContent="Import failed: not a GhostHID export file."; return; }
+    var m={type:"set_config"};
+    if(typeof d.name==="string")          m.name=d.name;
+    if(typeof d.ap_always==="boolean")    m.ap_always=d.ap_always;
+    if(typeof d.scroll_invert==="boolean")m.scroll_invert=d.scroll_invert;
+    if(typeof d.sta_ssid==="string")      m.sta_ssid=d.sta_ssid;   // password set separately
+    if(typeof d.kvm_host==="string")      m.kvm_host=d.kvm_host;
+    if(typeof d.kvm_port==="number")      m.kvm_port=d.kvm_port;
+    if(typeof d.kvm_screen==="string")    m.kvm_screen=d.kvm_screen;
+    if(typeof d.kvm_w==="number")         m.kvm_w=d.kvm_w;
+    if(typeof d.kvm_h==="number")         m.kvm_h=d.kvm_h;
+    if(typeof d.kvm_tls==="boolean")      m.kvm_tls=d.kvm_tls;
+    if(typeof d.kvm_ca==="string" && d.kvm_ca) m.kvm_ca=d.kvm_ca;
+    if(typeof d.kvm_on==="boolean")       m.kvm_on=d.kvm_on;
+    send(m);
+    $("#cfg_io_log").textContent="Imported "+f.name+
+      " — saving. Now set the Wi-Fi/AP passwords and token, then reboot.";
+    setTimeout(function(){ send({type:"get_config"}); },1300);
+  };
+  r.readAsText(f);
+  e.target.value="";   // let the same file be picked again
+};
 
 // --- firmware update --------------------------------------------------------
 $("#ota_go").onclick=function(){

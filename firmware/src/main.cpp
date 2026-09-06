@@ -206,6 +206,9 @@ void serviceDisplay() {
     st.version    = GHOSTHID_VERSION;
     st.heapFreeKb = ESP.getFreeHeap() / 1024;
     st.uptimeSec  = millis() / 1000;
+    st.capsLock   = hid.capsLock();
+    st.numLock    = hid.numLock();
+    st.scrollLock = hid.scrollLock();
     display.update(st);
 }
 #endif
