@@ -94,12 +94,20 @@ section{padding:clamp(56px,9vw,104px) 0;position:relative}
 .head p{color:var(--dim);margin:14px 0 0;font-size:17px}
 
 /* pitch */
-.pitch p{font-size:clamp(19px,2.6vw,27px);line-height:1.42;max-width:20ch;margin:0}
-.pitch .wrap{display:grid;grid-template-columns:1fr 1.3fr;gap:40px;align-items:start}
-.pitch .body{color:var(--dim);font-size:17px;line-height:1.7}
-.pitch .body b{color:var(--fg);font-weight:500}
-.pitch p b{color:var(--cyan)}
-@media(max-width:820px){.pitch .wrap{grid-template-columns:1fr;gap:18px}.pitch p{max-width:none}}
+.pitch{text-align:center}
+.pitch .wrap{max-width:760px}
+.pitch h2{font-size:clamp(30px,5.4vw,52px);letter-spacing:-.03em;margin:14px 0 0}
+.pitch p{color:var(--dim);font-size:clamp(17px,2.2vw,20px);line-height:1.62;margin:22px auto 0;max-width:60ch}
+.pitch p b{color:var(--fg);font-weight:500}
+/* mTLS differentiator callout */
+.callout{margin-top:34px;display:flex;gap:18px;align-items:flex-start;text-align:left;
+  border:1px solid var(--line);border-left:3px solid var(--cyan);border-radius:12px;
+  background:linear-gradient(100deg,rgba(0,229,255,.07),transparent 55%),var(--panel);
+  padding:22px 24px}
+.callout .lock{font-size:22px;line-height:1.2;filter:drop-shadow(0 0 10px rgba(0,229,255,.4))}
+.callout .k{font-family:var(--mono);font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--cyan);font-weight:700}
+.callout p{color:var(--dim);margin:7px 0 0;font-size:15px;line-height:1.6;max-width:none}
+.callout p b{color:var(--fg);font-weight:600}
 
 /* feature grid */
 .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
@@ -210,10 +218,15 @@ footer a{color:var(--dim)}
 
 <section id="what" class="pitch">
   <div class="wrap">
-    <p>A keyboard the computer trusts, driven over <b>your network</b>.</p>
-    <div class="body">
-      <p>It runs on a small ESP32-S3 board that plugs into a USB-A port and shows up as an ordinary keyboard and mouse, so there's nothing to install on the machine you're controlling.</p>
-      <p style="margin-top:16px">You drive it over Wi-Fi — from the built-in web app on a phone or laptop, or by adding it to a Deskflow, Barrier or Input Leap layout and moving your pointer onto it.</p>
+    <span class="eyebrow">How it works</span>
+    <h2>Yes, there's a keyboard plugged in.</h2>
+    <p>The computer is sure of it — to its USB port, GhostHID is a plain keyboard and mouse, no driver or agent required. What it can't tell is that the keystrokes are arriving over Wi-Fi: from the web app on your phone, or from your own desktop, a screen-edge away.</p>
+    <div class="callout">
+      <div class="lock">🔒</div>
+      <div>
+        <div class="k">Encrypted by default</div>
+        <p>Barrier, Deskflow and Synergy sessions usually run in the clear on your LAN. GhostHID doesn't — it speaks the protocol over <b>mutual TLS</b>, pinning the server's certificate and presenting its own, so the link to your screen server can't be sniffed or spoofed.</p>
+      </div>
     </div>
   </div>
 </section>
@@ -233,7 +246,7 @@ footer a{color:var(--dim)}
       <div class="card"><div class="n">05</div><h3>Media &amp; system keys</h3><p>Volume, mute, play/pause, next/prev, brightness — plus sleep, wake and power, as a full consumer-control collection.</p></div>
       <div class="card"><div class="n">06</div><h3>On-device screen</h3><p>A 1.47" LCD shows a Wi-Fi join QR, the IP and live status; an RGB LED reads its state across the room.</p></div>
     </div>
-    <div class="more"><b>And under the hood:</b> mutual-TLS screen sessions with a pinned server cert · one-click config export to clone a fleet of boards · browser OTA updates · a generic USB keyboard ID so it doesn't trip endpoint security · release-everything-on-disconnect safety.</div>
+    <div class="more"><b>And under the hood:</b> one-click config export to clone a fleet of boards · browser OTA updates · a generic USB keyboard ID so it doesn't trip endpoint security · release-everything-on-disconnect safety.</div>
   </div>
 </section>
 
