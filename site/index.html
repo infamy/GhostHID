@@ -190,6 +190,7 @@ footer a{color:var(--dim)}
       <a href="#what">What</a>
       <a href="#features">Features</a>
       <a href="#see">Screens</a>
+      <a href="#secure">Secure</a>
       <a href="#hardware">Hardware</a>
       <a href="#start">Get started</a>
     </nav>
@@ -261,6 +262,24 @@ footer a{color:var(--dim)}
         <figcaption><div class="k">Present</div><div class="d">Big next/back, total and per-slide timers — a presenter remote that lives in your pocket.</div></figcaption></figure></div>
       <div class="shot"><figure><div class="frame"><img src="img/ui-settings.jpg" alt="GhostHID Settings tab — Wi-Fi, the screen-client link and trust-on-first-use TLS" loading="lazy" width="800" alt="GhostHID settings: Wi-Fi, screen client and encryption" loading="lazy"></div>
         <figcaption><div class="k">Settings</div><div class="d">Wi-Fi, the screen-client link, and TLS that trusts the server on first connect — no cert files to paste.</div></figcaption></figure></div>
+    </div>
+  </div>
+</section>
+
+<section id="secure">
+  <div class="wrap">
+    <div class="head">
+      <span class="eyebrow">Security</span>
+      <h2>Secure by design, not by hope.</h2>
+      <p>It types into any computer, so it's built like something you'd trust with the keys. Every line here is something you can check in the source.</p>
+    </div>
+    <div class="grid">
+      <div class="card"><div class="n">✓</div><h3>Encrypted both ways</h3><p>Screen sessions run over mutual TLS. The server's certificate is captured and confirmed on first connect — no keys to paste, and no silent plaintext fallback.</p></div>
+      <div class="card"><div class="n">✓</div><h3>No shared default</h3><p>Every board generates its own random pairing token and access-point password on first boot. There's nothing to look up and reuse across devices.</p></div>
+      <div class="card"><div class="n">✓</div><h3>Resists guessing</h3><p>Tokens are checked in constant time, with an escalating lockout after repeated failures — on the web control channel and the firmware-update endpoint alike.</p></div>
+      <div class="card"><div class="n">✓</div><h3>Never a stuck key</h3><p>If a controller drops — lost Wi-Fi, a closed tab — the device releases every held key and button on the target. Guaranteed by the layering, not left to chance.</p></div>
+      <div class="card"><div class="n">✓</div><h3>Stays on your network</h3><p>No cloud, no account, no telemetry. The web app is served straight off the device; nothing it does leaves your LAN.</p></div>
+      <div class="card"><div class="n">✓</div><h3>Nothing hidden</h3><p>A generic USB keyboard ID so it doesn't trip endpoint security — and MIT-licensed firmware, web UI and hardware you can read end to end.</p></div>
     </div>
   </div>
 </section>
