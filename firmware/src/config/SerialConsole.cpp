@@ -24,6 +24,19 @@ char *splitVerb(char *line) {
     return rest;
 }
 
+// Constant-time compare for the unlock token (no early return).
+bool ctEq(const char *a, const char *b) {
+    const size_t la = strlen(a), lb = strlen(b);
+    unsigned char d = static_cast<unsigned char>(la ^ lb);
+    const size_t n = la > lb ? la : lb;
+    for (size_t i = 0; i < n; ++i) {
+        const unsigned char ca = i < la ? static_cast<unsigned char>(a[i]) : 0;
+        const unsigned char cb = i < lb ? static_cast<unsigned char>(b[i]) : 0;
+        d |= static_cast<unsigned char>(ca ^ cb);
+    }
+    return d == 0;
+}
+
 }  // namespace
 
 void SerialConsole::begin() {
@@ -45,7 +58,8 @@ void SerialConsole::printHelp() const {
     Serial.println("  kvm on|off           enable or disable the screen client");
     Serial.println("  web off|on           start or stop the web UI now (this boot only)");
     Serial.println("  heap                 free and largest-block memory");
-    Serial.println("  token <token>        pairing token (empty value disables auth)");
+    Serial.println("  token <token>        pairing token (empty disables auth; else 6-48)");
+    Serial.println("  unlock <token>       allow wifi/token/reset changes this boot");
     Serial.println("  name <name>          device name - sets the AP SSID and mDNS name");
     Serial.println("  reset                erase all settings");
     Serial.println("  reboot               restart to apply changes");
@@ -126,19 +140,38 @@ void SerialConsole::execute(char *line) {
     char *arg = splitVerb(line);
     const char *value = (arg != nullptr) ? arg : "";
 
+    // The console is reachable by the target host across the USB seam. Once a
+    // token is set, commands that change an already-set security setting require
+    // `unlock <token>` first (M1). Bootstrap stays open: with no token set, or a
+    // blank station, first-run configuration over the cable is ungated.
+    const bool locked = (config_.authToken()[0] != '\0') && !consoleUnlocked_;
+
     if (strcasecmp(line, "help") == 0 || strcmp(line, "?") == 0) {
         printHelp();
     } else if (strcasecmp(line, "show") == 0 || strcasecmp(line, "status") == 0) {
         printStatus();
+    } else if (strcasecmp(line, "unlock") == 0) {
+        if (config_.authToken()[0] == '\0') {
+            Serial.println("console is already open (no token set)");
+        } else if (ctEq(value, config_.authToken())) {
+            consoleUnlocked_ = true;
+            Serial.println("ok: console unlocked for this boot");
+        } else {
+            Serial.println("error: wrong token");
+        }
     } else if (strcasecmp(line, "wifi") == 0) {
-        if (config_.setStation(value, config_.staPassword())) {
+        if (locked && config_.stationConfigured()) {
+            Serial.println("locked: run 'unlock <token>' first");
+        } else if (config_.setStation(value, config_.staPassword())) {
             Serial.printf("ok: wifi = %s  -- type 'reboot' to apply\r\n",
                           value[0] ? value : "(disabled)");
         } else {
             Serial.println("error: ssid too long (max 32)");
         }
     } else if (strcasecmp(line, "wifipass") == 0) {
-        if (config_.setStation(config_.staSsid(), value)) {
+        if (locked && config_.stationConfigured()) {
+            Serial.println("locked: run 'unlock <token>' first");
+        } else if (config_.setStation(config_.staSsid(), value)) {
             Serial.println("ok: wifi password set  -- type 'reboot' to apply");
         } else {
             Serial.println("error: password too long (max 64)");
@@ -150,11 +183,13 @@ void SerialConsole::execute(char *line) {
             Serial.println("error: WPA2 requires 8-63 characters");
         }
     } else if (strcasecmp(line, "token") == 0) {
-        if (config_.setAuthToken(value)) {
+        if (locked) {
+            Serial.println("locked: run 'unlock <token>' first");
+        } else if (config_.setAuthToken(value)) {
             Serial.printf("ok: token %s  (active now, no reboot needed)\r\n",
                           value[0] ? "set" : "cleared - auth disabled");
         } else {
-            Serial.println("error: token too long (max 48)");
+            Serial.println("error: token must be empty (disables auth) or 6-48 chars");
         }
     } else if (strcasecmp(line, "name") == 0) {
         if (config_.setDeviceName(value)) {
@@ -232,8 +267,12 @@ void SerialConsole::execute(char *line) {
                           network_.serversRunning() ? "running" : "stopped");
         }
     } else if (strcasecmp(line, "reset") == 0) {
-        config_.factoryReset();
-        Serial.println("ok: settings erased - reboot to apply build-time defaults");
+        if (locked) {
+            Serial.println("locked: run 'unlock <token>' first");
+        } else {
+            config_.factoryReset();
+            Serial.println("ok: settings erased - reboot to apply build-time defaults");
+        }
     } else if (strcasecmp(line, "reboot") == 0) {
         Serial.println("rebooting...");
         processor_.requestReboot();

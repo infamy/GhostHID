@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.6.11
+
+The remaining hardware-independent open items from the review.
+
+### Security
+
+* **H7 - HTTP token endpoints are now rate-limited and constant-time.** Only the
+  WebSocket auth was throttled (H4); `/api/ota`, `/api/identity` and `/api/export`
+  did a raw `==` with no limiter - the real brute-force oracle. They now share a
+  counter+cooldown (5 wrong tokens -> 30 s; only a supplied-but-wrong token counts,
+  so ordinary probes don't lock the operator out) and a constant-time compare.
+* **Token minimum length.** `set_config`/`token` now reject a 1-5 char token
+  (empty still disables auth; generated default is 8). Floor of 6, still
+  LCD-readable.
+* **M1 - serial `unlock` gate.** The USB console is reachable by the target host.
+  Once a token is set, the commands that change an already-set security setting -
+  `wifi`/`wifipass` (when a station is configured), `token`, `reset` - require
+  `unlock <token>` first (constant-time, per-boot). Bootstrap stays open: no token
+  set, or a blank station, leaves first-run config over the cable ungated.
+
+
 ## 0.6.10
 
 Token ergonomics + finishing M4 + a couple of easy audit wins.

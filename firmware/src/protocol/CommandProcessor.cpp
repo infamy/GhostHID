@@ -447,7 +447,7 @@ CommandResult CommandProcessor::handleMessage(const char *json, size_t len,
         }
         if (!err && doc["token"].is<const char *>()) {
             if (!config_.setAuthToken(doc["token"].as<const char *>()))
-                err = "token too long";
+                err = "token must be empty (disables auth) or 6-48 characters";
         }
         if (!err && doc["ap_always"].is<bool>()) {
             config_.setApAlways(doc["ap_always"].as<bool>());

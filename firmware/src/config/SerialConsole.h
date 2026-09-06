@@ -42,6 +42,10 @@ private:
     DeskflowClient   &deskflow_;
     char   line_[kLineMax] = {};
     size_t len_ = 0;
+    // Per-boot flag: `unlock <token>` sets it, gating the commands that mutate
+    // an already-set security setting so a compromised target host can't
+    // reconfigure the device across the USB console (M1). Reset every boot.
+    bool   consoleUnlocked_ = false;
 };
 
 }  // namespace ghosthid

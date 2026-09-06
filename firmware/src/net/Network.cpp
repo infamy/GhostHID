@@ -139,19 +139,52 @@ void otaFail(AsyncWebServerRequest *request, int code, const char *why) {
 
 bool hostAllowed(AsyncWebServerRequest *r);   // defined below
 
+// Constant-time string compare (no early return) - the HTTP token check must not
+// leak the token prefix-by-prefix via timing, same as the WS path's ctEquals.
+bool ctEqualsStr(const char *a, const char *b) {
+    const size_t la = strlen(a), lb = strlen(b);
+    unsigned char d = static_cast<unsigned char>(la ^ lb);
+    const size_t n = la > lb ? la : lb;
+    for (size_t i = 0; i < n; ++i) {
+        const unsigned char ca = i < la ? static_cast<unsigned char>(a[i]) : 0;
+        const unsigned char cb = i < lb ? static_cast<unsigned char>(b[i]) : 0;
+        d |= static_cast<unsigned char>(ca ^ cb);
+    }
+    return d == 0;
+}
+
+// HTTP token brute-force throttle (H7). The WS path is throttled (H4) but the
+// HTTP endpoints were not, and HTTP is concurrent - the real guessing oracle.
+// Only a *supplied but wrong* token counts, so ordinary unauthenticated probes
+// don't lock out the operator; 5 strikes -> a 30s cooldown (bounded, so it's a
+// weak DoS lever), reset on success. Global, which suits a single-user device.
+uint8_t  g_httpAuthFails = 0;
+uint32_t g_httpCooldownUntil = 0;
+
 // This endpoint installs arbitrary code on a device that types into someone's
 // computer. It must never be reachable without the token - and never from a
 // rebound DNS name pointing a victim's browser at us (Host cross-check).
 bool otaAuthorized(AsyncWebServerRequest *request) {
     if (!hostAllowed(request)) return false;
+    const uint32_t now = millis();
+    if (g_httpCooldownUntil != 0 &&
+        static_cast<int32_t>(g_httpCooldownUntil - now) > 0) {
+        return false;   // in cooldown: refuse everything, even the right token
+    }
     const char *tok = g_config->authToken();
     if (tok == nullptr || tok[0] == '\0') return true;   // auth disabled
+
+    String given;
+    bool have = false;
     if (request->hasHeader("X-GhostHID-Token")) {
-        return request->getHeader("X-GhostHID-Token")->value() == tok;
+        given = request->getHeader("X-GhostHID-Token")->value(); have = true;
+    } else if (request->hasParam("token")) {
+        given = request->getParam("token")->value(); have = true;
     }
-    if (request->hasParam("token")) {
-        return request->getParam("token")->value() == tok;
-    }
+    if (!have) return false;                             // no token: unauth, uncounted
+
+    if (ctEqualsStr(given.c_str(), tok)) { g_httpAuthFails = 0; return true; }
+    if (++g_httpAuthFails >= 5) { g_httpCooldownUntil = now + 30000; g_httpAuthFails = 0; }
     return false;
 }
 

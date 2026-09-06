@@ -169,7 +169,13 @@ bool Config::setApPassword(const char *password) {
 }
 
 bool Config::setAuthToken(const char *token) {
-    if (token == nullptr || strlen(token) > kTokenMax) return false;
+    if (token == nullptr) return false;
+    const size_t n = strlen(token);
+    // Empty disables auth (a deliberate choice); otherwise require a floor of 6
+    // so a user can't set a trivially guessable 1-char token. The generated
+    // default is 8.
+    if (n > kTokenMax) return false;
+    if (n != 0 && n < 6) return false;
     snprintf(token_, sizeof(token_), "%s", token);
     return store(kKeyToken, token_);
 }
