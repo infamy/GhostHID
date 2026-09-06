@@ -5,7 +5,7 @@
 # cannot pass a USB serial port into a Linux container.
 
 SHELL       := /bin/bash
-ENV         ?= esp32-s2-key
+ENV         ?= esp32-s3-lcd147
 IMAGE       ?= ghosthid/build
 PIO_VOLUME  ?= ghosthid-pio-cache
 FIRMWARE    := $(CURDIR)/firmware
@@ -39,20 +39,12 @@ endif
 PIO_ENVVARS = -e PLATFORMIO_CORE_DIR=/pio
 LOCAL_INI  := $(FIRMWARE)/ghosthid_local.ini
 
-# Chip-specific flash geometry. The S3 puts its bootloader at 0x0 (the S2 at
-# 0x1000) and this board's 16MB QIO-flash / OPI-PSRAM module needs the size and
-# mode set explicitly, or it bootloops. Selected by the ENV name.
-ifneq (,$(findstring s3,$(ENV)))
+# ESP32-S3 flash geometry (bootloader at 0x0; this board's N16R8 module needs
+# 16MB/DIO set explicitly or it bootloops). GhostHID is S3-only.
 CHIP        := esp32s3
 BOOT_OFFSET := 0x0
 FLASH_SIZE  := 16MB
 FLASH_MODE  := dio
-else
-CHIP        := esp32s2
-BOOT_OFFSET := 0x1000
-FLASH_SIZE  := keep
-FLASH_MODE  := keep
-endif
 
 DOCKER_RUN = docker run --rm -t \
 	-v "$(FIRMWARE)":/project \
@@ -106,11 +98,9 @@ dist: build
 # webflasher/ dir over HTTPS (or localhost) and open index.html - it flashes the
 # matching image by auto-detected chip family. The .bin files are generated.
 webflasher:
-	@$(MAKE) --no-print-directory build ENV=esp32-s2-key
 	@$(MAKE) --no-print-directory build ENV=esp32-s3-lcd147
-	@cp "$(FIRMWARE)/.pio/build/esp32-s2-key/ghosthid-merged.bin"     webflasher/ghosthid-s2.bin
 	@cp "$(FIRMWARE)/.pio/build/esp32-s3-lcd147/ghosthid-merged.bin"  webflasher/ghosthid-s3.bin
-	@echo "webflasher staged: webflasher/{index.html,manifest.json,ghosthid-s2.bin,ghosthid-s3.bin}"
+	@echo "webflasher staged: webflasher/{index.html,manifest.json,ghosthid-s3.bin}"
 	@echo "serve it over HTTPS/localhost (Web Serial needs a secure context):"
 	@echo "    cd webflasher && python3 -m http.server 8000   # then http://localhost:8000/"
 

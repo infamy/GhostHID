@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.6.1
+
+### Removed
+
+* **ESP32-S2 support.** The S2 is single-core with ~13KB of contiguous heap and
+  could not hold a sustained Deskflow KVM session under load - it kept dropping
+  the connection where the dual-core S3 (135KB block, ~10µs service passes) is
+  rock steady. GhostHID is now **ESP32-S3 only**; the `esp32-s2-key` build env,
+  its web-flasher build, and the chip-selection branches are gone.
+
 ## 0.6.0
 
 Adds the ESP32-S3 board with an on-device screen, a browser flasher, and the
