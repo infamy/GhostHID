@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.6.14
+
+### Added
+
+* **`bootloader` serial command** - reboots straight into the ROM USB download
+  mode so a flasher can write over USB without the physical BOOT+RST dance (uses
+  the force-download-boot RTC flag). Gated behind `unlock` like `reset` when a
+  token is set. `download` is an alias.
+
+
 ## 0.6.13
 
 Credential-model clarity - one pairing token, stop making it look like several.

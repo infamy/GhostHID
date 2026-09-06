@@ -1,6 +1,7 @@
 #include "SerialConsole.h"
 
 #include <Arduino.h>
+#include <soc/rtc_cntl_reg.h>
 #include <string.h>
 
 #include "Config.h"
@@ -64,6 +65,7 @@ void SerialConsole::printHelp() const {
     Serial.println("  name <name>          device name - sets the AP SSID and mDNS name");
     Serial.println("  reset                erase all settings");
     Serial.println("  reboot               restart to apply changes");
+    Serial.println("  bootloader           reboot into USB download mode for flashing");
     Serial.println();
     Serial.println("'always' (default) keeps the AP up alongside the joined network, so a");
     Serial.println("bad config can never lock you out. 'fallback' drops it while joined and");
@@ -277,6 +279,21 @@ void SerialConsole::execute(char *line) {
     } else if (strcasecmp(line, "reboot") == 0) {
         Serial.println("rebooting...");
         processor_.requestReboot();
+    } else if (strcasecmp(line, "bootloader") == 0 || strcasecmp(line, "download") == 0) {
+        // Reboot straight into the ROM serial bootloader so a flasher can write
+        // over USB without the physical BOOT+RST dance. Force-download-boot is a
+        // sticky RTC flag the ROM checks on reset. Gated like reset: a target
+        // host shouldn't be able to knock the device into download mode at will.
+        if (locked) {
+            Serial.println("locked: run 'unlock <token>' first");
+        } else {
+            Serial.println("entering download mode - start your flasher now "
+                           "(the port will re-enumerate)");
+            Serial.flush();
+            delay(200);
+            REG_WRITE(RTC_CNTL_OPTION1_REG, RTC_CNTL_FORCE_DOWNLOAD_BOOT);
+            esp_restart();
+        }
     } else {
         Serial.printf("unknown command '%s' - try 'help'\r\n", line);
     }
