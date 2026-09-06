@@ -7,6 +7,7 @@
 #include <ESPmDNS.h>
 #include <esp_mac.h>
 #include <Update.h>
+#include <new>
 
 #include "board_config.h"
 #include "DeskflowClient.h"
@@ -110,26 +111,45 @@ void onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *client,
 // untouched - retry and nothing is lost.
 // ---------------------------------------------------------------------------
 
-// Owned storage, not a borrowed pointer. This used to be a `const char *` that
-// some call sites set to a `char[]` living on the body handler's stack; by the
-// time onOtaDone read it in a later callback, that frame was long gone and the
-// async task had reused the memory - a dangling read that printed garbage or
-// crashed. Copying into a fixed buffer removes the lifetime problem entirely.
-char g_otaError[128] = {};
-bool g_otaFailed  = false;          // an error was recorded for this upload
-bool g_otaBegun   = false;
-bool g_otaReplied = false;          // a response was already sent from onOtaBody
+// Per-request OTA state, hung off the request via _tempObject (the async server
+// free()s it when the request is destroyed). Keeping this per-request instead of
+// in file-scope globals is what stops one POST from corrupting another's upload:
+// an unauthenticated or concurrent POST used to set a *shared* "failed" flag,
+// which aborted a legitimate in-flight update - an unauthenticated DoS (H5).
+struct OtaState {
+    bool failed  = false;
+    bool begun   = false;
+    bool replied = false;
+    char error[128] = {};
+};
+
+// Update is a single global flash writer - only one upload may run at a time.
+// This is the request that currently owns it; a second concurrent POST is
+// refused without touching this one's state or the writer.
+AsyncWebServerRequest *g_otaOwner = nullptr;
+
+OtaState *otaStateOf(AsyncWebServerRequest *request) {
+    if (request->_tempObject == nullptr) {
+        void *mem = calloc(1, sizeof(OtaState));
+        if (mem) request->_tempObject = new (mem) OtaState();
+    }
+    return static_cast<OtaState *>(request->_tempObject);
+}
 
 // Ends the request from inside the body handler. Without this we would keep
 // accepting an 800KB upload we have already decided to reject, and the client
-// sees a reset connection rather than the reason.
+// sees a reset connection rather than the reason. Records the failure on the
+// REQUEST, never on shared state.
 void otaFail(AsyncWebServerRequest *request, int code, const char *why) {
-    snprintf(g_otaError, sizeof(g_otaError), "%s", why);
-    g_otaFailed = true;
-    if (g_otaReplied) return;
-    g_otaReplied = true;
+    OtaState *st = otaStateOf(request);
+    if (st) {
+        snprintf(st->error, sizeof(st->error), "%s", why);
+        st->failed = true;
+        if (st->replied) return;
+        st->replied = true;
+    }
     request->send(code, "application/json",
-                  String("{\"type\":\"error\",\"error\":\"") + g_otaError + "\"}");
+                  String("{\"type\":\"error\",\"error\":\"") + why + "\"}");
 }
 
 bool hostAllowed(AsyncWebServerRequest *r);   // defined below
@@ -322,12 +342,17 @@ void onOtaBody(AsyncWebServerRequest *request, uint8_t *data, size_t len,
         otaFail(request, 401, "unauthorized");
         return;
     }
+    OtaState *st = otaStateOf(request);
 
     if (index == 0) {
-        g_otaError[0] = '\0';
-        g_otaFailed = false;
-        g_otaBegun = false;
-        g_otaReplied = false;
+        // Only one upload may touch the Update writer at a time. A second
+        // concurrent POST is refused here WITHOUT disturbing the in-flight one's
+        // state or the writer (H5) - the request never becomes the owner.
+        if (g_otaOwner != nullptr && g_otaOwner != request) {
+            otaFail(request, 409, "another firmware update is already in progress");
+            return;
+        }
+        g_otaOwner = request;
 
         // Refuse rather than compete. A TLS screen session holds ~34KB and an
         // update needs a large contiguous buffer; attempting both at once took
@@ -337,6 +362,7 @@ void onOtaBody(AsyncWebServerRequest *request, uint8_t *data, size_t len,
             otaFail(request, 409,
                     "the screen client is connected and an update needs the memory "
                     "it is holding - retry with ?force=1 to disconnect it first");
+            g_otaOwner = nullptr;      // never started; free the slot for a retry
             return;
         }
         if (otaContended()) {
@@ -349,7 +375,10 @@ void onOtaBody(AsyncWebServerRequest *request, uint8_t *data, size_t len,
         }
     }
 
-    if (g_otaFailed) return;   // already rejected; ignore the rest
+    // Only the owner proceeds past here. A body from a request we refused (its
+    // reply is already sent) is ignored, so it can't touch the writer.
+    if (request != g_otaOwner) return;
+    if (!st || st->failed) return;
 
     if (index == 0) {
 
@@ -380,11 +409,11 @@ void onOtaBody(AsyncWebServerRequest *request, uint8_t *data, size_t len,
             otaFail(request, 400, why);
             return;
         }
-        g_otaBegun = true;
+        st->begun = true;
         Serial.printf("[ota] receiving %u bytes\r\n", static_cast<unsigned>(total));
     }
 
-    if (!g_otaBegun) return;
+    if (!st->begun) return;
 
     if (Update.write(data, len) != len) {
         otaFail(request, 500, "flash write failed");
@@ -401,33 +430,48 @@ void onOtaBody(AsyncWebServerRequest *request, uint8_t *data, size_t len,
 }
 
 void onOtaDone(AsyncWebServerRequest *request) {
-    if (g_otaFailed) {
-        if (g_otaBegun) Update.abort();
-        g_processor->setLocked(false, nullptr);
-        Serial.printf("[ota] failed: %s\r\n", g_otaError);
-        if (!g_otaReplied) {
-            g_otaReplied = true;
-            request->send(400, "application/json",
-                          String("{\"type\":\"error\",\"error\":\"") + g_otaError + "\"}");
+    OtaState *st = otaStateOf(request);
+
+    // A request that never became the OTA owner: either we refused it in the
+    // body handler (already replied) or it carried no body at all (an empty POST
+    // that never reached the body handler). Answer the latter; never touch the
+    // owner's state or the Update writer.
+    if (request != g_otaOwner) {
+        if (st && !st->replied) {
+            st->replied = true;
+            if (!otaAuthorized(request))
+                request->send(401, "application/json",
+                              "{\"type\":\"error\",\"error\":\"unauthorized\"}");
+            else
+                request->send(400, "application/json",
+                              "{\"type\":\"error\",\"error\":\"no firmware received\"}");
         }
-        g_otaFailed = false;
-        g_otaBegun = false;
         return;
     }
-    if (!otaAuthorized(request)) {
-        request->send(401, "application/json",
-                      "{\"type\":\"error\",\"error\":\"unauthorized\"}");
+
+    // Owner path: finish this upload and release the writer.
+    if (st->failed) {
+        if (st->begun) Update.abort();
+        g_processor->setLocked(false, nullptr);
+        Serial.printf("[ota] failed: %s\r\n", st->error);
+        if (!st->replied) {
+            st->replied = true;
+            request->send(400, "application/json",
+                          String("{\"type\":\"error\",\"error\":\"") + st->error + "\"}");
+        }
+        g_otaOwner = nullptr;
         return;
     }
-    // An empty or bodyless POST never ran the body handler, so nothing was
-    // written and Update was never begun. Do not reboot on that - just say so.
-    if (!g_otaBegun) {
+    // An empty or bodyless POST from the owner never wrote anything; don't reboot.
+    if (!st->begun) {
         request->send(400, "application/json",
                       "{\"type\":\"error\",\"error\":\"no firmware received\"}");
+        g_otaOwner = nullptr;
         return;
     }
     request->send(200, "application/json",
                   "{\"type\":\"ota_ok\",\"rebooting\":true}");
+    g_otaOwner = nullptr;
     g_processor->requestReboot();
 }
 

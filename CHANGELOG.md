@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.6.26
+
+### Fixed
+
+* **OTA denial-of-service via shared globals (H5)** - the update handler kept its
+  failed/begun/replied/error state in file-scope globals shared across all
+  requests, so an unauthenticated (or merely concurrent) POST to `/api/ota`
+  could flip the shared "failed" flag and abort a legitimate in-flight update.
+  State is now per-request (hung off the request's `_tempObject`, which the async
+  server frees on teardown), and a single-owner guard returns `409` if a second
+  upload races the one global `Update` flash writer. An unauthenticated POST is
+  answered `401` without touching any in-flight update. This was the last open
+  line-level finding from the security review.
+
+
 ## 0.6.25
 
 ### Fixed
