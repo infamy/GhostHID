@@ -28,7 +28,7 @@ constexpr int16_t SCR_W = 320;
 constexpr int16_t SCR_H = 172;
 // The panel's corners are physically rounded, so content shoved pixel-tight into
 // a corner loses a few pixels. Keep corner text/markers this far off the edges.
-constexpr int16_t MARGIN = 12;
+constexpr int16_t MARGIN = 18;
 
 constexpr uint16_t C_BG    = 0x0000;
 constexpr uint16_t C_CYAN  = 0x07FF;

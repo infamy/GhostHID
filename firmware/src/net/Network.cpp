@@ -5,6 +5,7 @@
 #include <AsyncTCP.h>
 #include <ESPAsyncWebServer.h>
 #include <ESPmDNS.h>
+#include <esp_mac.h>
 #include <Update.h>
 
 #include "board_config.h"
@@ -26,8 +27,10 @@ DeskflowClient   *g_deskflow = nullptr;
 // Derives a stable 4-hex-digit device suffix from the Wi-Fi MAC, so two
 // GhostHIDs in the same room do not collide.
 void deviceSuffix(char out[5]) {
+    // Read the base MAC from efuse, not WiFi.macAddress(): the latter returns
+    // 00:00:.. in AP-only mode (no STA netif), which produced the "-0000" SSID.
     uint8_t mac[6] = {};
-    WiFi.macAddress(mac);
+    esp_read_mac(mac, ESP_MAC_WIFI_STA);
     snprintf(out, 5, "%02X%02X", mac[4], mac[5]);
 }
 

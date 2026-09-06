@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.6.15
+
+### Fixed
+
+* **AP SSID showed `-0000`** - the device suffix was read via
+  `WiFi.macAddress()`, which returns all-zero bytes before the STA interface is
+  populated (and in AP-only mode). Now reads the base MAC from efuse
+  (`esp_read_mac`), which is valid in any Wi-Fi mode, so the SSID/mDNS suffix is
+  the real device ID.
+* **On-device text too close to the rounded corners** - bumped the screen inset
+  from 12 to 18 px so no glyphs are clipped by the panel/case radius.
+
+
 ## 0.6.14
 
 ### Added
