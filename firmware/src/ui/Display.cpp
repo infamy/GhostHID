@@ -40,6 +40,10 @@ constexpr uint8_t  BL_FULL   = 255;
 constexpr uint8_t  BL_DIM    = 36;
 constexpr uint32_t BL_DIM_MS = 2u * 60 * 1000;
 constexpr uint32_t BL_OFF_MS = 10u * 60 * 1000;
+// Revert to the status/brand page after this long on any other page, so the
+// Wi-Fi page (AP password + pairing token in clear) is never left up for
+// someone who glances at it and walks away.
+constexpr uint32_t PAGE_REVERT_MS = 60u * 1000;
 
 Adafruit_ST7789 tft(&SPI, PIN_CS, PIN_DC, PIN_RST);
 #ifdef GHOSTHID_PIN_RGB
@@ -275,6 +279,14 @@ void Display::noteActivity() {
 
 void Display::update(const DisplayStatus &s) {
     if (!begun_) return;
+
+    // Auto-revert to the status page (BOOT cycling is the only activity, so
+    // g_blActivity is the last page change). Keeps the token off screen when
+    // left unattended.
+    if (page_ != Page::Status && millis() - g_blActivity > PAGE_REVERT_MS) {
+        page_ = Page::Status;
+        dirty_ = true;
+    }
 
     // Backlight timeout.
     const uint32_t idle = millis() - g_blActivity;

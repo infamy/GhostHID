@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.6.8
+
+### Security
+
+* **LCD auto-reverts to the status page after 60 s (L1).** The Wi-Fi page shows
+  the AP password and pairing token in clear for setup; it now falls back to the
+  brand/status page after a minute of no BOOT activity, so the credentials aren't
+  left on screen for anyone who glances at the device and walks away. Press BOOT
+  to bring the page back.
+
+
 ## 0.6.7
 
 Corrections to the 0.6.4-0.6.6 hardening - some of it was done incompletely.
