@@ -18,6 +18,7 @@ struct DisplayStatus {
     const char *deviceName  = "GhostHID";
     const char *apSsid      = "";
     const char *apPass      = "";        // for the join QR
+    const char *token       = "";        // pairing token, shown on the Wi-Fi page
     const char *apIp        = "";
     const char *staIp       = "";        // "" when the station link is down
     bool        usbReady    = false;

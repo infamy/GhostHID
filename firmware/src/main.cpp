@@ -126,6 +126,13 @@ void setup() {
     // Settings must load before the radio comes up: they carry the SSID,
     // passphrases and token the network layer needs.
     config.begin();
+    if (config.justProvisioned()) {
+        Serial.println();
+        Serial.println("=== First boot: generated per-device credentials ===");
+        Serial.printf("  AP password  : %s\r\n", config.apPassword());
+        Serial.printf("  Pairing token: %s\r\n", config.authToken());
+        Serial.println("  (also on the LCD Wi-Fi page - change them in Settings)");
+    }
     processor.attachDeskflow(&deskflow);
     network.attachDeskflow(&deskflow);
 
@@ -196,6 +203,7 @@ void serviceDisplay() {
     st.deviceName = config.deviceName();
     st.apSsid     = network.ssid();
     st.apPass     = config.apPassword();
+    st.token      = config.authToken();
     st.apIp       = network.apAddress();
     st.staIp      = network.staAddress();
     st.usbReady   = hid.ready();

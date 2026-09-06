@@ -776,7 +776,7 @@ with connect("ws://192.168.4.1/ws") as ws:
 "use strict";
 var $=function(s){return document.querySelector(s)};
 var dot=$("#dot"), stat=$("#stat"), logEl=$("#log");
-var ws=null, ready=false, retryTimer=null;
+var ws=null, ready=false, retryTimer=null, authRejected=false;
 
 function log(m){ logEl.textContent=(new Date().toLocaleTimeString()+"  "+m+"\n"+logEl.textContent).slice(0,1400); }
 function setState(ok,msg){
@@ -843,7 +843,7 @@ function clearDirty(){
 }
 
 $("#api-url").textContent = "ws://"+location.host+"/ws";
-$("#tok").value = localStorage.getItem("ghosthid.token") || "ghosthid";
+$("#tok").value = localStorage.getItem("ghosthid.token") || "";
 
 // --- tabs -------------------------------------------------------------------
 document.querySelectorAll("nav button").forEach(function(b){
@@ -878,7 +878,8 @@ function connect(){
         : "not connected — target unplugged, asleep, or a charge-only port";
     }
     if(m.type==="auth"){
-      if(m.ok){ setState(true,"connected"+(m.version?" · "+m.version:""));
+      if(m.ok){ authRejected=false;
+                setState(true,"connected"+(m.version?" · "+m.version:""));
                 localStorage.setItem("ghosthid.token",$("#tok").value);
                 $("#a_ver").textContent = m.version || "—";
                 $("#a_here").textContent = location.host;
@@ -889,7 +890,8 @@ function connect(){
                 // after a reconnect until you refresh.
                 clearMods(); setCapture(false);
                 log("authenticated"); send({type:"get_config"}); }
-      else { setState(false,"auth rejected"); log("auth rejected — check the token"); }
+      else { authRejected=true; setState(false,"auth rejected — check the token");
+             log("auth rejected — enter the token shown on the device, then Reconnect"); }
     } else if(m.type==="config"){
       fill("#c_ssid", m.sta_ssid);
       fill("#c_name", m.name);
@@ -937,6 +939,13 @@ function connect(){
   };
   ws.onclose=function(ev){
     setUsb(null); $("#kvm").hidden=true; setLocks(0); setHlink(0); clearMods();
+    // Don't auto-retry after a rejected token: the device now rate-limits auth
+    // (3 tries -> a cooldown), so spinning with a wrong token would just lock us
+    // out during setup. Wait for the user to fix the token and hit Reconnect.
+    if(authRejected){
+      setState(false,"auth rejected — enter the token, then Reconnect");
+      return;
+    }
     // 1013 is the device refusing a second controller. Retrying silently made
     // that look like a flaky connection rather than a deliberate limit.
     if(ev && ev.code===1013){
@@ -965,7 +974,7 @@ function noteRtt(){
   // it is never overwritten 4x/sec and stays readable where it matters.
   if(ready) $("#rtt").textContent = " · "+Math.round(rttMs)+" ms";
 }
-$("#reconn").onclick=connect;
+$("#reconn").onclick=function(){ authRejected=false; connect(); };
 $("#panic").onclick=function(){ send({type:"release_all"}); clearMods(); log("released all"); };
 
 // --- sticky modifiers -------------------------------------------------------

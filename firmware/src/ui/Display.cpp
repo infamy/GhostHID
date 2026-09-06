@@ -197,12 +197,14 @@ void Display::drawQrPage(const DisplayStatus &s) {
         // Version 4 (33 modules) x scale 4 = 132px on the left.
         drawQr(8, 32, 4, payload);
     }
-    // SSID + password in clear on the right, size 2, for manual entry.
+    // SSID + password + pairing token in clear on the right, for manual entry.
     tft.setTextSize(2);
-    tft.setTextColor(C_GREY);  tft.setCursor(150, 34);  tft.print("SSID");
-    tft.setTextColor(C_WHITE); tft.setCursor(150, 52);  tft.print(s.apSsid ? s.apSsid : "");
-    tft.setTextColor(C_GREY);  tft.setCursor(150, 90);  tft.print("PASS");
-    tft.setTextColor(C_WHITE); tft.setCursor(150, 108); tft.print(s.apPass ? s.apPass : "");
+    tft.setTextColor(C_GREY);  tft.setCursor(150, 26);  tft.print("SSID");
+    tft.setTextColor(C_WHITE); tft.setCursor(150, 44);  tft.print(s.apSsid ? s.apSsid : "");
+    tft.setTextColor(C_GREY);  tft.setCursor(150, 74);  tft.print("PASS");
+    tft.setTextColor(C_WHITE); tft.setCursor(150, 92);  tft.print(s.apPass ? s.apPass : "");
+    tft.setTextColor(C_GREY);  tft.setCursor(150, 122); tft.print("TOKEN");
+    tft.setTextColor(C_WHITE); tft.setCursor(150, 140); tft.print((s.token && s.token[0]) ? s.token : "(none)");
     buttonHint("page");
 }
 

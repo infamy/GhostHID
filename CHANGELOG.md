@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.6.5
+
+Security hardening — no more published default credentials (H2).
+
+### Security
+
+* **Per-device random credentials on first boot (H2).** A board flashed from a
+  release no longer ships with the published `ghosthid` token and
+  `ghosthid-setup` AP password. On first boot (and after a factory reset) the
+  device generates a random pairing token and AP password from its hardware RNG
+  and shows them on the **LCD Wi-Fi page** and the serial log. Only the
+  known-published defaults are replaced — a custom-built or user-set credential
+  is left alone — and it happens once, guarded by a stored flag.
+  Upgrading an existing device that still had the default token will randomise it
+  on the next boot; read the new token off the screen.
+* The web UI no longer pre-fills the token with `ghosthid`, and it stops
+  auto-reconnecting after an auth rejection, so a wrong token can't spin into the
+  new auth rate-limit during setup — fix the token and press Reconnect.
+
 ## 0.6.4
 
 Security hardening — first pass, closing the network attack surface. From a

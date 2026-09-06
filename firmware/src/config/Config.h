@@ -32,6 +32,10 @@ public:
     const char *staPassword() const { return staPass_; }
     const char *apPassword()  const { return apPass_; }
     const char *authToken()   const { return token_; }
+
+    // True when this boot generated fresh random credentials (see begin()).
+    // main() uses it to surface them on the LCD/serial for first-time setup.
+    bool justProvisioned() const { return justProvisioned_; }
     const char *deviceName()  const { return name_; }
 
     bool stationConfigured() const { return staSsid_[0] != '\0'; }
@@ -131,6 +135,7 @@ private:
     char name_[kNameMax + 1]     = {};
     bool apAlways_ = false;
     bool scrollInvert_ = false;
+    bool justProvisioned_ = false;
     bool     dfEnabled_ = false;
     char     dfHost_[64]   = {};
     uint16_t dfPort_       = 24800;

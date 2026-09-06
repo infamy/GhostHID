@@ -2,6 +2,7 @@
 
 #include <Arduino.h>
 #include <Preferences.h>
+#include <esp_random.h>
 #include <string.h>
 
 #include "board_config.h"
@@ -27,6 +28,19 @@ constexpr char kKeyDfH[]      = "df_h";
 constexpr char kKeyDfTls[]    = "df_tls";
 constexpr char kKeyDfCa[]     = "df_ca";
 constexpr char kKeyDfTry[]    = "df_try";
+constexpr char kKeyProvd[]    = "provisioned";   // first-boot cred randomisation done
+
+// Fill `out` with `n` characters of hardware-random entropy from an alphabet
+// that omits visually ambiguous glyphs (0/O, 1/l/I), so a credential read off
+// the LCD can't be mistyped. Uses esp_random() (hardware RNG once Wi-Fi/BT is
+// on, which it is by the time this runs at boot).
+void randomCredential(char *out, size_t n, size_t cap) {
+    static const char AL[] = "abcdefghjkmnpqrstuvwxyz23456789ACDEFGHJKLMNPQRTUVWXY";
+    const size_t aln = sizeof(AL) - 1;
+    if (n > cap - 1) n = cap - 1;
+    for (size_t i = 0; i < n; ++i) out[i] = AL[esp_random() % aln];
+    out[n] = '\0';
+}
 
 Preferences g_prefs;
 
@@ -56,6 +70,26 @@ void Config::begin() {
     loadInto(kKeyApPw,  GHOSTHID_AP_PASSWORD,  apPass_,  sizeof(apPass_));
     loadInto(kKeyToken, GHOSTHID_AUTH_TOKEN,   token_,   sizeof(token_));
     loadInto(kKeyName,  GHOSTHID_MDNS_NAME,    name_,    sizeof(name_));
+
+    // First boot: replace the *published* default credentials with per-device
+    // random ones so no two release-flashed boards share a token or AP password
+    // (H2). Only the known-insecure published values are touched - a custom
+    // build or a user-set value is left alone - and only once, guarded by a
+    // provisioned flag that a factory reset clears (so a reset re-randomises).
+    // The new values are shown on the LCD and serial for setup.
+    if (!g_prefs.getBool(kKeyProvd, false)) {
+        if (strcmp(token_, "ghosthid") == 0) {
+            randomCredential(token_, 14, sizeof(token_));
+            g_prefs.putString(kKeyToken, token_);
+            justProvisioned_ = true;
+        }
+        if (strcmp(apPass_, "ghosthid-setup") == 0) {
+            randomCredential(apPass_, 12, sizeof(apPass_));
+            g_prefs.putString(kKeyApPw, apPass_);
+            justProvisioned_ = true;
+        }
+        g_prefs.putBool(kKeyProvd, true);
+    }
 
     apAlways_ = g_prefs.getBool(kKeyApAlways, true);
     scrollInvert_ = g_prefs.getBool(kKeyScrollInv, false);
