@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.6.6
+
+More security hardening — no functionality change.
+
+### Security
+
+* **M4 — server name sanitised at ingest.** The 7-byte protocol name a screen
+  server sends is clamped to a safe charset before it is stored, so a hostile or
+  spoofed server can't inject quotes/control bytes into `get_config`'s JSON (it
+  is echoed there as `kvm_server`).
+* **M5 — no more truncated JSON.** If a response would overflow the buffer,
+  `reply()` now emits a short well-formed error instead of a document with no
+  closing brace.
+
+### Fixed
+
+* **L2** — `mouse_abs` rejects non-finite (NaN/Inf) coordinates instead of
+  casting them to a pixel position (undefined behaviour).
+* **L4** — `beginServers()` is idempotent; `web off` then `web on` no longer
+  stacks duplicate HTTP handlers.
+
+
 ## 0.6.5
 
 Security hardening — no more published default credentials (H2).

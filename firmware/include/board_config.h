@@ -13,7 +13,7 @@
 // ---------------------------------------------------------------------------
 
 #ifndef GHOSTHID_VERSION
-#define GHOSTHID_VERSION "0.6.5"
+#define GHOSTHID_VERSION "0.6.6"
 #endif
 
 // How the target computer sees us in its USB device list.

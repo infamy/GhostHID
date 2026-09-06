@@ -451,6 +451,9 @@ void Network::beginRadio() {
 }
 
 void Network::beginServers() {
+    // L4: idempotent. `web off` then `web on` from the serial console used to
+    // re-register every route and stack duplicate handlers.
+    if (serversUp_) return;
     // Serve the control UI straight out of flash, pre-gzipped. The AP has no
     // route to the internet, so the page cannot reference any external asset.
     g_server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {

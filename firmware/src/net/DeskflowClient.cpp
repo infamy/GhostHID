@@ -195,6 +195,16 @@ void DeskflowClient::handshake(const uint8_t *msg, size_t len) {
 
     memcpy(serverName_, msg, 7);
     serverName_[7] = '\0';
+    // M4: this is 7 raw bytes off the wire, later echoed into get_config's JSON
+    // (kvm_server) and the serial log. Clamp it to a safe charset so a hostile
+    // or spoofed server can't inject quotes/backslashes/control bytes there.
+    for (char *p = serverName_; *p; ++p) {
+        const char c = *p;
+        const bool ok = (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
+                        (c >= '0' && c <= '9') || c == ' ' || c == '_' ||
+                        c == '-' || c == '.';
+        if (!ok) *p = '?';
+    }
     const int16_t major = rdS16(msg + 7);
     const int16_t minor = rdS16(msg + 9);
     Serial.printf("[deskflow] server '%s' protocol %d.%d\r\n", serverName_, major, minor);

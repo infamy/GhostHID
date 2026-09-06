@@ -3,6 +3,7 @@
 #include <Arduino.h>
 #include <ArduinoJson.h>
 #include <stdarg.h>
+#include <math.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -46,8 +47,14 @@ void reply(char *out, size_t outSize, const char *fmt, ...) {
     if (out == nullptr || outSize == 0) return;
     va_list args;
     va_start(args, fmt);
-    vsnprintf(out, outSize, fmt, args);
+    const int n = vsnprintf(out, outSize, fmt, args);
     va_end(args);
+    // M5: on overflow vsnprintf truncates, leaving JSON with no closing brace
+    // that the browser fails to parse - worst exactly when there's an error to
+    // report. Emit a short well-formed document instead.
+    if (n < 0 || static_cast<size_t>(n) >= outSize) {
+        snprintf(out, outSize, "{\"type\":\"error\",\"error\":\"response too large\"}");
+    }
 }
 
 }  // namespace
@@ -280,7 +287,15 @@ CommandResult CommandProcessor::handleMessage(const char *json, size_t len,
                   "{\"type\":\"error\",\"error\":\"mouse_abs needs numeric x and y\"}");
             return CommandResult::BadRequest;
         }
-        hid_.mouseMoveAbsolute(doc["x"].as<float>(), doc["y"].as<float>());
+        const float x = doc["x"].as<float>(), y = doc["y"].as<float>();
+        // L2: NaN slips past the 0..1 clamp (all comparisons are false) and
+        // reaches a uint16_t cast (UB). Reject non-finite values here.
+        if (!isfinite(x) || !isfinite(y)) {
+            reply(outResponse, outSize,
+                  "{\"type\":\"error\",\"error\":\"mouse_abs needs finite x and y\"}");
+            return CommandResult::BadRequest;
+        }
+        hid_.mouseMoveAbsolute(x, y);
         return CommandResult::Ok;
     }
 
