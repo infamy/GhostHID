@@ -27,6 +27,21 @@ bool parseMouseButton(const char *name, MouseButton &out) {
     return false;
 }
 
+// Constant-time string compare: folds every byte into an accumulator with no
+// early return, so a remote timing attack can't learn the token prefix-by-prefix
+// (matters most combined with the auth rate limit).
+bool ctEquals(const char *a, const char *b) {
+    const size_t la = strlen(a), lb = strlen(b);
+    unsigned char diff = static_cast<unsigned char>(la ^ lb);
+    const size_t n = la > lb ? la : lb;
+    for (size_t i = 0; i < n; ++i) {
+        const unsigned char ca = i < la ? static_cast<unsigned char>(a[i]) : 0;
+        const unsigned char cb = i < lb ? static_cast<unsigned char>(b[i]) : 0;
+        diff |= static_cast<unsigned char>(ca ^ cb);
+    }
+    return diff == 0;
+}
+
 void reply(char *out, size_t outSize, const char *fmt, ...) {
     if (out == nullptr || outSize == 0) return;
     va_list args;
@@ -70,7 +85,17 @@ bool CommandProcessor::serviceWatchdog(uint32_t timeoutMs) {
 void CommandProcessor::setLocked(bool locked, const char *reason) {
     locked_ = locked;
     lockReason_ = (reason != nullptr) ? reason : "";
-    if (locked_) hid_.releaseAll();
+    if (locked_) { lockedAtMs_ = millis(); hid_.releaseAll(); }
+}
+
+bool CommandProcessor::consumeDisconnectRequest() {
+    const bool d = disconnectReq_;
+    disconnectReq_ = false;
+    return d;
+}
+
+bool CommandProcessor::lockedTooLong(uint32_t timeoutMs) const {
+    return locked_ && (millis() - lockedAtMs_) > timeoutMs;
 }
 
 CommandResult CommandProcessor::handleMessage(const char *json, size_t len,
@@ -90,10 +115,32 @@ CommandResult CommandProcessor::handleMessage(const char *json, size_t len,
     if (strcmp(type, "auth") == 0) {
         const char *given = doc["token"] | "";
         const char *tok = config_.authToken();
-        if (tok != nullptr && tok[0] != '\0' && strcmp(given, tok) != 0) {
+        const bool needTok = (tok != nullptr && tok[0] != '\0');
+        const uint32_t now = millis();
+
+        // Lockout window after repeated failures: refuse without even checking,
+        // and ask the transport to drop the socket so a script must reconnect
+        // (and wait) between guesses.
+        if (needTok && authCooldownUntil_ != 0 &&
+            static_cast<int32_t>(authCooldownUntil_ - now) > 0) {
+            reply(outResponse, outSize,
+                  "{\"type\":\"auth\",\"ok\":false,\"error\":\"too many attempts\"}");
+            disconnectReq_ = true;
+            return CommandResult::Unauthenticated;
+        }
+        if (needTok && !ctEquals(given, tok)) {
+            // Three strikes -> a cooldown and a forced disconnect. The counter
+            // survives reconnects (see the header note), so this actually bounds
+            // the guess rate instead of resetting on every new socket.
+            if (++authFails_ >= 3) {
+                authCooldownUntil_ = now + 30000;
+                authFails_ = 0;
+                disconnectReq_ = true;
+            }
             reply(outResponse, outSize, "{\"type\":\"auth\",\"ok\":false}");
             return CommandResult::Unauthenticated;
         }
+        authFails_ = 0;
         authenticated_ = true;
         reply(outResponse, outSize,
               "{\"type\":\"auth\",\"ok\":true,\"version\":\"%s\",\"usb\":%s}",

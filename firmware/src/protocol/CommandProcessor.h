@@ -61,6 +61,17 @@ public:
     // input. Call from loop(). Returns true if it actually fired.
     bool serviceWatchdog(uint32_t timeoutMs);
 
+    // True (once) when the transport should drop the current socket: set after
+    // repeated auth failures so a brute-force attempt is thrown off rather than
+    // left to retry on the same connection. Reading it clears it.
+    bool consumeDisconnectRequest();
+
+    // True while the HID lock (set for an OTA) has been held longer than
+    // `timeoutMs`. A backstop: if an OTA client vanishes mid-upload the
+    // completion handler may never run, and without this the device would
+    // refuse all input until a manual reboot. Call from loop().
+    bool lockedTooLong(uint32_t timeoutMs) const;
+
 private:
     HidDevice &hid_;
     Config    &config_;
@@ -70,7 +81,15 @@ private:
     uint32_t lastMessageMs_ = 0;
     bool     rebootRequested_ = false;
     bool     locked_ = false;
+    uint32_t lockedAtMs_ = 0;
     const char *lockReason_ = "";
+
+    // Auth brute-force defence. Deliberately NOT reset by beginSession(): a
+    // reconnect must not clear the failure count, or the limit is free to
+    // bypass. Only a successful auth (or the cooldown elapsing) clears it.
+    uint8_t  authFails_ = 0;
+    uint32_t authCooldownUntil_ = 0;   // 0 = never tripped
+    bool     disconnectReq_ = false;
 };
 
 }  // namespace ghosthid

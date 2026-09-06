@@ -234,6 +234,14 @@ void loop() {
         Serial.println("[watchdog] controller went quiet - released all input");
     }
 
+    // Backstop for an OTA that locked the HID and then never completed (client
+    // vanished mid-upload). Without this the device would refuse all input
+    // until a manual reboot.
+    if (processor.lockedTooLong(60000)) {
+        processor.setLocked(false, nullptr);
+        Serial.println("[watchdog] OTA lock timed out - input re-enabled");
+    }
+
     // Physical BOOT button. On an LCD board a short press cycles the screen
     // pages and a long press is the panic release; without an LCD any press is
     // the panic release. The release path is never lost.

@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.6.4
+
+Security hardening — first pass, closing the network attack surface. From a
+full security review of v0.6.3.
+
+### Security
+
+* **Drive-by keyboard closed (H1).** The WebSocket handshake now rejects any
+  browser `Origin` that isn't the device's own, and HTTP handlers cross-check the
+  `Host` header (DNS-rebinding guard). Previously *any* web page a LAN user
+  opened could connect to `ws://<device>/ws` and type on the target with no
+  interaction. Native (non-browser) clients — which send no `Origin` — still work.
+* **Auth brute-force limited (H4).** Three failed `auth` attempts trigger a 30 s
+  cooldown and drop the socket; the failure count survives reconnects, so it
+  can't be reset by reconnecting. An unauthenticated socket is also dropped after
+  5 s so it can't squat the single controller slot and lock out the operator.
+* **Constant-time token compare (M8).** Removes the trivial timing side-channel.
+* **OTA lock can no longer wedge the device (H6).** If a firmware upload locks
+  HID and then never completes (client vanished mid-upload), the lock now clears
+  itself after 60 s instead of refusing all input until a manual reboot.
+* **Removed a safety flag that did nothing (§8).** `GHOSTHID_AUTORUN_SELFTEST`
+  was referenced nowhere in the firmware; a build made "safe" with it was exactly
+  as capable of typing. Deleted rather than left as a lie.
+
 ## 0.6.3
 
 ### Added

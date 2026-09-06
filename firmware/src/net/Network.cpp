@@ -93,6 +93,10 @@ void onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *client,
             // events are fire-and-forget, and echoing every one of them would
             // add latency to the path we most care about.
             if (response[0] != '\0') client->text(response);
+            // Drop the socket after repeated auth failures (H4): a brute-force
+            // script then has to reconnect and wait out the cooldown per guess.
+            if (g_processor->consumeDisconnectRequest())
+                client->close(1008, "auth failed");
             break;
         }
 
@@ -133,9 +137,13 @@ void otaFail(AsyncWebServerRequest *request, int code, const char *why) {
                   String("{\"type\":\"error\",\"error\":\"") + g_otaError + "\"}");
 }
 
+bool hostAllowed(AsyncWebServerRequest *r);   // defined below
+
 // This endpoint installs arbitrary code on a device that types into someone's
-// computer. It must never be reachable without the token.
+// computer. It must never be reachable without the token - and never from a
+// rebound DNS name pointing a victim's browser at us (Host cross-check).
 bool otaAuthorized(AsyncWebServerRequest *request) {
+    if (!hostAllowed(request)) return false;
     const char *tok = g_config->authToken();
     if (tok == nullptr || tok[0] == '\0') return true;   // auth disabled
     if (request->hasHeader("X-GhostHID-Token")) {
@@ -150,6 +158,47 @@ bool otaAuthorized(AsyncWebServerRequest *request) {
 // True when something else is using enough memory that an update is risky.
 bool otaContended() {
     return g_deskflow != nullptr && g_deskflow->connected();
+}
+
+// --- Origin / Host validation (H1: no drive-by from another web page) -------
+// WebSockets are exempt from the same-origin policy, so without this any page a
+// LAN user opens could connect and type. Reject a browser Origin that is not
+// our own address, and cross-check the Host header to blunt DNS rebinding.
+// A missing Origin means a native (non-browser) client - allowed.
+bool hostIsOurs(String h) {
+    h.toLowerCase();
+    const int c = h.indexOf(':');
+    if (c >= 0) h = h.substring(0, c);          // strip :port
+    // Deliberately NOT allowing localhost/127.0.0.1: this device is only ever
+    // reached over the network, so a "localhost" Origin means a page on the
+    // victim's own machine trying to use us - exactly what we're blocking.
+    if (h.length() == 0) return false;
+    if (g_network) {
+        if (h == String(g_network->apAddress())) return true;
+        const char *s = g_network->staAddress();
+        if (s && s[0] && h == String(s)) return true;
+    }
+    if (g_config) {
+        String n = String(g_config->deviceName());
+        n.toLowerCase();
+        if (h == n || h == n + ".local") return true;
+    }
+    return false;
+}
+
+bool originAllowed(AsyncWebServerRequest *r) {
+    if (!r->hasHeader("Origin")) return true;   // native client, no browser origin
+    String o = r->getHeader("Origin")->value();
+    const int s = o.indexOf("://");
+    if (s >= 0) o = o.substring(s + 3);
+    const int sl = o.indexOf('/');
+    if (sl >= 0) o = o.substring(0, sl);
+    return hostIsOurs(o);
+}
+
+bool hostAllowed(AsyncWebServerRequest *r) {
+    if (!r->hasHeader("Host")) return true;
+    return hostIsOurs(r->getHeader("Host")->value());
 }
 
 // Append `s` to `out` as a JSON string body (no surrounding quotes), escaping
@@ -471,6 +520,11 @@ void Network::beginServers() {
         request->redirect("/");
     });
 
+    // Reject the WebSocket handshake from a foreign browser origin (H1). A
+    // native client sends no Origin and is allowed; the device's own UI matches.
+    g_ws.handleHandshake([](AsyncWebServerRequest *r) {
+        return originAllowed(r) && hostAllowed(r);
+    });
     g_ws.onEvent(onWsEvent);
     g_server.addHandler(&g_ws);
     g_server.begin();
@@ -546,6 +600,7 @@ bool Network::acquireClientSlot(uint32_t clientId) {
     if (clientCount_ > 0) return false;
     clientCount_++;
     ownerId_ = clientId;
+    ownerSince_ = millis();
     return true;
 }
 
@@ -558,6 +613,15 @@ void Network::releaseClientSlot(uint32_t clientId) {
 
 void Network::loop() {
     g_ws.cleanupClients();
+
+    // Drop a connected controller that has not authenticated within 5s (H4), so
+    // an attacker cannot hold the single client slot open — squatting it also
+    // denies the real operator, since only a disconnect frees the slot.
+    if (clientCount_ > 0 && !processor_.authenticated() &&
+        millis() - ownerSince_ > 5000) {
+        AsyncWebSocketClient *c = g_ws.client(ownerId_);
+        if (c) c->close(1008, "auth timeout");
+    }
 
     // Cheap, but there is no reason to re-evaluate the radio every few ms.
     static uint32_t last = 0;
