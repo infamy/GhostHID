@@ -9,6 +9,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "board_config.h"
+
 namespace ghosthid {
 
 class HidDevice;
@@ -86,7 +88,7 @@ private:
     // Multiple controllers may connect at once; each authenticates on its own.
     // A shared auth flag would let one client's login authorise another, so
     // auth is tracked per client id here.
-    static constexpr size_t kMaxSessions = 4;
+    static constexpr size_t kMaxSessions = GHOSTHID_MAX_CONTROLLERS;
     uint32_t sessionId_[kMaxSessions]   = {};   // connected client ids (0 = free)
     bool     sessionAuthed_[kMaxSessions] = {}; // parallel: has that client authed
     size_t   sessionCount_ = 0;

@@ -8,12 +8,18 @@
 
 #include <stdint.h>
 
+// Maximum simultaneous web controllers. The Network slot table and the
+// CommandProcessor per-client auth table both size themselves from this single
+// value, so they can never drift out of step (a mismatch would admit a client
+// one layer can't track).
+#define GHOSTHID_MAX_CONTROLLERS 4
+
 // ---------------------------------------------------------------------------
 // Identity
 // ---------------------------------------------------------------------------
 
 #ifndef GHOSTHID_VERSION
-#define GHOSTHID_VERSION "0.6.23"
+#define GHOSTHID_VERSION "0.6.25"
 #endif
 
 // How the target computer sees us in its USB device list.

@@ -210,20 +210,34 @@ void Display::drawQrPage(const DisplayStatus &s) {
     tft.setCursor(MARGIN, 8);
     tft.print("Join Wi-Fi");
 
+    // Text column starts to the right of the QR. Position it off the QR's
+    // *measured* width plus a gap, so its quiet-zone/edge never overlaps the
+    // first character of the SSID/pass (which it did at the old fixed x=150).
+    int textX = 150;
     if (s.apSsid && s.apSsid[0]) {
         char payload[96];
         snprintf(payload, sizeof(payload), "WIFI:S:%s;T:WPA;P:%s;;",
                  s.apSsid, s.apPass ? s.apPass : "");
-        // Version 4 (33 modules) x scale 4 = 132px on the left.
-        drawQr(MARGIN, 36, 4, payload);
+        // Scale 3 (version 4 = 33 modules -> 99px) leaves room for the text and
+        // is still comfortably scannable from a phone.
+        const int side = drawQr(MARGIN, 36, 3, payload);
+        if (side > 0) textX = MARGIN + side + 14;
     }
-    // SSID + AP password in clear on the right, for manual entry. The pairing
-    // token has its own page.
+    // SSID + AP password in clear, for manual entry. The pairing token has its
+    // own page. Drop to the small font if the value would run off the panel.
+    const int avail = SCR_W - textX - MARGIN;
+    const char *ssid = s.apSsid ? s.apSsid : "";
+    const char *pass = s.apPass ? s.apPass : "";
+    const int longest = (int)((strlen(ssid) > strlen(pass)) ? strlen(ssid) : strlen(pass));
+    const int valSize = (longest * 12 <= avail) ? 2 : 1;   // size-2 glyph ~12px
     tft.setTextSize(2);
-    tft.setTextColor(C_GREY);  tft.setCursor(150, 44);  tft.print("SSID");
-    tft.setTextColor(C_WHITE); tft.setCursor(150, 62);  tft.print(s.apSsid ? s.apSsid : "");
-    tft.setTextColor(C_GREY);  tft.setCursor(150, 100); tft.print("PASS");
-    tft.setTextColor(C_WHITE); tft.setCursor(150, 118); tft.print(s.apPass ? s.apPass : "");
+    tft.setTextColor(C_GREY);  tft.setCursor(textX, 44);  tft.print("SSID");
+    tft.setTextSize(valSize);
+    tft.setTextColor(C_WHITE); tft.setCursor(textX, 64);  tft.print(ssid);
+    tft.setTextSize(2);
+    tft.setTextColor(C_GREY);  tft.setCursor(textX, 100); tft.print("PASS");
+    tft.setTextSize(valSize);
+    tft.setTextColor(C_WHITE); tft.setCursor(textX, 120); tft.print(pass);
     buttonHint("page");
 }
 

@@ -8,6 +8,8 @@
 #include <stdint.h>
 #include <stddef.h>
 
+#include "board_config.h"
+
 namespace ghosthid {
 
 class CommandProcessor;
@@ -70,7 +72,7 @@ private:
     char apIp_[16]  = {};
     char staIp_[16] = {};
     // Concurrent controllers. Each entry is one connected WebSocket client.
-    static constexpr size_t kMaxControllers = 4;
+    static constexpr size_t kMaxControllers = GHOSTHID_MAX_CONTROLLERS;
     struct Controller {
         uint32_t id = 0;            // 0 = free slot
         uint32_t since = 0;         // millis() when it connected (for the auth timeout)

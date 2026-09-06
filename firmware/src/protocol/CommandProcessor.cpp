@@ -95,15 +95,16 @@ void CommandProcessor::beginSession(uint32_t clientId) {
 
 void CommandProcessor::endSession(uint32_t clientId) {
     const int i = findSession(clientId);
-    if (i >= 0) {
-        sessionId_[i] = 0;
-        sessionAuthed_[i] = false;
-        if (sessionCount_ > 0) --sessionCount_;
-    }
-    // Once the last controller is gone, whatever it was holding must not stay
-    // held on the target (the primary stuck-key defence). While other
-    // controllers remain, leave the shared HID state alone.
-    if (sessionCount_ == 0) hid_.releaseAll();
+    if (i < 0) return;                      // not a tracked controller
+    sessionId_[i] = 0;
+    sessionAuthed_[i] = false;
+    if (sessionCount_ > 0) --sessionCount_;
+    // A controller vanishing must NEVER leave a key held on the target - the
+    // worst failure this device can produce. Held keys can't be attributed to a
+    // specific controller (the HID state is shared), so any disconnect releases
+    // everything while anything is held: a spurious release for the controllers
+    // that remain is far better than a key stuck down (H8).
+    if (hid_.anythingHeld()) hid_.releaseAll();
 }
 
 bool CommandProcessor::authenticated(uint32_t clientId) const {

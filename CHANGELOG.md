@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.6.25
+
+### Fixed
+
+* **Stuck-key regression from multi-controller (H8)** - a controller that
+  disconnected while holding a key left it held on the target when another
+  controller was still attached (endSession only released on the last one out,
+  and the watchdog rode a shared last-message clock the other client kept warm).
+  Any controller's disconnect now releases held input while anything is down - a
+  spurious release for the others beats a key stuck on the target, the worst
+  failure this device can produce.
+* **QR / Wi-Fi page: the code's edge crushed the first character of the SSID and
+  password.** The text column is now placed off the QR's measured width plus a
+  gap (and the QR is scale 3 to make room); long values drop to the small font
+  rather than clipping.
+* **Login-gate footgun removed** - dropped the `hidden` attribute that fought the
+  gate's inline `display:flex`; visibility is controlled purely by `display`.
+
+### Changed
+
+* Max concurrent controllers is now a single shared constant
+  (`GHOSTHID_MAX_CONTROLLERS`) that both the network slot table and the
+  per-client auth table derive from, so they can never drift apart.
+
+
 ## 0.6.23
 
 Onboarding, auth, and multi-controller overhaul (consolidates several
