@@ -379,33 +379,40 @@ CommandResult CommandProcessor::handleMessage(const char *json, size_t len,
     // its value. Otherwise anyone holding the token could read the Wi-Fi
     // password straight out of the device.
     if (strcmp(type, "get_config") == 0) {
-        reply(outResponse, outSize,
-              "{\"type\":\"config\",\"sta_ssid\":\"%s\",\"sta_pass_set\":%s,"
-              "\"ap_pass_set\":true,\"token_set\":%s,\"name\":\"%s\","
-              "\"ap_always\":%s,\"reboot_pending\":%s,"
-              "\"kvm_on\":%s,\"kvm_host\":\"%s\",\"kvm_port\":%u,"
-              "\"kvm_screen\":\"%s\",\"kvm_w\":%u,\"kvm_h\":%u,"
-              "\"kvm_state\":\"%s\",\"kvm_server\":\"%s\","
-              "\"kvm_tls\":%s,\"kvm_fp\":\"%s\",\"kvm_ca_set\":%s,"
-              "\"scroll_invert\":%s}",
-              config_.staSsid(),
-              config_.staPassword()[0] ? "true" : "false",
-              config_.authToken()[0]   ? "true" : "false",
-              config_.deviceName(),
-              config_.apAlways()      ? "true" : "false",
-              config_.rebootPending() ? "true" : "false",
-              config_.deskflowEnabled() ? "true" : "false",
-              config_.deskflowHost(),
-              (unsigned)config_.deskflowPort(),
-              config_.deskflowScreen(),
-              (unsigned)config_.deskflowWidth(),
-              (unsigned)config_.deskflowHeight(),
-              deskflow_ ? deskflow_->statusText() : "unknown",
-              deskflow_ ? deskflow_->serverName() : "",
-              config_.deskflowTls() ? "true" : "false",
-              deskflow_ ? deskflow_->fingerprint() : "",
-              config_.deskflowServerCert()[0] ? "true" : "false",
-              config_.scrollInvert() ? "true" : "false");
+        // Built with ArduinoJson, not printf: several fields are device-supplied
+        // strings (SSID, screen-server host, the TLS error text with the host
+        // embedded, the wire-supplied server name) and a raw %s would let a
+        // quote or control byte break or reshape the JSON the UI trusts (M4).
+        // ArduinoJson escapes every string; the size guard replaces M5's manual
+        // truncation check for this response. Pointers stay valid through the
+        // serialize call below, so no copies are needed.
+        JsonDocument out;
+        out["type"]           = "config";
+        out["sta_ssid"]       = config_.staSsid();
+        out["sta_pass_set"]   = config_.staPassword()[0] != '\0';
+        out["ap_pass_set"]    = true;
+        out["token_set"]      = config_.authToken()[0] != '\0';
+        out["name"]           = config_.deviceName();
+        out["ap_always"]      = config_.apAlways();
+        out["reboot_pending"] = config_.rebootPending();
+        out["kvm_on"]         = config_.deskflowEnabled();
+        out["kvm_host"]       = config_.deskflowHost();
+        out["kvm_port"]       = config_.deskflowPort();
+        out["kvm_screen"]     = config_.deskflowScreen();
+        out["kvm_w"]          = config_.deskflowWidth();
+        out["kvm_h"]          = config_.deskflowHeight();
+        out["kvm_state"]      = deskflow_ ? deskflow_->statusText() : "unknown";
+        out["kvm_server"]     = deskflow_ ? deskflow_->serverName() : "";
+        out["kvm_tls"]        = config_.deskflowTls();
+        out["kvm_fp"]         = deskflow_ ? deskflow_->fingerprint() : "";
+        out["kvm_ca_set"]     = config_.deskflowServerCert()[0] != '\0';
+        out["scroll_invert"]  = config_.scrollInvert();
+        if (measureJson(out) + 1 > outSize) {
+            reply(outResponse, outSize,
+                  "{\"type\":\"error\",\"error\":\"response too large\"}");
+        } else {
+            serializeJson(out, outResponse, outSize);
+        }
         return CommandResult::Ok;
     }
 

@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.6.7
+
+Corrections to the 0.6.4-0.6.6 hardening - some of it was done incompletely.
+
+### Security
+
+* **M4 done properly.** `get_config` is now built with ArduinoJson, which escapes
+  every string field. 0.6.6 only sanitised the wire-supplied server name and left
+  `kvm_host`, `kvm_state` (which embeds the host in the TLS error text) and
+  `sta_ssid` going through raw `%s` - a quote in any of those could still break or
+  reshape the JSON the UI trusts. (The `status` response was already safe: its
+  device-derived fields are hex-encoded.)
+* **H2 entropy fixed.** First-boot credential generation now enables the
+  bootloader hardware RNG around `esp_random()`. It runs before Wi-Fi starts (the
+  AP needs the password first), and `esp_random()` is only guaranteed
+  hardware-random once the RF subsystem is up - so the 0.6.5 credentials could
+  have been drawn from a weak source.
+
+### Fixed
+
+* **L4 done properly.** The `web off` -> `web on` handler-stacking fix now lives in
+  `stopServers()` as `g_server.reset()`. `end()` stops the listener but does not
+  clear the handler list, so the 0.6.6 `serversUp_` guard alone did not prevent
+  re-registration after a stop.
+
+
 ## 0.6.6
 
 More security hardening — no functionality change.

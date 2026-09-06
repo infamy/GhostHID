@@ -2,6 +2,7 @@
 
 #include <Arduino.h>
 #include <Preferences.h>
+#include <bootloader_random.h>
 #include <esp_random.h>
 #include <string.h>
 
@@ -78,6 +79,13 @@ void Config::begin() {
     // provisioned flag that a factory reset clears (so a reset re-randomises).
     // The new values are shown on the LCD and serial for setup.
     if (!g_prefs.getBool(kKeyProvd, false)) {
+        const bool needRand = (strcmp(token_, "ghosthid") == 0) ||
+                              (strcmp(apPass_, "ghosthid-setup") == 0);
+        // esp_random() is only hardware-random once the RF subsystem is up, and
+        // this runs before Wi-Fi starts (the AP needs the password first). Turn
+        // on the bootloader entropy source so the credentials are truly random,
+        // then turn it off again before Wi-Fi/ADC come up (they can't coexist).
+        if (needRand) bootloader_random_enable();
         if (strcmp(token_, "ghosthid") == 0) {
             randomCredential(token_, 14, sizeof(token_));
             g_prefs.putString(kKeyToken, token_);
@@ -88,6 +96,7 @@ void Config::begin() {
             g_prefs.putString(kKeyApPw, apPass_);
             justProvisioned_ = true;
         }
+        if (needRand) bootloader_random_disable();
         g_prefs.putBool(kKeyProvd, true);
     }
 

@@ -592,6 +592,11 @@ void Network::stopServers() {
     g_ws.closeAll();
     g_ws.cleanupClients();
     g_server.end();
+    // L4: end() stops the listener but does NOT clear the handler list, so a
+    // later beginServers() would re-register every route on top of the old ones
+    // (web off -> web on stacked duplicates). reset() clears them so the next
+    // begin re-registers cleanly.
+    g_server.reset();
     serversUp_ = false;
     clientCount_ = 0;
     ownerId_ = 0;
