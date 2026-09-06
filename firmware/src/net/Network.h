@@ -6,6 +6,7 @@
 #pragma once
 
 #include <stdint.h>
+#include <stddef.h>
 
 namespace ghosthid {
 
@@ -37,7 +38,8 @@ public:
     // Must be called from loop(): drives cleanup of dead WebSocket clients.
     void loop();
 
-    bool clientConnected() const { return clientCount_ > 0; }
+    bool clientConnected() const { return controllerCount_ > 0; }
+    size_t clientCount() const { return controllerCount_; }
     const char *ssid() const { return ssid_; }
     const char *apAddress() const { return apIp_; }
 
@@ -45,16 +47,13 @@ public:
     const char *staAddress() const { return staIp_; }
     bool stationConnected() const { return staIp_[0] != '\0'; }
 
-    // Called by the WebSocket event callback. acquireClientSlot returns false if
-    // a controller is already attached -- two peers sharing one held-key state
-    // would fight over it. The winning client's id is recorded so a *second*
-    // connection's later disconnect cannot release the first controller's keys
-    // or drop its session: only the owner's own disconnect does that.
+    // Called by the WebSocket event callback. Up to kMaxControllers may attach
+    // at once (each authenticates independently). acquireClientSlot returns
+    // false only when all slots are full, so a stray tab can no longer lock out
+    // the operator - the old single-slot behaviour was a foot-gun.
     bool acquireClientSlot(uint32_t clientId);
     void releaseClientSlot(uint32_t clientId);
-    bool isClientOwner(uint32_t clientId) const {
-        return clientCount_ > 0 && clientId == ownerId_;
-    }
+    bool isClientConnected(uint32_t clientId) const;
 
     bool apActive() const { return apActive_; }
 
@@ -70,10 +69,15 @@ private:
     char ssid_[33]  = {};
     char apIp_[16]  = {};
     char staIp_[16] = {};
-    uint32_t clientCount_ = 0;
-    uint32_t ownerId_ = 0;        // id of the one accepted controller; 0 = none
-    uint32_t ownerSince_ = 0;     // millis() when it connected (for the auth timeout)
-    uint32_t authTimedOutId_ = 0; // id we've already issued an auth-timeout close for
+    // Concurrent controllers. Each entry is one connected WebSocket client.
+    static constexpr size_t kMaxControllers = 4;
+    struct Controller {
+        uint32_t id = 0;            // 0 = free slot
+        uint32_t since = 0;         // millis() when it connected (for the auth timeout)
+        bool     authTimedOut = false;  // already issued an auth-timeout close
+    };
+    Controller controllers_[kMaxControllers] = {};
+    size_t   controllerCount_ = 0;
     bool     apActive_ = false;
     bool     serversUp_ = false;
     uint32_t staStableSince_ = 0;

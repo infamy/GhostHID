@@ -25,6 +25,18 @@ char *splitVerb(char *line) {
     return rest;
 }
 
+// Remove whitespace from a token. It is shown on the LCD in two 4-char blocks
+// ("AB2C 9XKF"), so accept it typed with or without the space. Real tokens are
+// uppercase letters and digits only - never whitespace.
+void stripWs(const char *in, char *out, size_t cap) {
+    size_t o = 0;
+    for (size_t i = 0; in[i] != '\0' && o + 1 < cap; ++i) {
+        if (in[i] == ' ' || in[i] == '\t') continue;
+        out[o++] = in[i];
+    }
+    out[o] = '\0';
+}
+
 // Constant-time compare for the unlock token (no early return).
 bool ctEq(const char *a, const char *b) {
     const size_t la = strlen(a), lb = strlen(b);
@@ -155,9 +167,10 @@ void SerialConsole::execute(char *line) {
     } else if (strcasecmp(line, "show") == 0 || strcasecmp(line, "status") == 0) {
         printStatus();
     } else if (strcasecmp(line, "unlock") == 0) {
+        char tok[64]; stripWs(value, tok, sizeof(tok));
         if (config_.authToken()[0] == '\0') {
             Serial.println("console is already open (no token set)");
-        } else if (ctEq(value, config_.authToken())) {
+        } else if (ctEq(tok, config_.authToken())) {
             consoleUnlocked_ = true;
             Serial.println("ok: console unlocked for this boot");
         } else {
@@ -187,11 +200,12 @@ void SerialConsole::execute(char *line) {
             Serial.println("error: WPA2 requires 8-63 characters");
         }
     } else if (strcasecmp(line, "token") == 0) {
+        char tok[64]; stripWs(value, tok, sizeof(tok));
         if (locked) {
             Serial.println("locked: run 'unlock <token>' first");
-        } else if (config_.setAuthToken(value)) {
+        } else if (config_.setAuthToken(tok)) {
             Serial.printf("ok: token %s  (active now, no reboot needed)\r\n",
-                          value[0] ? "set" : "cleared - auth disabled");
+                          tok[0] ? "set" : "cleared - auth disabled");
         } else {
             Serial.println("error: token must be empty (disables auth) or 6-48 chars");
         }

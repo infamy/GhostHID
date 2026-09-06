@@ -211,7 +211,7 @@ void serviceDisplay() {
                     : deskflow.certTrustPending() ? "confirm cert"
                     : (deskflow.connected() ? "connected" : "connecting");
     st.kvmFocus   = deskflow.hasFocus();
-    st.clients    = network.clientConnected() ? 1 : 0;
+    st.clients    = (int)network.clientCount();
     st.version    = GHOSTHID_VERSION;
     st.heapFreeKb = ESP.getFreeHeap() / 1024;
     st.uptimeSec  = millis() / 1000;

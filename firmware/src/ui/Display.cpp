@@ -189,6 +189,19 @@ void Display::drawStatusPage(const DisplayStatus &s) {
     char c[16];
     snprintf(c, sizeof(c), "%d ctrl", s.clients);
     corner(SCR_W - MARGIN, SCR_H - MARGIN - 7, c, s.clients > 0 ? C_GREEN : C_GREY, true);
+
+    // Firmware version, small and dim, centred along the top between the two
+    // corner badges (USB on the left, KVM on the right) - always visible so the
+    // running build is readable at a glance without cycling to the Info page.
+    if (s.version && s.version[0]) {
+        tft.setTextSize(1);
+        char v[24];
+        snprintf(v, sizeof(v), "v%s", s.version);
+        const int vw = (int)strlen(v) * 6;   // size-1 glyph cell is ~6px wide
+        tft.setTextColor(C_GREY);
+        tft.setCursor((SCR_W - vw) / 2, MARGIN);
+        tft.print(v);
+    }
 }
 
 void Display::drawQrPage(const DisplayStatus &s) {

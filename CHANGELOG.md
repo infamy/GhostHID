@@ -1,5 +1,51 @@
 # Changelog
 
+## 0.6.23
+
+Onboarding, auth, and multi-controller overhaul (consolidates several
+same-session iterations after 0.6.16).
+
+### Added
+
+* **Multiple controllers at once** - up to 4 web controllers can connect
+  simultaneously, each authenticating independently (no shared auth state, so
+  one client's login never authorises another). A 5th gets a clear "device
+  full" instead of the old silent refusal. The web UI shows a warning banner
+  when more than one is connected and the LCD shows the live count. This retires
+  the single-controller slot, whose interaction with the rate-limiter could lock
+  the legitimate operator out entirely.
+* **Login gate** - the pairing token is prompted for up front (a full-page
+  prompt) instead of being buried at the bottom of Settings.
+* **Firmware version on the main LCD screen.**
+
+### Fixed
+
+* **Login overlay stayed painted over a connected app** - the gate used the
+  `hidden` attribute, but its inline `display:flex` overrode it, so a fully
+  authenticated session sat invisible behind the login screen and Connect
+  looked like it did nothing. Toggled via `display` now.
+* **Auth lockout masqueraded as "wrong token."** During a cooldown the device
+  returned a generic failure the UI showed as a bad-token error, so a correct
+  token during a lockout looked broken. The device now returns
+  `locked`+`retry_ms`; the UI shows a "locked, retry in Ns - your token is fine"
+  countdown and auto-retries once.
+* **Rate-limiter was a setup foot-gun** - gentler first lockout (15s) and the
+  counters now decay after 2 minutes idle, so a fumbling operator isn't walled
+  off for 15 minutes. No auto-connect on page load (it burned attempts with a
+  stale token and churned the slot); stale `ghosthid` default token is purged
+  from browser storage.
+* **Token is now case-insensitive** (the generated alphabet is uppercase-only,
+  so this only removes mobile mistypes) and accepted with or without the display
+  spaces on every path (web, serial `unlock`/`token`, HTTP/OTA).
+
+### Changed
+
+* **Settings decluttered** - the device fingerprint, manual certificate
+  paste/upload, and the openssl how-to are collapsed into one "Advanced:
+  certificates & fingerprints" disclosure now that trust-on-first-use captures
+  the server cert automatically.
+
+
 ## 0.6.16
 
 ### Added

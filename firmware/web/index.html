@@ -218,11 +218,38 @@ select{background:#0e1a29;color:var(--fg);border:1px solid var(--line);border-ra
   <button id="panic" title="Release every key and mouse button currently held down on the target">Release keys</button>
 </header>
 
+<!-- Login gate: the whole app is useless until authenticated (every command is
+     refused), so cover it entirely with a token prompt until a session is up. -->
+<div id="gate" hidden style="position:fixed;inset:0;z-index:1000;display:flex;
+     align-items:center;justify-content:center;padding:20px;background:var(--bg)">
+  <div style="width:100%;max-width:360px;background:var(--panel);border:1px solid var(--line);
+       border-radius:12px;padding:24px;box-sizing:border-box">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+      <div style="width:10px;height:18px;background:var(--accent);border-radius:1px"></div>
+      <h1 style="margin:0;font-size:20px;letter-spacing:.3px">GhostHID</h1>
+    </div>
+    <div id="ab_msg" style="color:var(--dim);font-size:13px;margin-bottom:16px">
+      Enter the pairing token shown on the device's screen.</div>
+    <input id="tok2" placeholder="XXXX XXXX" autocomplete="off" autocapitalize="characters"
+           spellcheck="false" style="width:100%;box-sizing:border-box;background:#0e1a29;
+           color:var(--fg);border:1px solid var(--line);border-radius:6px;padding:12px;
+           font:16px var(--mono)">
+    <button id="ab_go" style="width:100%;margin-top:12px">Connect</button>
+    <p class="hint" style="margin:14px 0 0">
+      Short-press the button on the device to cycle its screen to <b>Token</b>. Spaces optional.</p>
+  </div>
+</div>
+
 <main>
   <div id="warn">
     <b>The target is not receiving input.</b> GhostHID is on the network, but the
     computer it is plugged into has not enumerated it over USB — unplugged,
     asleep, or a charge-only port.
+  </div>
+  <div id="multi" hidden style="margin:0 0 12px;padding:10px 12px;border:1px solid var(--warn);
+       border-radius:6px;background:#241a0a;color:var(--warn);font-size:13px">
+    ⚠ <b id="multi_n"></b> controllers are connected — your input and theirs both reach the
+    target. Close the other tabs or clients if that isn't intended.
   </div>
 
   <!-- ================= CONTROL ================= -->
@@ -457,12 +484,8 @@ select{background:#0e1a29;color:var(--fg);border:1px solid var(--line);border-ra
         <button id="k_tls_on" class="grow">TLS (default)</button>
         <button id="k_tls_off" class="grow">Plaintext</button>
       </div>
-      <p class="hint">
-        On by default. GhostHID presents its own certificate (made once, kept) —
-        check the fingerprint below matches on the server the first time.
-      </p>
-      <div id="k_fp" style="font-family:var(--mono);font-size:10px;color:var(--dim);
-           word-break:break-all;margin-top:6px"></div>
+      <p class="hint">On by default. The server's certificate is captured and confirmed
+        automatically the first time you connect.</p>
 
       <div id="k_pending" hidden style="margin-top:10px;padding:10px;border:1px solid var(--accent);
            border-radius:6px;background:#0e1a29">
@@ -477,29 +500,30 @@ select{background:#0e1a29;color:var(--fg);border:1px solid var(--line);border-ra
         <button id="k_trust" class="grow">Trust &amp; connect</button>
       </div>
 
-      <label>Server certificate (optional)</label>
-      <p class="hint" style="margin:0 0 6px">
-        Captured and confirmed automatically on first connect. Paste or upload it here
-        only to pin it ahead of time, then Save.</p>
-      <details class="help">
-        <summary>How to get the certificate</summary>
-        <ol class="hint" style="padding-left:18px">
-          <li><b>Off the wire</b> — on any computer with openssl (replace
-              <code>SERVER</code>):<br>
-              <code>openssl s_client -connect SERVER:24800 &lt;/dev/null | openssl x509 &gt; server.pem</code></li>
-          <li><b>From the server</b> — Barrier:
-              <code>~/.local/share/barrier/SSL/Barrier.pem</code>; Deskflow:
-              <code>~/.local/share/deskflow/SSL/Deskflow.pem</code>.</li>
-        </ol>
+      <details class="help" style="margin-top:10px">
+        <summary>Advanced: certificates &amp; fingerprints</summary>
+        <label style="margin-top:8px">This device's fingerprint</label>
+        <p class="hint" style="margin:0 0 4px">The server must trust this (it happens
+          automatically the first time GhostHID connects).</p>
+        <div id="k_fp" style="font-family:var(--mono);font-size:10px;color:var(--dim);
+             word-break:break-all"></div>
+        <label style="margin-top:12px">Pin the server certificate manually</label>
+        <p class="hint" style="margin:4px 0">
+          Not needed normally — the server's certificate is captured and confirmed
+          automatically on first connect. Paste or upload a PEM only to pin it ahead of
+          time (e.g. provisioning a fleet), then Save.</p>
+        <textarea id="k_ca" rows="4" spellcheck="false" autocapitalize="off" autocorrect="off"
+                  placeholder="-----BEGIN CERTIFICATE-----&#10;…&#10;-----END CERTIFICATE-----"
+                  style="width:100%;box-sizing:border-box;font:11px/1.35 var(--mono);
+                         background:#0e1a29;color:var(--fg);border:1px solid var(--line);
+                         border-radius:4px;padding:8px"></textarea>
+        <div class="row" style="margin-top:6px">
+          <input id="k_ca_file" type="file" accept=".pem,.crt,.cer" class="grow">
+        </div>
+        <div id="k_ca_state" class="hint" style="margin-top:4px"></div>
+        <p class="hint" style="margin:6px 0 0">Grab a PEM with:
+          <code>openssl s_client -connect SERVER:24800 &lt;/dev/null | openssl x509</code></p>
       </details>
-      <textarea id="k_ca" rows="4" spellcheck="false" autocapitalize="off" autocorrect="off"
-                placeholder="-----BEGIN CERTIFICATE-----&#10;…&#10;-----END CERTIFICATE-----"
-                style="width:100%;font:11px/1.35 var(--mono);background:#0e1a29;color:var(--fg);
-                       border:1px solid var(--line);border-radius:4px;padding:8px"></textarea>
-      <div class="row" style="margin-top:6px">
-        <input id="k_ca_file" type="file" accept=".pem,.crt,.cer" class="grow">
-      </div>
-      <div id="k_ca_state" class="hint" style="margin-top:4px"></div>
 
       <div class="row" style="margin-top:10px">
         <button id="k_on" class="grow">Enable</button>
@@ -547,7 +571,7 @@ select{background:#0e1a29;color:var(--fg);border:1px solid var(--line);border-ra
       <h2>Connection</h2>
       <label>Pairing token (this browser)</label>
       <div class="row">
-        <input id="tok" class="grow" placeholder="pairing token" autocomplete="off">
+        <input id="tok" class="grow" placeholder="XXXX XXXX" autocomplete="off" autocapitalize="characters" spellcheck="false">
         <button id="reconn">Reconnect</button>
       </div>
       <div id="log"></div>
@@ -639,7 +663,7 @@ select{background:#0e1a29;color:var(--fg);border:1px solid var(--line);border-ra
 
     <section>
       <h2>1 · Authenticate first</h2>
-      <pre>{"type":"auth","token":"ghosthid"}
+      <pre>{"type":"auth","token":"YOUR-TOKEN"}
 → {"type":"auth","ok":true,"version":"…","usb":true}</pre>
       <p class="hint">
         Every other command except <code>auth</code> is rejected until this succeeds.
@@ -776,7 +800,7 @@ Body: raw firmware.bin
 from websockets.sync.client import connect
 
 with connect("ws://192.168.4.1/ws") as ws:
-    ws.send(json.dumps({"type":"auth","token":"ghosthid"}))
+    ws.send(json.dumps({"type":"auth","token":"YOUR-TOKEN"}))
     ws.recv()
     ws.send(json.dumps({"type":"text","text":"hello world"}))
     ws.send(json.dumps({"type":"key","key":"ENTER","pressed":True}))
@@ -791,12 +815,27 @@ with connect("ws://192.168.4.1/ws") as ws:
 "use strict";
 var $=function(s){return document.querySelector(s)};
 var dot=$("#dot"), stat=$("#stat"), logEl=$("#log");
-var ws=null, ready=false, retryTimer=null, authRejected=false;
+var ws=null, ready=false, retryTimer=null, authRejected=false, lockedUntil=0;
 
 function log(m){ logEl.textContent=(new Date().toLocaleTimeString()+"  "+m+"\n"+logEl.textContent).slice(0,1400); }
 function setState(ok,msg){
   ready=ok; dot.classList.toggle("on",ok);
   stat.textContent=msg;
+  // The whole app is gated behind the token: show the login gate until a
+  // session is up, so the token prompt is never buried in a tab.
+  var gate=$("#gate");
+  if(gate){
+    // Toggle display, NOT the `hidden` attribute: the gate carries an inline
+    // display:flex (to center its card), which overrides the UA `[hidden]`
+    // display:none - so `hidden` left the overlay painted on top of a fully
+    // connected app. That is the bug that made Connect look like it did nothing.
+    gate.style.display = ok ? "none" : "flex";
+    if(!ok){
+      $("#ab_msg").textContent = authRejected
+        ? "Wrong or missing token. Enter the pairing token from the device's screen."
+        : "Enter the pairing token shown on the device's screen.";
+    }
+  }
   $("#rtt").textContent="";      // latency belongs to #rtt; keep #stat the state word
   dot.title=msg;                 // also mirrored here for the desktop tooltip
   var pc=$("#p_conn");
@@ -858,7 +897,20 @@ function clearDirty(){
 }
 
 $("#api-url").textContent = "ws://"+location.host+"/ws";
-$("#tok").value = localStorage.getItem("ghosthid.token") || "";
+var savedTok = localStorage.getItem("ghosthid.token") || "";
+// "ghosthid" was the old build-time default token; it is never a real pairing
+// token now, so drop it rather than pre-filling a value that only ever fails.
+if(savedTok === "ghosthid"){ savedTok = ""; localStorage.removeItem("ghosthid.token"); }
+$("#tok").value = savedTok;
+$("#tok2").value = savedTok;
+// Selecting the field selects its contents, so a pre-filled token is replaced
+// by typing rather than appended to.
+$("#tok2").addEventListener("focus",function(){ this.select(); });
+// Keep the two token inputs (top bar + Settings) in sync as you type.
+$("#tok").addEventListener("input",function(){ $("#tok2").value=$("#tok").value; });
+$("#tok2").addEventListener("input",function(){ $("#tok").value=$("#tok2").value; });
+$("#tok2").addEventListener("keydown",function(e){ if(e.key==="Enter") $("#ab_go").click(); });
+$("#ab_go").onclick=function(){ $("#tok").value=$("#tok2").value; authRejected=false; connect(); };
 
 // --- tabs -------------------------------------------------------------------
 document.querySelectorAll("nav button").forEach(function(b){
@@ -886,6 +938,8 @@ function connect(){
       noteRtt();
       if(typeof m.locks==="number") setLocks(m.locks);
       if(typeof m.hled==="number")  setHlink(m.hled);
+      if(typeof m.ctrls==="number"){ var mb=$("#multi");
+        if(mb){ if(m.ctrls>1){ $("#multi_n").textContent=m.ctrls; mb.hidden=false; } else mb.hidden=true; } }
     }
     if(typeof m.kvm==="number") setKvmBadge(m.kvm);
     if(typeof m.usb==="boolean"){
@@ -895,7 +949,7 @@ function connect(){
         : "not connected — target unplugged, asleep, or a charge-only port";
     }
     if(m.type==="auth"){
-      if(m.ok){ authRejected=false;
+      if(m.ok){ authRejected=false; lockedUntil=0;
                 setState(true,"connected"+(m.version?" · "+m.version:""));
                 localStorage.setItem("ghosthid.token",$("#tok").value.replace(/\s+/g,""));
                 $("#a_ver").textContent = m.version || "—";
@@ -907,8 +961,28 @@ function connect(){
                 // after a reconnect until you refresh.
                 clearMods(); setCapture(false);
                 log("authenticated"); send({type:"get_config"}); }
+      else if(m.locked){
+        // Locked out (too many attempts) — NOT a bad token. Show a live
+        // countdown and auto-retry once when it expires, instead of spinning
+        // (which would keep the lockout alive) or blaming the token.
+        authRejected=false;
+        var ms=m.retry_ms||30000; lockedUntil=Date.now()+ms;
+        clearTimeout(retryTimer);
+        (function tick(){
+          var left=Math.ceil((lockedUntil-Date.now())/1000);
+          if(left<=0){ if($("#ab_msg"))$("#ab_msg").textContent="Retrying…";
+                       setState(false,"connecting…"); connect(); return; }
+          setState(false,"locked — retry in "+left+"s");
+          if($("#ab_msg"))$("#ab_msg").textContent=
+            "Too many attempts — the device is locked. Auto-retrying in "+left+"s. (Your token is fine.)";
+          retryTimer=setTimeout(tick,1000);
+        })();
+        log("locked out for "+Math.ceil(ms/1000)+"s (too many attempts) — the token is NOT the problem"); }
       else { authRejected=true; setState(false,"auth rejected — check the token");
-             log("auth rejected — enter the token shown on the device, then Reconnect"); }
+             // A saved token that fails is stale; drop it so it can't silently
+             // prime the next lockout on reload.
+             try{localStorage.removeItem("ghosthid.token");}catch(e){}
+             log("auth rejected — check the token shown on the device, then Connect"); }
     } else if(m.type==="config"){
       fill("#c_ssid", m.sta_ssid);
       fill("#c_name", m.name);
@@ -967,6 +1041,9 @@ function connect(){
       setState(false,"auth rejected — enter the token, then Reconnect");
       return;
     }
+    // While a lockout countdown is running, it owns the single retry — don't
+    // also reconnect here, or we'd hammer the device and keep the lockout alive.
+    if(Date.now() < lockedUntil){ return; }
     // 1013 is the device refusing a second controller. Retrying silently made
     // that look like a flaky connection rather than a deliberate limit.
     if(ev && ev.code===1013){
@@ -1505,6 +1582,11 @@ $("#ota_go").onclick=function(){
   head.readAsArrayBuffer(f.slice(0,1));
 };
 
-connect();
+// Never auto-connect on load. Auto-connecting (even with a stored token) means
+// several open tabs all grab the single controller slot at once and fight over
+// it, and a stale token silently spends the anti-guess rate limit - which is
+// exactly what made "the token never works". Always show the gate and wait for
+// an explicit Connect, so exactly one connection happens when the user asks.
+setState(false,"");
 })();
 </script>

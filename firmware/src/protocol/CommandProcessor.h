@@ -26,19 +26,25 @@ public:
     CommandProcessor(HidDevice &hid, Config &config)
         : hid_(hid), config_(config) {}
 
-    // Called when a controller connects. Resets per-session state.
-    void beginSession();
+    // Called when a controller connects. Registers a per-client session.
+    void beginSession(uint32_t clientId);
 
-    // Called when a controller disconnects for ANY reason. Releases all held
-    // input - this is the primary stuck-key defence.
-    void endSession();
+    // Called when a controller disconnects for ANY reason. Drops that client's
+    // session and, once the last controller is gone, releases all held input -
+    // the primary stuck-key defence.
+    void endSession(uint32_t clientId);
 
-    // Feeds one protocol message. `outResponse` receives a JSON reply if the
-    // message warrants one (it may be left empty).
-    CommandResult handleMessage(const char *json, size_t len,
+    // Feeds one protocol message from a specific client. Auth is tracked per
+    // client, so one controller authenticating never authorises another.
+    // `outResponse` receives a JSON reply if the message warrants one.
+    CommandResult handleMessage(uint32_t clientId, const char *json, size_t len,
                                 char *outResponse, size_t outSize);
 
-    bool authenticated() const { return authenticated_; }
+    // Whether a specific client has authenticated this session.
+    bool authenticated(uint32_t clientId) const;
+    // How many controllers are currently connected (for the multi-controller
+    // warning surfaced in the heartbeat).
+    size_t sessionCount() const { return sessionCount_; }
 
     // Set when a config change needs a restart to take effect. main() acts on
     // it from loop(), never from inside a network callback.
@@ -76,8 +82,16 @@ private:
     HidDevice &hid_;
     Config    &config_;
     DeskflowClient *deskflow_ = nullptr;
-    bool     authenticated_ = false;
-    bool     sessionActive_ = false;
+
+    // Multiple controllers may connect at once; each authenticates on its own.
+    // A shared auth flag would let one client's login authorise another, so
+    // auth is tracked per client id here.
+    static constexpr size_t kMaxSessions = 4;
+    uint32_t sessionId_[kMaxSessions]   = {};   // connected client ids (0 = free)
+    bool     sessionAuthed_[kMaxSessions] = {}; // parallel: has that client authed
+    size_t   sessionCount_ = 0;
+    int  findSession(uint32_t clientId) const;  // index, or -1 if not connected
+
     uint32_t lastMessageMs_ = 0;
     bool     rebootRequested_ = false;
     bool     locked_ = false;
@@ -90,6 +104,7 @@ private:
     uint8_t  authFails_ = 0;
     uint8_t  authLockouts_ = 0;         // how many cooldowns so far (escalating backoff)
     uint32_t authCooldownUntil_ = 0;   // 0 = never tripped
+    uint32_t lastAuthMs_ = 0;          // last auth attempt, for idle decay of the counters
     bool     disconnectReq_ = false;
 };
 

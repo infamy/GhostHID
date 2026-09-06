@@ -43,6 +43,17 @@ bool ctEquals(const char *a, const char *b) {
     return diff == 0;
 }
 
+// ASCII upper-case copy, for case-insensitive token comparison.
+void upperCopy(char *dst, const char *src, size_t cap) {
+    size_t i = 0;
+    for (; src[i] != '\0' && i + 1 < cap; ++i) {
+        char c = src[i];
+        if (c >= 'a' && c <= 'z') c = static_cast<char>(c - 'a' + 'A');
+        dst[i] = c;
+    }
+    dst[i] = '\0';
+}
+
 void reply(char *out, size_t outSize, const char *fmt, ...) {
     if (out == nullptr || outSize == 0) return;
     va_list args;
@@ -59,21 +70,45 @@ void reply(char *out, size_t outSize, const char *fmt, ...) {
 
 }  // namespace
 
-void CommandProcessor::beginSession() {
-    sessionActive_  = true;
-    // An empty token means auth is disabled; treat the session as already
-    // authenticated so the device is usable without a pairing step.
-    const char *tok = config_.authToken();
-    authenticated_  = (tok == nullptr || tok[0] == '\0');
-    lastMessageMs_  = millis();
+int CommandProcessor::findSession(uint32_t clientId) const {
+    for (size_t i = 0; i < kMaxSessions; ++i) {
+        if (sessionCount_ > 0 && sessionId_[i] == clientId && clientId != 0) return (int)i;
+    }
+    return -1;
 }
 
-void CommandProcessor::endSession() {
-    sessionActive_ = false;
-    authenticated_ = false;
-    // The whole point of PLAN.md section 7: whatever the controller was
-    // holding when it vanished must not stay held on the target.
-    hid_.releaseAll();
+void CommandProcessor::beginSession(uint32_t clientId) {
+    if (findSession(clientId) >= 0) return;             // already registered
+    for (size_t i = 0; i < kMaxSessions; ++i) {
+        if (sessionId_[i] == 0) {
+            sessionId_[i] = clientId;
+            // An empty token means auth is disabled; treat the client as already
+            // authenticated so the device is usable without a pairing step.
+            const char *tok = config_.authToken();
+            sessionAuthed_[i] = (tok == nullptr || tok[0] == '\0');
+            ++sessionCount_;
+            break;
+        }
+    }
+    lastMessageMs_ = millis();
+}
+
+void CommandProcessor::endSession(uint32_t clientId) {
+    const int i = findSession(clientId);
+    if (i >= 0) {
+        sessionId_[i] = 0;
+        sessionAuthed_[i] = false;
+        if (sessionCount_ > 0) --sessionCount_;
+    }
+    // Once the last controller is gone, whatever it was holding must not stay
+    // held on the target (the primary stuck-key defence). While other
+    // controllers remain, leave the shared HID state alone.
+    if (sessionCount_ == 0) hid_.releaseAll();
+}
+
+bool CommandProcessor::authenticated(uint32_t clientId) const {
+    const int i = findSession(clientId);
+    return i >= 0 && sessionAuthed_[i];
 }
 
 uint32_t CommandProcessor::millisSinceLastMessage() const {
@@ -81,7 +116,7 @@ uint32_t CommandProcessor::millisSinceLastMessage() const {
 }
 
 bool CommandProcessor::serviceWatchdog(uint32_t timeoutMs) {
-    if (!sessionActive_) return false;
+    if (sessionCount_ == 0) return false;
     if (!hid_.anythingHeld()) return false;      // nothing to protect against
     if (millisSinceLastMessage() < timeoutMs) return false;
 
@@ -105,7 +140,7 @@ bool CommandProcessor::lockedTooLong(uint32_t timeoutMs) const {
     return locked_ && (millis() - lockedAtMs_) > timeoutMs;
 }
 
-CommandResult CommandProcessor::handleMessage(const char *json, size_t len,
+CommandResult CommandProcessor::handleMessage(uint32_t clientId, const char *json, size_t len,
                                               char *outResponse, size_t outSize) {
     if (outResponse != nullptr && outSize > 0) outResponse[0] = '\0';
     lastMessageMs_ = millis();
@@ -120,43 +155,87 @@ CommandResult CommandProcessor::handleMessage(const char *json, size_t len,
 
     // --- auth ---------------------------------------------------------------
     if (strcmp(type, "auth") == 0) {
-        const char *given = doc["token"] | "";
+        const char *rawGiven = doc["token"] | "";
+        // The token is shown on the LCD in two 4-char blocks; accept it with or
+        // without the space, from any client (the web UI already strips it, but
+        // a raw WebSocket client should get the same leniency). Real tokens have
+        // no whitespace.
+        char given[64];
+        {
+            size_t o = 0;
+            for (size_t i = 0; rawGiven[i] != '\0' && o + 1 < sizeof(given); ++i) {
+                if (rawGiven[i] == ' ' || rawGiven[i] == '\t') continue;
+                given[o++] = rawGiven[i];
+            }
+            given[o] = '\0';
+        }
         const char *tok = config_.authToken();
         const bool needTok = (tok != nullptr && tok[0] != '\0');
         const uint32_t now = millis();
 
+        // Idle decay: a legitimate operator fumbling a hard-to-read token pauses
+        // between tries; a brute-force script does not. If it has been quiet for
+        // a while, forgive the accumulated strikes and any cooldown so an honest
+        // user is never stuck behind a 15-minute wall they earned by mistyping.
+        if (lastAuthMs_ != 0 && now - lastAuthMs_ > 120000) {
+            authFails_ = 0;
+            authLockouts_ = 0;
+            authCooldownUntil_ = 0;
+        }
+        lastAuthMs_ = now;
+
         // Lockout window after repeated failures: refuse without even checking,
-        // and ask the transport to drop the socket so a script must reconnect
-        // (and wait) between guesses.
+        // and tell the client how long to wait (retry_ms) so it can say "locked,
+        // wait Ns" rather than mislabelling it as a bad token. Also drop the
+        // socket so a script must reconnect (and wait) between guesses.
         if (needTok && authCooldownUntil_ != 0 &&
             static_cast<int32_t>(authCooldownUntil_ - now) > 0) {
             reply(outResponse, outSize,
-                  "{\"type\":\"auth\",\"ok\":false,\"error\":\"too many attempts\"}");
+                  "{\"type\":\"auth\",\"ok\":false,\"locked\":true,\"retry_ms\":%u}",
+                  (unsigned)(authCooldownUntil_ - now));
             disconnectReq_ = true;
             return CommandResult::Unauthenticated;
         }
-        if (needTok && !ctEquals(given, tok)) {
+        // Case-insensitive: the generated token alphabet is uppercase + digits
+        // with no case collisions, so folding case removes a whole class of
+        // mobile-keyboard mistype at no cost for generated tokens (a small,
+        // deliberate keyspace trade for user-set mixed-case tokens).
+        char givU[64], tokU[64];
+        upperCopy(givU, given, sizeof(givU));
+        upperCopy(tokU, tok, sizeof(tokU));
+        if (needTok && !ctEquals(givU, tokU)) {
             // Three strikes -> a cooldown and a forced disconnect. The counters
             // survive reconnects (see the header note), so this actually bounds
             // the guess rate instead of resetting on every new socket.
+            bool justLocked = false;
             if (++authFails_ >= 3) {
-                // Escalating backoff: each lockout doubles the wait (30s, 60s,
-                // 120s, ... capped at 15 min), so the short (8-char) token can't
-                // be ground down by reconnect-and-retry.
-                const unsigned shift = authLockouts_ < 5 ? authLockouts_ : 5;
-                uint32_t cd = 30000u << shift;
+                // Escalating backoff, gentler at the start (15s, 30s, 60s, ...
+                // capped at 15 min) so a first fumble is a short wait, not a wall.
+                const unsigned shift = authLockouts_ < 6 ? authLockouts_ : 6;
+                uint32_t cd = 15000u << shift;
                 if (cd > 900000u) cd = 900000u;
                 authCooldownUntil_ = now + cd;
                 authFails_ = 0;
                 if (authLockouts_ < 250) ++authLockouts_;
                 disconnectReq_ = true;
+                justLocked = true;
             }
-            reply(outResponse, outSize, "{\"type\":\"auth\",\"ok\":false}");
+            if (justLocked) {
+                reply(outResponse, outSize,
+                      "{\"type\":\"auth\",\"ok\":false,\"locked\":true,\"retry_ms\":%u}",
+                      (unsigned)(authCooldownUntil_ - now));
+            } else {
+                reply(outResponse, outSize, "{\"type\":\"auth\",\"ok\":false}");
+            }
             return CommandResult::Unauthenticated;
         }
         authFails_ = 0;
         authLockouts_ = 0;
-        authenticated_ = true;
+        authCooldownUntil_ = 0;
+        {
+            const int i = findSession(clientId);
+            if (i >= 0) sessionAuthed_[i] = true;
+        }
         reply(outResponse, outSize,
               "{\"type\":\"auth\",\"ok\":true,\"version\":\"%s\",\"usb\":%s}",
               GHOSTHID_VERSION, hid_.ready() ? "true" : "false");
@@ -166,7 +245,7 @@ CommandResult CommandProcessor::handleMessage(const char *json, size_t len,
     // Everything past this point requires a valid session. Refusing HID
     // actions - not just rejecting the connection - is what stops an
     // unauthenticated peer on the network from typing on the target.
-    if (!authenticated_) {
+    if (!authenticated(clientId)) {
         reply(outResponse, outSize, "{\"type\":\"error\",\"error\":\"unauthenticated\"}");
         return CommandResult::Unauthenticated;
     }
@@ -180,11 +259,12 @@ CommandResult CommandProcessor::handleMessage(const char *json, size_t len,
         // target is actually driving our keyboard, not merely powering it - the
         // one thing nothing else on the wire can tell the controller.
         reply(outResponse, outSize,
-              "{\"type\":\"pong\",\"usb\":%s,\"kvm\":%u,\"locks\":%u,\"hled\":%u}",
+              "{\"type\":\"pong\",\"usb\":%s,\"kvm\":%u,\"locks\":%u,\"hled\":%u,\"ctrls\":%u}",
               hid_.ready() ? "true" : "false",
               (unsigned)(deskflow_ ? deskflow_->stateCode() : 0),
               (unsigned)hid_.hostLeds(),
-              (unsigned)hid_.hostLedReports());
+              (unsigned)hid_.hostLedReports(),
+              (unsigned)sessionCount_);
         return CommandResult::Ok;
     }
 

@@ -38,46 +38,38 @@ void onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *client,
                AwsEventType type, void *arg, uint8_t *data, size_t len) {
     switch (type) {
         case WS_EVT_CONNECT:
-            // One controller at a time. A second connection would let two
-            // peers fight over the same held-key state. Refuse it here, before
-            // adopting it as the session: its later disconnect must not touch
-            // the owner's state (see WS_EVT_DISCONNECT).
+            // Up to kMaxControllers may attach at once, each authenticating on
+            // its own. Only a genuinely full device is refused - so a stray or
+            // duplicate tab no longer locks out the operator.
             if (!g_network->acquireClientSlot(client->id())) {
-                client->close(1013, "busy");
+                client->close(1013, "device full (too many controllers)");
                 return;
             }
             // Nagle batches small writes, which is exactly wrong for a stream
             // of tiny input events; without this each report can wait for an
             // ACK or a 40ms coalescing timer.
             client->client()->setNoDelay(true);
-            g_processor->beginSession();
-            Serial.printf("[ws] client %u connected from %s\r\n",
-                          client->id(), client->remoteIP().toString().c_str());
+            g_processor->beginSession(client->id());
+            Serial.printf("[ws] client %u connected from %s (%u total)\r\n",
+                          client->id(), client->remoteIP().toString().c_str(),
+                          (unsigned)g_network->clientCount());
             break;
 
         case WS_EVT_DISCONNECT:
         case WS_EVT_ERROR:
-            // Only the owning controller's disconnect releases input and ends
-            // the session. A refused second connection (a new tab, or a browser
-            // reconnect racing its own close) also fires this event; acting on
-            // it would drop every held key on the target and de-authenticate
-            // the live controller.
-            if (!g_network->isClientOwner(client->id())) {
-                Serial.printf("[ws] ignoring disconnect of non-owner client %u\r\n",
-                              client->id());
-                break;
-            }
+            // A connection we refused (device full) also fires this; only act on
+            // one we actually accepted. Each accepted client ends its own
+            // session; held input is released once the last one leaves.
+            if (!g_network->isClientConnected(client->id())) break;
             g_network->releaseClientSlot(client->id());
-            // Immediate release on a clean close; the watchdog only has to
-            // cover abrupt link loss, where no event ever arrives.
-            g_processor->endSession();
-            Serial.printf("[ws] client %u disconnected - all input released\r\n",
-                          client->id());
+            g_processor->endSession(client->id());
+            Serial.printf("[ws] client %u disconnected (%u left)\r\n",
+                          client->id(), (unsigned)g_network->clientCount());
             break;
 
         case WS_EVT_DATA: {
-            // Ignore anything from a client we refused: it is not the session.
-            if (!g_network->isClientOwner(client->id())) return;
+            // Ignore anything from a client we refused: it is not a session.
+            if (!g_network->isClientConnected(client->id())) return;
             AwsFrameInfo *info = static_cast<AwsFrameInfo *>(arg);
             if (info->opcode != WS_TEXT || !info->final || info->index != 0 ||
                 info->len != len) {
@@ -90,7 +82,7 @@ void onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *client,
             // had a TLS error to report. This is on the async_tcp stack, which
             // has headroom for it.
             char response[1024];
-            g_processor->handleMessage(reinterpret_cast<const char *>(data), len,
+            g_processor->handleMessage(client->id(), reinterpret_cast<const char *>(data), len,
                                        response, sizeof(response));
             // Only reply when the processor produced something: key and mouse
             // events are fire-and-forget, and echoing every one of them would
@@ -185,6 +177,10 @@ bool otaAuthorized(AsyncWebServerRequest *request) {
         given = request->getParam("token")->value(); have = true;
     }
     if (!have) return false;                             // no token: unauth, uncounted
+
+    // The token is shown on the LCD in 4-char blocks; accept it with or without
+    // the spaces. Real tokens have none.
+    given.replace(" ", "");
 
     if (ctEqualsStr(given.c_str(), tok)) { g_httpAuthFails = 0; return true; }
     if (++g_httpAuthFails >= 5) { g_httpCooldownUntil = now + 30000; g_httpAuthFails = 0; }
@@ -643,38 +639,57 @@ void Network::stopServers() {
     // begin re-registers cleanly.
     g_server.reset();
     serversUp_ = false;
-    clientCount_ = 0;
-    ownerId_ = 0;
+    for (auto &c : controllers_) c = Controller{};
+    controllerCount_ = 0;
     Serial.printf("[web] stopped; heap now %u free, %u largest\r\n",
                   (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMaxAllocHeap());
 }
 
 bool Network::acquireClientSlot(uint32_t clientId) {
-    if (clientCount_ > 0) return false;
-    clientCount_++;
-    ownerId_ = clientId;
-    ownerSince_ = millis();
-    return true;
+    if (isClientConnected(clientId)) return true;      // already holding a slot
+    for (auto &c : controllers_) {
+        if (c.id == 0) {
+            c.id = clientId;
+            c.since = millis();
+            c.authTimedOut = false;
+            ++controllerCount_;
+            return true;
+        }
+    }
+    return false;   // every slot full
 }
 
 void Network::releaseClientSlot(uint32_t clientId) {
-    if (clientCount_ > 0 && clientId == ownerId_) {
-        clientCount_--;
-        ownerId_ = 0;
+    for (auto &c : controllers_) {
+        if (c.id == clientId && clientId != 0) {
+            c = Controller{};
+            if (controllerCount_ > 0) --controllerCount_;
+            return;
+        }
     }
+}
+
+bool Network::isClientConnected(uint32_t clientId) const {
+    if (clientId == 0) return false;
+    for (const auto &c : controllers_) {
+        if (c.id == clientId) return true;
+    }
+    return false;
 }
 
 void Network::loop() {
     g_ws.cleanupClients();
 
-    // Drop a connected controller that has not authenticated within 5s (H4), so
-    // an attacker cannot hold the single client slot open — squatting it also
-    // denies the real operator, since only a disconnect frees the slot.
-    if (clientCount_ > 0 && !processor_.authenticated() &&
-        millis() - ownerSince_ > 5000 && ownerId_ != authTimedOutId_) {
-        AsyncWebSocketClient *c = g_ws.client(ownerId_);
-        if (c) c->close(1008, "auth timeout");
-        authTimedOutId_ = ownerId_;   // issue the close once, not every loop
+    // Drop any controller that has not authenticated within 5s (H4), so an
+    // attacker cannot squat a slot without the token - each is timed out on its
+    // own so one silent client never denies the others.
+    for (auto &c : controllers_) {
+        if (c.id != 0 && !c.authTimedOut && !processor_.authenticated(c.id) &&
+            millis() - c.since > 5000) {
+            AsyncWebSocketClient *sock = g_ws.client(c.id);
+            if (sock) sock->close(1008, "auth timeout");
+            c.authTimedOut = true;   // issue the close once, not every loop
+        }
     }
 
     // Cheap, but there is no reason to re-evaluate the radio every few ms.
