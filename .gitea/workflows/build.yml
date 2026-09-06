@@ -1,9 +1,10 @@
-# Gitea Actions CI for GhostHID.
+# Gitea Actions CI for GhostHID (ESP32-S3 only).
 #
 # Deliberately does not use the repo's Docker build (`make build`): that exists
 # to keep a developer's machine clean, and nesting it inside a runner that is
 # already a container buys nothing. CI installs PlatformIO directly and pins the
-# same version the Dockerfile does, so the two stay in step.
+# same version the Dockerfile does (6.1.19, required by the pioarduino platform),
+# so the two stay in step.
 #
 # If your runner uses different labels, change `runs-on` below.
 
@@ -34,37 +35,47 @@ jobs:
         run: |
           set -eu
           python3 -m venv /tmp/pio || { apt-get update -qq && \
-            apt-get install -y -qq python3-venv && python3 -m venv /tmp/pio; }
+            apt-get install -y -qq python3-venv zip && python3 -m venv /tmp/pio; }
           /tmp/pio/bin/pip install -q --upgrade pip
-          /tmp/pio/bin/pip install -q platformio==6.1.16
+          /tmp/pio/bin/pip install -q platformio==6.1.19
 
-      # Every step runs from the repository root and passes PlatformIO an
-      # explicit project directory. Mixing `working-directory: firmware` on some
-      # steps with root-relative paths on others is what broke the packaging
-      # step: it was handed a path that was correct from one directory and not
-      # the other.
-      - name: Build
-        run: /tmp/pio/bin/pio run -d firmware -e esp32-s2-key
+      - name: Build (ESP32-S3)
+        run: |
+          set -eu
+          # pioarduino's first configure can throw a transient NoneType at config
+          # time on a cold cache; retry before giving up.
+          for i in 1 2 3; do
+            /tmp/pio/bin/pio run -d firmware -e esp32-s3-lcd147 && break
+            echo "build attempt $i failed; retrying"; sleep 3
+          done
+          ls -l firmware/.pio/build/esp32-s3-lcd147/*.bin
 
-      # No second `pio run ... -t size` here. SCons removes a target before
-      # rebuilding it, and invoking the size target dropped firmware.bin without
-      # regenerating it - the build left bootloader.bin, partitions.bin and the
-      # .elf in place but no .bin, which is what broke packaging. The build step
-      # above already prints RAM and flash usage.
-      - name: Show build output
-        run: ls -l firmware/.pio/build/esp32-s2-key/*.bin
-
-      - name: Package a downloadable bundle
+      - name: Package firmware bundle
         # Same script `make dist` runs, so what you build locally is exactly
         # what CI publishes - binaries, checksums and flashing instructions.
-        run: ./scripts/package.sh firmware/.pio/build/esp32-s2-key esp32-s2-key dist
+        run: ./scripts/package.sh firmware/.pio/build/esp32-s3-lcd147 esp32-s3-lcd147 dist
 
-      - name: Upload
+      - name: Stage the web flasher
+        run: |
+          set -eu
+          cp firmware/.pio/build/esp32-s3-lcd147/ghosthid-merged.bin webflasher/ghosthid-s3.bin
+          ls -l webflasher/
+
+      - name: Upload firmware bundle
         uses: actions/upload-artifact@v3
         continue-on-error: true
         with:
-          name: ghosthid-esp32-s2-key
-          path: dist/ghosthid-esp32-s2-key/
+          name: ghosthid-esp32-s3-lcd147
+          path: dist/ghosthid-esp32-s3-lcd147/
+
+      - name: Upload web flasher
+        # The browser flasher, ready to drop on any static HTTPS host: index.html,
+        # manifest.json and the merged image. Download and serve the folder.
+        uses: actions/upload-artifact@v3
+        continue-on-error: true
+        with:
+          name: ghosthid-webflasher
+          path: webflasher/
 
   web:
     name: web UI

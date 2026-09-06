@@ -1,5 +1,5 @@
-# Creates a Gitea Release when a v* tag is pushed, and attaches flashable
-# images to it.
+# Creates a Gitea Release when a v* tag is pushed, and attaches the flashable
+# image bundle and the browser flasher to it.
 #
 # Uses plain stdlib Python against the Gitea API with the token the runner
 # injects automatically. No third-party action, nothing to configure, and
@@ -15,7 +15,7 @@ on:
       tag:
         description: "Existing tag to build a release for"
         required: true
-        default: "v0.3.0"
+        default: "v0.6.1"
 
 jobs:
   release:
@@ -31,14 +31,23 @@ jobs:
           python3 -m venv /tmp/pio || { apt-get update -qq && \
             apt-get install -y -qq python3-venv zip && python3 -m venv /tmp/pio; }
           /tmp/pio/bin/pip install -q --upgrade pip
-          /tmp/pio/bin/pip install -q platformio==6.1.16
+          /tmp/pio/bin/pip install -q platformio==6.1.19
 
       - name: Build and package
         run: |
           set -eu
-          /tmp/pio/bin/pio run -d firmware -e esp32-s2-key
-          ./scripts/package.sh firmware/.pio/build/esp32-s2-key esp32-s2-key dist
-          ( cd dist && zip -qr ghosthid-esp32-s2-key.zip ghosthid-esp32-s2-key )
+          # Retry the first configure (pioarduino cold-cache flake).
+          for i in 1 2 3; do
+            /tmp/pio/bin/pio run -d firmware -e esp32-s3-lcd147 && break
+            echo "build attempt $i failed; retrying"; sleep 3
+          done
+          # Firmware bundle (binaries + checksums + flashing instructions).
+          ./scripts/package.sh firmware/.pio/build/esp32-s3-lcd147 esp32-s3-lcd147 dist
+          ( cd dist && zip -qr ghosthid-esp32-s3-lcd147.zip ghosthid-esp32-s3-lcd147 )
+          # Browser flasher bundle (page + manifest + merged image) - serve the
+          # folder over HTTPS, or just download it from the release.
+          cp firmware/.pio/build/esp32-s3-lcd147/ghosthid-merged.bin webflasher/ghosthid-s3.bin
+          zip -qr dist/ghosthid-webflasher.zip webflasher
           ls -l dist/
 
       - name: Publish the release
