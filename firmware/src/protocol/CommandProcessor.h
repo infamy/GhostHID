@@ -88,6 +88,7 @@ private:
     // reconnect must not clear the failure count, or the limit is free to
     // bypass. Only a successful auth (or the cooldown elapsing) clears it.
     uint8_t  authFails_ = 0;
+    uint8_t  authLockouts_ = 0;         // how many cooldowns so far (escalating backoff)
     uint32_t authCooldownUntil_ = 0;   // 0 = never tripped
     bool     disconnectReq_ = false;
 };

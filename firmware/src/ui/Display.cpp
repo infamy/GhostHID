@@ -208,7 +208,21 @@ void Display::drawQrPage(const DisplayStatus &s) {
     tft.setTextColor(C_GREY);  tft.setCursor(150, 74);  tft.print("PASS");
     tft.setTextColor(C_WHITE); tft.setCursor(150, 92);  tft.print(s.apPass ? s.apPass : "");
     tft.setTextColor(C_GREY);  tft.setCursor(150, 122); tft.print("TOKEN");
-    tft.setTextColor(C_WHITE); tft.setCursor(150, 140); tft.print((s.token && s.token[0]) ? s.token : "(none)");
+    tft.setTextColor(C_WHITE); tft.setCursor(150, 140);
+    // Group the token in 4-char blocks (e.g. "AB2C 9XKF") so it's easy to read
+    // off the screen and type. The stored token has no spaces; this is display
+    // only, and the web UI strips whitespace on entry.
+    if (s.token && s.token[0]) {
+        char grp[80]; size_t j = 0;
+        for (size_t i = 0; s.token[i] && j < sizeof(grp) - 2; ++i) {
+            if (i && (i % 4) == 0) grp[j++] = ' ';
+            grp[j++] = s.token[i];
+        }
+        grp[j] = '\0';
+        tft.print(grp);
+    } else {
+        tft.print("(none)");
+    }
     buttonHint("page");
 }
 

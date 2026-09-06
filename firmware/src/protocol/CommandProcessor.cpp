@@ -136,18 +136,26 @@ CommandResult CommandProcessor::handleMessage(const char *json, size_t len,
             return CommandResult::Unauthenticated;
         }
         if (needTok && !ctEquals(given, tok)) {
-            // Three strikes -> a cooldown and a forced disconnect. The counter
-            // survives reconnects (see the header note), so this actually bounds
+            // Three strikes -> a cooldown and a forced disconnect. The counters
+            // survive reconnects (see the header note), so this actually bounds
             // the guess rate instead of resetting on every new socket.
             if (++authFails_ >= 3) {
-                authCooldownUntil_ = now + 30000;
+                // Escalating backoff: each lockout doubles the wait (30s, 60s,
+                // 120s, ... capped at 15 min), so the short (8-char) token can't
+                // be ground down by reconnect-and-retry.
+                const unsigned shift = authLockouts_ < 5 ? authLockouts_ : 5;
+                uint32_t cd = 30000u << shift;
+                if (cd > 900000u) cd = 900000u;
+                authCooldownUntil_ = now + cd;
                 authFails_ = 0;
+                if (authLockouts_ < 250) ++authLockouts_;
                 disconnectReq_ = true;
             }
             reply(outResponse, outSize, "{\"type\":\"auth\",\"ok\":false}");
             return CommandResult::Unauthenticated;
         }
         authFails_ = 0;
+        authLockouts_ = 0;
         authenticated_ = true;
         reply(outResponse, outSize,
               "{\"type\":\"auth\",\"ok\":true,\"version\":\"%s\",\"usb\":%s}",
@@ -181,36 +189,41 @@ CommandResult CommandProcessor::handleMessage(const char *json, size_t len,
     }
 
     if (strcmp(type, "status") == 0) {
-        reply(outResponse, outSize,
-              "{\"type\":\"status\",\"version\":\"%s\",\"usb\":%s,\"held\":%u,"
-              "\"heap_free\":%u,\"heap_largest\":%u,"
-              "\"heap_boot\":%u,\"heap_wifi\":%u,\"heap_server\":%u,"
-              "\"stack_main\":%u,\"stack_kvm\":%u,\"stack_async\":%u,"
-              "\"n_move\":%u,\"n_key\":%u,\"n_btn\":%u,\"n_other\":%u,"
-              "\"last_unhandled\":\"%s\",\"last_key_raw\":\"%s\",\"last_keydown_raw\":\"%s\",\"last_other_raw\":\"%s\",\"hid_dropped\":%u,\"tls_reserved\":%u,\"tls_blocks_lent\":%u}",
-              GHOSTHID_VERSION, hid_.ready() ? "true" : "false",
-              static_cast<unsigned>(hid_.heldKeyCount()),
-              (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMaxAllocHeap(),
-              (unsigned)g_heapAfterBoot, (unsigned)g_heapAfterWifi,
-              (unsigned)g_heapAfterServer,
-              // Unused stack, in bytes. Anything with a large margin is memory
-              // sitting idle that could be given back.
-              (unsigned)uxTaskGetStackHighWaterMark(nullptr),
-              (unsigned)(xTaskGetHandle("deskflow")
-                         ? uxTaskGetStackHighWaterMark(xTaskGetHandle("deskflow")) : 0),
-              (unsigned)(xTaskGetHandle("async_tcp")
-                         ? uxTaskGetStackHighWaterMark(xTaskGetHandle("async_tcp")) : 0),
-              (unsigned)(deskflow_ ? deskflow_->countMove()  : 0),
-              (unsigned)(deskflow_ ? deskflow_->countKey()   : 0),
-              (unsigned)(deskflow_ ? deskflow_->countBtn()   : 0),
-              (unsigned)(deskflow_ ? deskflow_->countOther() : 0),
-              deskflow_ ? deskflow_->lastUnhandled() : "",
-              deskflow_ ? deskflow_->lastKeyRaw() : "",
-              deskflow_ ? deskflow_->lastKeyDownRaw() : "",
-              deskflow_ ? deskflow_->lastOtherRaw() : "",
-              (unsigned)hid_.droppedReports(),
-              (unsigned)TlsArena::reservedBytes(),
-              (unsigned)TlsArena::inUse());
+        // ArduinoJson so the device-derived last_* fields are escaped (they are
+        // hex today, but this stops a future field regressing into a raw %s -
+        // the last of M4). Field names/types are unchanged for API clients.
+        JsonDocument out;
+        out["type"]         = "status";
+        out["version"]      = GHOSTHID_VERSION;
+        out["usb"]          = hid_.ready();
+        out["held"]         = static_cast<unsigned>(hid_.heldKeyCount());
+        out["heap_free"]    = (unsigned)ESP.getFreeHeap();
+        out["heap_largest"] = (unsigned)ESP.getMaxAllocHeap();
+        out["heap_boot"]    = (unsigned)g_heapAfterBoot;
+        out["heap_wifi"]    = (unsigned)g_heapAfterWifi;
+        out["heap_server"]  = (unsigned)g_heapAfterServer;
+        out["stack_main"]   = (unsigned)uxTaskGetStackHighWaterMark(nullptr);
+        out["stack_kvm"]    = (unsigned)(xTaskGetHandle("deskflow")
+                              ? uxTaskGetStackHighWaterMark(xTaskGetHandle("deskflow")) : 0);
+        out["stack_async"]  = (unsigned)(xTaskGetHandle("async_tcp")
+                              ? uxTaskGetStackHighWaterMark(xTaskGetHandle("async_tcp")) : 0);
+        out["n_move"]       = (unsigned)(deskflow_ ? deskflow_->countMove()  : 0);
+        out["n_key"]        = (unsigned)(deskflow_ ? deskflow_->countKey()   : 0);
+        out["n_btn"]        = (unsigned)(deskflow_ ? deskflow_->countBtn()   : 0);
+        out["n_other"]      = (unsigned)(deskflow_ ? deskflow_->countOther() : 0);
+        out["last_unhandled"]   = deskflow_ ? deskflow_->lastUnhandled()   : "";
+        out["last_key_raw"]     = deskflow_ ? deskflow_->lastKeyRaw()      : "";
+        out["last_keydown_raw"] = deskflow_ ? deskflow_->lastKeyDownRaw()  : "";
+        out["last_other_raw"]   = deskflow_ ? deskflow_->lastOtherRaw()    : "";
+        out["hid_dropped"]     = (unsigned)hid_.droppedReports();
+        out["tls_reserved"]    = (unsigned)TlsArena::reservedBytes();
+        out["tls_blocks_lent"] = (unsigned)TlsArena::inUse();
+        if (measureJson(out) + 1 > outSize) {
+            reply(outResponse, outSize,
+                  "{\"type\":\"error\",\"error\":\"response too large\"}");
+        } else {
+            serializeJson(out, outResponse, outSize);
+        }
         return CommandResult::Ok;
     }
 

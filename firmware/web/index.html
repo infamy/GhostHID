@@ -862,7 +862,9 @@ function connect(){
   if(ws){ try{ws.close()}catch(e){} }
   setState(false,"connecting…");
   ws=new WebSocket("ws://"+location.host+"/ws");
-  ws.onopen=function(){ send({type:"auth",token:$("#tok").value}); };
+  // Strip whitespace so a token read off the LCD in 4-char blocks ("AB2C 9XKF")
+  // authenticates whether or not the space is typed. Real tokens have no spaces.
+  ws.onopen=function(){ send({type:"auth",token:$("#tok").value.replace(/\s+/g,"")}); };
   ws.onmessage=function(ev){
     var m; try{ m=JSON.parse(ev.data) }catch(e){ return }
     if(m.type==="pong"){
@@ -880,7 +882,7 @@ function connect(){
     if(m.type==="auth"){
       if(m.ok){ authRejected=false;
                 setState(true,"connected"+(m.version?" · "+m.version:""));
-                localStorage.setItem("ghosthid.token",$("#tok").value);
+                localStorage.setItem("ghosthid.token",$("#tok").value.replace(/\s+/g,""));
                 $("#a_ver").textContent = m.version || "—";
                 $("#a_here").textContent = location.host;
                 // Fresh session: the device released everything on its side (a

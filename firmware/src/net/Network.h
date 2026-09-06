@@ -73,6 +73,7 @@ private:
     uint32_t clientCount_ = 0;
     uint32_t ownerId_ = 0;        // id of the one accepted controller; 0 = none
     uint32_t ownerSince_ = 0;     // millis() when it connected (for the auth timeout)
+    uint32_t authTimedOutId_ = 0; // id we've already issued an auth-timeout close for
     bool     apActive_ = false;
     bool     serversUp_ = false;
     uint32_t staStableSince_ = 0;

@@ -53,9 +53,12 @@ jobs:
       - name: Publish the release
         env:
           GITEA_TOKEN: ${{ secrets.GITEA_TOKEN }}
+          # Pass the dispatch input through the environment, never interpolated
+          # into the shell, so a crafted tag can't inject commands (L7).
+          INPUT_TAG: ${{ inputs.tag }}
         run: |
           set -eu
-          TAG="${{ inputs.tag }}"
+          TAG="${INPUT_TAG:-}"
           [ -n "$TAG" ] || TAG="${GITHUB_REF##*/}"
           python3 scripts/changelog_section.py "$TAG" > /tmp/notes.md
           python3 scripts/gitea_release.py \

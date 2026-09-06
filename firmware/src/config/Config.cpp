@@ -31,15 +31,19 @@ constexpr char kKeyDfCa[]     = "df_ca";
 constexpr char kKeyDfTry[]    = "df_try";
 constexpr char kKeyProvd[]    = "provisioned";   // first-boot cred randomisation done
 
-// Fill `out` with `n` characters of hardware-random entropy from an alphabet
-// that omits visually ambiguous glyphs (0/O, 1/l/I), so a credential read off
-// the LCD can't be mistyped. Uses esp_random() (hardware RNG once Wi-Fi/BT is
-// on, which it is by the time this runs at boot).
-void randomCredential(char *out, size_t n, size_t cap) {
-    static const char AL[] = "abcdefghjkmnpqrstuvwxyz23456789ACDEFGHJKLMNPQRTUVWXY";
-    const size_t aln = sizeof(AL) - 1;
+// Alphabets that omit visually ambiguous glyphs so a credential read off the LCD
+// can't be mistyped. The token is uppercase-only (Crockford-ish, no I/O/0/1) -
+// it's read off a small screen and typed by hand, so clarity beats a bigger
+// alphabet; the AP password is used mostly via the join QR, so it can be denser.
+constexpr char AL_TOKEN[] = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+constexpr char AL_PASS[]  = "abcdefghjkmnpqrstuvwxyz23456789ACDEFGHJKLMNPQRTUVWXY";
+
+// Fill `out` with `n` characters of hardware-random entropy from `alphabet`.
+// Uses esp_random(); the caller ensures the hardware RNG is enabled (see begin()).
+void randomCredential(char *out, size_t n, size_t cap, const char *alphabet) {
+    const size_t aln = strlen(alphabet);
     if (n > cap - 1) n = cap - 1;
-    for (size_t i = 0; i < n; ++i) out[i] = AL[esp_random() % aln];
+    for (size_t i = 0; i < n; ++i) out[i] = alphabet[esp_random() % aln];
     out[n] = '\0';
 }
 
@@ -87,12 +91,12 @@ void Config::begin() {
         // then turn it off again before Wi-Fi/ADC come up (they can't coexist).
         if (needRand) bootloader_random_enable();
         if (strcmp(token_, "ghosthid") == 0) {
-            randomCredential(token_, 14, sizeof(token_));
+            randomCredential(token_, 8, sizeof(token_), AL_TOKEN);
             g_prefs.putString(kKeyToken, token_);
             justProvisioned_ = true;
         }
         if (strcmp(apPass_, "ghosthid-setup") == 0) {
-            randomCredential(apPass_, 12, sizeof(apPass_));
+            randomCredential(apPass_, 12, sizeof(apPass_), AL_PASS);
             g_prefs.putString(kKeyApPw, apPass_);
             justProvisioned_ = true;
         }
@@ -138,7 +142,7 @@ void Config::begin() {
     // and that constant could itself be invalid in a custom build.
     if (!validApPassword(apPass_)) {
         bootloader_random_enable();
-        randomCredential(apPass_, 12, sizeof(apPass_));
+        randomCredential(apPass_, 12, sizeof(apPass_), AL_PASS);
         bootloader_random_disable();
         g_prefs.putString(kKeyApPw, apPass_);
         justProvisioned_ = true;   // surface the new one on the LCD/serial

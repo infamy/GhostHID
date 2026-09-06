@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.6.10
+
+Token ergonomics + finishing M4 + a couple of easy audit wins.
+
+### Changed
+
+* **Pairing token is now 8 characters, shown in two 4-char blocks** (e.g.
+  `AB2C 9XKF`) on the LCD Wi-Fi page - easy to read off the screen and type.
+  Uppercase, no ambiguous glyphs. The web UI strips whitespace on entry, so
+  typing the space (or not) both work. Existing devices keep their current token
+  (only fresh provisioning / factory reset generates the new format).
+* **Escalating auth backoff.** To keep the shorter token safe, each lockout now
+  doubles the cooldown (30s, 60s, 120s ... capped at 15 min) on top of the
+  3-strikes rule; a successful auth resets it.
+
+### Security
+
+* **M4 finished.** The `status` response is now also built with ArduinoJson
+  (get_config already was in 0.6.7), so no device-derived field can ever reach
+  the client through an unescaped `%s`.
+
+### Fixed
+
+* Auth-timeout disconnect is issued once per client instead of on every loop
+  pass (log-noise tidy, from the re-audit).
+* **L7** - the release workflow passes the `workflow_dispatch` tag input through
+  the environment instead of interpolating it into the shell.
+
+
 ## 0.6.9
 
 Re-audit follow-ups on the credential/origin work.

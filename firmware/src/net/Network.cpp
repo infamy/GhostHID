@@ -635,9 +635,10 @@ void Network::loop() {
     // an attacker cannot hold the single client slot open — squatting it also
     // denies the real operator, since only a disconnect frees the slot.
     if (clientCount_ > 0 && !processor_.authenticated() &&
-        millis() - ownerSince_ > 5000) {
+        millis() - ownerSince_ > 5000 && ownerId_ != authTimedOutId_) {
         AsyncWebSocketClient *c = g_ws.client(ownerId_);
         if (c) c->close(1008, "auth timeout");
+        authTimedOutId_ = ownerId_;   // issue the close once, not every loop
     }
 
     // Cheap, but there is no reason to re-evaluate the radio every few ms.
