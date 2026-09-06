@@ -17,6 +17,7 @@ constexpr char kKeyApPw[]   = "ap_pass";
 constexpr char kKeyToken[]  = "token";
 constexpr char kKeyName[]   = "name";
 constexpr char kKeyApAlways[] = "ap_always";
+constexpr char kKeyScrollInv[] = "scroll_inv";
 constexpr char kKeyDfOn[]     = "df_on";
 constexpr char kKeyDfHost[]   = "df_host";
 constexpr char kKeyDfPort[]   = "df_port";
@@ -57,6 +58,7 @@ void Config::begin() {
     loadInto(kKeyName,  GHOSTHID_MDNS_NAME,    name_,    sizeof(name_));
 
     apAlways_ = g_prefs.getBool(kKeyApAlways, true);
+    scrollInvert_ = g_prefs.getBool(kKeyScrollInv, false);
 
     dfEnabled_ = g_prefs.getBool(kKeyDfOn, false);
     loadInto(kKeyDfHost, "", dfHost_, sizeof(dfHost_));
@@ -129,6 +131,12 @@ bool Config::setDeviceName(const char *name) {
     snprintf(name_, sizeof(name_), "%s", name);
     rebootPending_ = true;
     return store(kKeyName, name_);
+}
+
+bool Config::setScrollInvert(bool on) {
+    scrollInvert_ = on;
+    g_prefs.putBool(kKeyScrollInv, on);
+    return true;
 }
 
 bool Config::setApAlways(bool always) {

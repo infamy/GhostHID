@@ -50,6 +50,11 @@ public:
     bool apAlways() const { return apAlways_; }
     bool setApAlways(bool always);
 
+    // Invert the scroll wheel (natural scrolling). Applies to both the web
+    // trackpad and the screen-client wheel.
+    bool scrollInvert() const { return scrollInvert_; }
+    bool setScrollInvert(bool on);
+
     // --- Deskflow / Barrier / Input Leap screen client ----------------------
     // The advertised width and height are the coordinate space the server
     // addresses this screen in, so they should match the target's real
@@ -125,6 +130,7 @@ private:
     char token_[kTokenMax + 1]   = {};
     char name_[kNameMax + 1]     = {};
     bool apAlways_ = false;
+    bool scrollInvert_ = false;
     bool     dfEnabled_ = false;
     char     dfHost_[64]   = {};
     uint16_t dfPort_       = 24800;

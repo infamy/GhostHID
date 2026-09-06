@@ -139,6 +139,7 @@ void setup() {
     }
 
     hid.begin();
+    hid.setInvertScroll(config.scrollInvert());
     const bool enumerated = hid.waitUntilReady(10000);
 
     delay(500);

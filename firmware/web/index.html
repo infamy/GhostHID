@@ -307,6 +307,16 @@ td code{white-space:normal}
     </section>
 
     <section>
+      <h2>Mouse</h2>
+      <label>Scroll direction</label>
+      <div class="row">
+        <button id="scroll_std" class="grow">Standard</button>
+        <button id="scroll_inv" class="grow">Natural (invert)</button>
+      </div>
+      <p class="hint">Applies immediately, to both the trackpad and the screen client. Saved on the device.</p>
+    </section>
+
+    <section>
       <h2>Screen client (Deskflow / Barrier / Input Leap)</h2>
       <p class="hint" style="margin:0 0 9px">
         Join an existing Deskflow, Barrier or Input Leap server as a screen, then
@@ -718,6 +728,7 @@ function connect(){
       fill("#c_name", m.name);
       $("#a_name").textContent=m.name||"—";
       setApMode(m.ap_always!==false);
+      if(typeof m.scroll_invert==="boolean") setScrollInv(m.scroll_invert);
       if(m.kvm_host!==undefined){
         fill("#k_host",   m.kvm_host);
         fill("#k_port",   m.kvm_port || 24800);
@@ -1058,6 +1069,15 @@ function setApMode(v){
 }
 $("#ap_always").onclick=function(){ setApMode(true); };
 $("#ap_fallback").onclick=function(){ setApMode(false); };
+// Scroll direction: applies live (own set_config, no reboot).
+var scrollInv=false;
+function setScrollInv(v){
+  scrollInv=v;
+  $("#scroll_std").classList.toggle("on",!v);
+  $("#scroll_inv").classList.toggle("on",v);
+}
+$("#scroll_std").onclick=function(){ setScrollInv(false); send({type:"set_config",scroll_invert:false}); };
+$("#scroll_inv").onclick=function(){ setScrollInv(true);  send({type:"set_config",scroll_invert:true}); };
 var kvmOn=false;
 function setKvm(v){
   kvmOn=v;

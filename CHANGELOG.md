@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.6.2
+
+### Added
+
+* **Invert scroll (natural scrolling)** - a Mouse setting in the web UI that
+  flips the wheel (and horizontal pan) direction. Applies live to both the web
+  trackpad and the screen client; persisted in NVS.
+
 ## 0.6.1
 
 ### Removed

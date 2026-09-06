@@ -130,6 +130,11 @@ public:
     void mouseWheel(int32_t delta);
     void mousePan(int32_t delta);
 
+    // Natural scrolling: invert the wheel (and pan) direction. Applies to every
+    // scroll source, so the web trackpad and the screen client agree.
+    void setInvertScroll(bool on) { invertScroll_ = on; }
+    bool invertScroll() const { return invertScroll_; }
+
     // --- Safety ------------------------------------------------------------
 
     // Releases every key and mouse button currently held. Safe to call at any
@@ -164,6 +169,7 @@ private:
     uint8_t heldKeys_[kMaxHeldKeys] = {};
     size_t  heldKeyCount_ = 0;
     uint8_t heldMouseButtons_ = 0;   // bitmask indexed by MouseButton
+    bool    invertScroll_ = false;
     bool    begun_ = false;
     float   absX_ = 0.5f;
     float   absY_ = 0.5f;

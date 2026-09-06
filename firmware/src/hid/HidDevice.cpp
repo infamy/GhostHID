@@ -243,6 +243,7 @@ void HidDevice::mouseClick(MouseButton button, uint32_t holdMs) {
 
 void HidDevice::mouseWheel(int32_t delta) {
     if (!ready()) return;   // lockless hot path - see note above mouseMove
+    if (invertScroll_) delta = -delta;
     while (delta != 0) {
         const int8_t step = clampStep(delta);
         sendMouseReport(0, 0, step, 0);
@@ -252,6 +253,7 @@ void HidDevice::mouseWheel(int32_t delta) {
 
 void HidDevice::mousePan(int32_t delta) {
     if (!ready()) return;   // lockless hot path - see note above mouseMove
+    if (invertScroll_) delta = -delta;
     while (delta != 0) {
         const int8_t step = clampStep(delta);
         sendMouseReport(0, 0, 0, step);

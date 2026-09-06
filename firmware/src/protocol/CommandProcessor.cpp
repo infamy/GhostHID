@@ -273,7 +273,8 @@ CommandResult CommandProcessor::handleMessage(const char *json, size_t len,
               "\"kvm_on\":%s,\"kvm_host\":\"%s\",\"kvm_port\":%u,"
               "\"kvm_screen\":\"%s\",\"kvm_w\":%u,\"kvm_h\":%u,"
               "\"kvm_state\":\"%s\",\"kvm_server\":\"%s\","
-              "\"kvm_tls\":%s,\"kvm_fp\":\"%s\",\"kvm_ca_set\":%s}",
+              "\"kvm_tls\":%s,\"kvm_fp\":\"%s\",\"kvm_ca_set\":%s,"
+              "\"scroll_invert\":%s}",
               config_.staSsid(),
               config_.staPassword()[0] ? "true" : "false",
               config_.authToken()[0]   ? "true" : "false",
@@ -290,7 +291,8 @@ CommandResult CommandProcessor::handleMessage(const char *json, size_t len,
               deskflow_ ? deskflow_->serverName() : "",
               config_.deskflowTls() ? "true" : "false",
               deskflow_ ? deskflow_->fingerprint() : "",
-              config_.deskflowServerCert()[0] ? "true" : "false");
+              config_.deskflowServerCert()[0] ? "true" : "false",
+              config_.scrollInvert() ? "true" : "false");
         return CommandResult::Ok;
     }
 
@@ -316,6 +318,11 @@ CommandResult CommandProcessor::handleMessage(const char *json, size_t len,
         }
         if (!err && doc["ap_always"].is<bool>()) {
             config_.setApAlways(doc["ap_always"].as<bool>());
+        }
+        if (!err && doc["scroll_invert"].is<bool>()) {
+            const bool inv = doc["scroll_invert"].as<bool>();
+            config_.setScrollInvert(inv);
+            hid_.setInvertScroll(inv);          // live, no reboot needed
         }
         // Screen-client settings apply immediately - the client is told to
         // reconnect - so they are deliberately not part of reboot_pending.
