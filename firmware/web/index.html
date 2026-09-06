@@ -401,7 +401,7 @@ select{background:#0e1a29;color:var(--fg);border:1px solid var(--line);border-ra
       </p>
 
       <h2 style="margin-top:16px">Access</h2>
-      <label>Pairing token</label>
+      <label>Pairing token — set a new one</label>
       <input id="c_token" type="password" placeholder="unchanged" autocomplete="new-password">
       <label>Device name (mDNS)</label>
       <input id="c_name" placeholder="ghosthid" autocapitalize="off" autocorrect="off">
@@ -530,7 +530,7 @@ select{background:#0e1a29;color:var(--fg);border:1px solid var(--line);border-ra
 
     <section>
       <h2>Connection</h2>
-      <label>Token used by this browser</label>
+      <label>Pairing token (this browser)</label>
       <div class="row">
         <input id="tok" class="grow" placeholder="pairing token" autocomplete="off">
         <button id="reconn">Reconnect</button>
@@ -1288,9 +1288,18 @@ $("#c_save").onclick=function(){
   m.ap_always=apAlways;
   if($("#c_stapass").value) m.sta_pass=$("#c_stapass").value;
   if($("#c_appass").value)  m.ap_pass =$("#c_appass").value;
-  if($("#c_token").value)   m.token   =$("#c_token").value;
+  // Strip whitespace so a token typed in 4-char blocks doesn't get stored with a
+  // space (which would then never match, since auth compares the raw value).
+  if($("#c_token").value)   m.token   =$("#c_token").value.replace(/\s+/g,"");
   if($("#c_name").value)    m.name    =$("#c_name").value;
   send(m);
+  // Auto-sync: the token you just set becomes the one this browser presents, so
+  // changing it can't lock you out. The live session keeps its current auth; the
+  // new token takes effect on the next connect.
+  if(m.token!==undefined){
+    $("#tok").value=m.token;
+    localStorage.setItem("ghosthid.token",m.token);
+  }
   $("#c_stapass").value=""; $("#c_appass").value=""; $("#c_token").value="";
   $("#c_log").textContent="Saving…";
 };

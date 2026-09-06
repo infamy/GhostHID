@@ -49,7 +49,7 @@ void SerialConsole::printHelp() const {
     Serial.println("GhostHID setup console");
     Serial.println("  show                 current settings and both addresses");
     Serial.println("  wifi <ssid>          network to JOIN (empty disables joining)");
-    Serial.println("  wifipass <password>  station password");
+    Serial.println("  wifipass <password>  password to JOIN that network (station)");
     Serial.println("  appass <password>    password for GhostHID's OWN access point (8-63)");
     Serial.println("  ap always|fallback   keep the AP up, or drop it while joined");
     Serial.println("  kvm <host[:port]>    join a Deskflow/Barrier server as a screen");
@@ -59,7 +59,8 @@ void SerialConsole::printHelp() const {
     Serial.println("  web off|on           start or stop the web UI now (this boot only)");
     Serial.println("  heap                 free and largest-block memory");
     Serial.println("  token <token>        pairing token (empty disables auth; else 6-48)");
-    Serial.println("  unlock <token>       allow wifi/token/reset changes this boot");
+    Serial.println("  unlock <token>       same pairing token as 'token'; allows");
+    Serial.println("                       wifi/token/reset changes this boot");
     Serial.println("  name <name>          device name - sets the AP SSID and mDNS name");
     Serial.println("  reset                erase all settings");
     Serial.println("  reboot               restart to apply changes");

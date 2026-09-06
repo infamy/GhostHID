@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.6.13
+
+Credential-model clarity - one pairing token, stop making it look like several.
+Presentation only; nothing stored or checked changes.
+
+### Changed
+
+* **Setting a new token no longer risks locking you out.** Saving a token in
+  Settings now also updates the token this browser presents (and localStorage) in
+  the same step, so the "set" field and the "connect" field stay in sync. The
+  token is whitespace-stripped on save, matching the 4-char-block display.
+* **Clearer token labels.** "Token used by this browser" -> "Pairing token (this
+  browser)"; "Pairing token" (Settings) -> "Pairing token - set a new one", so
+  the set-vs-present split is explicit.
+* **Serial help** spells out that `unlock` takes the *same* pairing token as
+  `token`, and labels the two Wi-Fi passwords by scope (join-your-network vs the
+  device's own AP) - the other easy mix-up.
+
+
 ## 0.6.12
 
 On-device LCD tidy-up.
