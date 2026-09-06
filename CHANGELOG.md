@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.6.27
+
+### Fixed
+
+* **OTA wedge after a dropped upload (H9)** - regression from the 0.6.26 H5 fix:
+  the single-owner guard (`g_otaOwner`) was cleared only on the completion paths,
+  so an upload whose connection dropped mid-transfer (routine on flaky Wi-Fi
+  during an 800KB image) left the writer owned forever - every later OTA hit
+  `409 "another update in progress"` until reboot, and that gate sat before the
+  `Update.abort()` self-recovery. The owner is now released immediately via
+  `request->onDisconnect`, with a 30s stale-owner reclaim as a backstop (a new
+  upload reclaims a dead owner and aborts the abandoned `Update`), mirroring the
+  H6 lock-timeout. Verified live: a killed mid-transfer upload no longer blocks
+  the next OTA.
+
+
 ## 0.6.26
 
 ### Fixed

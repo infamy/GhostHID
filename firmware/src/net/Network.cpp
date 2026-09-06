@@ -125,8 +125,21 @@ struct OtaState {
 
 // Update is a single global flash writer - only one upload may run at a time.
 // This is the request that currently owns it; a second concurrent POST is
-// refused without touching this one's state or the writer.
+// refused without touching this one's state or the writer. g_otaOwnerSince is
+// refreshed on every chunk from the owner, so a stalled or dropped upload can be
+// reclaimed rather than wedging the writer until reboot (H9).
 AsyncWebServerRequest *g_otaOwner = nullptr;
+uint32_t g_otaOwnerSince = 0;
+constexpr uint32_t kOtaOwnerStaleMs = 30000;   // no progress this long = dead
+
+// Release the flash writer an owning upload left behind when its connection
+// dropped mid-transfer (onOtaDone never runs in that case). Registered on the
+// owner via request->onDisconnect and also used by the stale-owner reclaim.
+void otaReleaseOwner() {
+    if (Update.isRunning()) Update.abort();
+    g_processor->setLocked(false, nullptr);
+    g_otaOwner = nullptr;
+}
 
 OtaState *otaStateOf(AsyncWebServerRequest *request) {
     if (request->_tempObject == nullptr) {
@@ -349,10 +362,29 @@ void onOtaBody(AsyncWebServerRequest *request, uint8_t *data, size_t len,
         // concurrent POST is refused here WITHOUT disturbing the in-flight one's
         // state or the writer (H5) - the request never becomes the owner.
         if (g_otaOwner != nullptr && g_otaOwner != request) {
-            otaFail(request, 409, "another firmware update is already in progress");
-            return;
+            // Unless the current owner is stale: an upload whose connection
+            // dropped mid-transfer never runs onOtaDone, so without this the
+            // writer would stay wedged until reboot (H9). onDisconnect below
+            // normally clears it at once; this is the backstop and also restores
+            // the self-recovery the pre-H5 flag design had.
+            if (millis() - g_otaOwnerSince > kOtaOwnerStaleMs) {
+                Serial.println("[ota] reclaiming a stale/abandoned update");
+                otaReleaseOwner();
+            } else {
+                otaFail(request, 409, "another firmware update is already in progress");
+                return;
+            }
         }
         g_otaOwner = request;
+        g_otaOwnerSince = millis();
+        // Free the writer immediately if this upload's connection drops before
+        // it completes, rather than waiting out the stale timeout.
+        request->onDisconnect([request]() {
+            if (g_otaOwner == request) {
+                Serial.println("[ota] owner disconnected mid-upload; releasing");
+                otaReleaseOwner();
+            }
+        });
 
         // Refuse rather than compete. A TLS screen session holds ~34KB and an
         // update needs a large contiguous buffer; attempting both at once took
@@ -378,6 +410,7 @@ void onOtaBody(AsyncWebServerRequest *request, uint8_t *data, size_t len,
     // Only the owner proceeds past here. A body from a request we refused (its
     // reply is already sent) is ignored, so it can't touch the writer.
     if (request != g_otaOwner) return;
+    g_otaOwnerSince = millis();          // progress: keep the owner from going stale
     if (!st || st->failed) return;
 
     if (index == 0) {
