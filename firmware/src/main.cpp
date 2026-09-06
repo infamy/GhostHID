@@ -208,6 +208,7 @@ void serviceDisplay() {
     st.staIp      = network.staAddress();
     st.usbReady   = hid.ready();
     st.kvmState   = !config.deskflowEnabled() ? "off"
+                    : deskflow.certTrustPending() ? "confirm cert"
                     : (deskflow.connected() ? "connected" : "connecting");
     st.kvmFocus   = deskflow.hasFocus();
     st.clients    = network.clientConnected() ? 1 : 0;

@@ -77,6 +77,20 @@ public:
     const char *certificatePem() const { return identity_.certificatePem(); }
     bool ensureIdentity(const char *cn) { return identity_.begin(cn); }
 
+    // Trust on first use. When TLS is on but no server certificate is pinned,
+    // the client makes one probe handshake, captures the server's certificate
+    // and stops in a "needs trust" state instead of erroring. The captured
+    // fingerprint is surfaced so the user can confirm it out-of-band (compare
+    // it to the server's own); trusting it pins the certificate and connects
+    // for real. An unconfirmed certificate is NEVER used for a live session -
+    // silent auto-accept would let a first-connection MITM win.
+    bool certTrustPending() const { return awaitingTrust_; }
+    // SHA-256 (lower-case hex) of the captured, not-yet-trusted server cert.
+    const char *pendingFingerprint() const { return pendingFp_; }
+    // Confirm the captured certificate: pin it and reconnect. No-op if nothing
+    // is pending. Called from another task; acted on by serviceOnce().
+    void trustPendingCert() { trustReq_ = true; }
+
     // Compact state for the heartbeat: 0 off, 1 connecting, 2 connected,
     // 3 connected and holding the pointer.
     uint8_t stateCode() const;
@@ -102,6 +116,9 @@ private:
     void sendScreenInfo();
     void disconnect(const char *why);
     void serviceOnce();                      // one pass: connect, or pump messages
+    bool captureServerCert();                // one probe handshake to grab the peer cert
+    bool storePending(const unsigned char *der, size_t derLen);  // DER -> pending PEM+fp
+    void freePending();
     void flushPointer();                     // emit the coalesced pointer position
     void run();                              // task body: serviceOnce forever
     static void taskEntry(void *self);
@@ -131,6 +148,15 @@ private:
     // Instead they set a flag that serviceOnce() acts on, on this task.
     volatile bool reconnectReq_ = false;
     volatile bool suspendReq_   = false;
+    // Set from another task to confirm the captured server certificate.
+    volatile bool trustReq_     = false;
+
+    // Trust-on-first-use state. awaitingTrust_ means a certificate was captured
+    // and is waiting for the user to confirm it; pendingPem_/pendingFp_ hold it
+    // until then. Never fed to a live session - only pinned once trusted.
+    bool  awaitingTrust_ = false;
+    char *pendingPem_    = nullptr;
+    char  pendingFp_[65] = {};
 
     // A private copy of the pinned CA PEM, taken under Config's lock at connect
     // time. mbedTLS reads the CA buffer during the handshake; using Config's own

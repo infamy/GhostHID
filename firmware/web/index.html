@@ -464,8 +464,23 @@ select{background:#0e1a29;color:var(--fg);border:1px solid var(--line);border-ra
       <div id="k_fp" style="font-family:var(--mono);font-size:10px;color:var(--dim);
            word-break:break-all;margin-top:6px"></div>
 
-      <label>Server certificate (required for TLS)</label>
-      <p class="hint" style="margin:0 0 6px">Paste it below or upload the file, then Save.</p>
+      <div id="k_pending" hidden style="margin-top:10px;padding:10px;border:1px solid var(--accent);
+           border-radius:6px;background:#0e1a29">
+        <div style="font-weight:600;margin-bottom:4px">Confirm this server's certificate</div>
+        <p class="hint" style="margin:0 0 6px">
+          GhostHID captured the certificate the server offered. Check this fingerprint
+          matches the server's own before trusting it — that check is what stops an
+          impostor standing in for the server.
+        </p>
+        <div id="k_pending_fp" style="font-family:var(--mono);font-size:11px;
+             word-break:break-all;color:var(--fg);margin-bottom:8px"></div>
+        <button id="k_trust" class="grow">Trust &amp; connect</button>
+      </div>
+
+      <label>Server certificate (optional)</label>
+      <p class="hint" style="margin:0 0 6px">
+        Captured and confirmed automatically on first connect. Paste or upload it here
+        only to pin it ahead of time, then Save.</p>
       <details class="help">
         <summary>How to get the certificate</summary>
         <ol class="hint" style="padding-left:18px">
@@ -910,9 +925,13 @@ function connect(){
         if(m.kvm_server) kvmServerName=m.kvm_server;
         setKvmTls(m.kvm_tls!==false);
         $("#k_fp").textContent = m.kvm_fp ? ("this device's fingerprint: "+m.kvm_fp) : "";
+        var kvmPend = !!m.kvm_cert_pending;
+        $("#k_pending").hidden = !kvmPend;
+        $("#k_pending_fp").textContent = kvmPend ? (m.kvm_pending_fp||"") : "";
         $("#k_ca_state").textContent = m.kvm_ca_set
           ? "✓ a server certificate is stored (paste a new one to replace it)"
-          : "no server certificate stored yet";
+          : (kvmPend ? "a captured certificate is waiting for you to confirm it above"
+                     : "no certificate yet — it will be captured on first connect");
         $("#k_state").textContent = (m.kvm_on?"enabled — ":"disabled — ")+(m.kvm_state||"");
       }
       $("#a_ap").textContent = m.ap_always!==false
@@ -1345,6 +1364,12 @@ $("#k_tls_off").onclick=function(){ setKvmTls(false); saveKvm(); };
 $("#k_on").onclick =function(){ setKvm(true);  saveKvm(); };
 $("#k_off").onclick=function(){ setKvm(false); saveKvm(); };
 $("#k_save").onclick=saveKvm;
+// Confirm a captured (trust-on-first-use) server certificate.
+$("#k_trust").onclick=function(){
+  send({type:"kvm_trust_cert"});
+  $("#k_state").textContent="trusting certificate…";
+  setTimeout(function(){ send({type:"get_config"}); }, 1500);
+};
 // Upload a .pem/.crt file into the certificate box.
 $("#k_ca_file").onchange=function(e){
   var f=e.target.files[0]; if(!f) return;

@@ -7,8 +7,19 @@
 #include "config/Config.h"
 #include "hid/HidDevice.h"
 
+#include <new>
+
 #include <mbedtls/oid.h>
 #include <mbedtls/x509_crt.h>
+#include <mbedtls/base64.h>
+#include <mbedtls/sha256.h>
+// arduino-esp32's low-level TLS client, reached for only by the cert-capture
+// probe: it sets up the socket, entropy and mbedTLS config, and exposes the raw
+// mbedtls_ssl_context so we can drop verification to OPTIONAL and read the
+// server's certificate during a completed mutual handshake - something the
+// high-level WiFiClientSecure connect() cannot do (setInsecure() would drop our
+// client cert, and it frees the context before we could read the peer cert).
+#include <ssl_client.h>
 
 namespace ghosthid {
 namespace {
@@ -115,7 +126,9 @@ uint8_t DeskflowClient::stateCode() const {
 
 const char *DeskflowClient::statusText() const {
     switch (state_) {
-        case State::Idle:        return lastError_[0] ? lastError_ : "not connected";
+        case State::Idle:        return awaitingTrust_
+                                     ? "confirm the server's certificate fingerprint"
+                                     : (lastError_[0] ? lastError_ : "not connected");
         case State::Connecting:  return "connecting";
         case State::Handshaking: return "handshaking";
         case State::Active:      return hasFocus_ ? "connected (this screen has focus)"
@@ -404,6 +417,120 @@ void DeskflowClient::dispatch(const uint8_t *m, size_t len) {
     }
 }
 
+// --- trust on first use ----------------------------------------------------
+
+void DeskflowClient::freePending() {
+    free(pendingPem_);
+    pendingPem_ = nullptr;
+    pendingFp_[0] = '\0';
+}
+
+// Turn the captured DER certificate into the pinnable PEM and the hex
+// fingerprint the user confirms. The fingerprint is the SHA-256 of the DER -
+// the exact value Deskflow/Barrier write to their trusted lists - so a user can
+// compare the two directly.
+bool DeskflowClient::storePending(const unsigned char *der, size_t derLen) {
+    uint8_t hash[32];
+    if (mbedtls_sha256(der, derLen, hash, 0) != 0) return false;
+    for (int i = 0; i < 32; ++i) snprintf(pendingFp_ + i * 2, 3, "%02x", hash[i]);
+
+    // DER -> PEM: base64 the DER, wrap at 64 columns, add the armour lines, so
+    // the result is byte-for-byte what a pasted PEM would be and pins the same
+    // way through setDeskflowServerCert()/setCACert().
+    size_t b64len = 0;
+    mbedtls_base64_encode(nullptr, 0, &b64len, der, derLen);   // query length
+    if (b64len == 0 || b64len > 3600) { pendingFp_[0] = '\0'; return false; }
+    unsigned char *b64 = static_cast<unsigned char *>(malloc(b64len + 1));
+    if (b64 == nullptr) { pendingFp_[0] = '\0'; return false; }
+    if (mbedtls_base64_encode(b64, b64len + 1, &b64len, der, derLen) != 0) {
+        free(b64); pendingFp_[0] = '\0'; return false;
+    }
+    const size_t lines  = (b64len + 63) / 64;
+    const size_t pemCap = 28 /*BEGIN\n*/ + b64len + lines /*\n per line*/ +
+                          26 /*END\n*/ + 1;
+    char *pem = static_cast<char *>(malloc(pemCap));
+    if (pem == nullptr) { free(b64); pendingFp_[0] = '\0'; return false; }
+    size_t w = 0;
+    w += snprintf(pem + w, pemCap - w, "-----BEGIN CERTIFICATE-----\n");
+    for (size_t i = 0; i < b64len; i += 64) {
+        const size_t n = (b64len - i < 64) ? (b64len - i) : 64;
+        memcpy(pem + w, b64 + i, n); w += n;
+        pem[w++] = '\n';
+    }
+    w += snprintf(pem + w, pemCap - w, "-----END CERTIFICATE-----\n");
+    pem[w] = '\0';
+    free(b64);
+    free(pendingPem_);
+    pendingPem_ = pem;
+    return true;
+}
+
+// One throwaway handshake whose only job is to capture the server's
+// certificate. See the ssl_client.h include note for why this drops below
+// WiFiClientSecure.
+bool DeskflowClient::captureServerCert() {
+    if (!identity_.begin(config_.deskflowScreen())) {
+        snprintf(lastError_, sizeof(lastError_), "could not create a TLS identity");
+        return false;
+    }
+    IPAddress addr;
+    if (!addr.fromString(config_.deskflowHost()) &&
+        !WiFi.hostByName(config_.deskflowHost(), addr)) {
+        snprintf(lastError_, sizeof(lastError_), "cannot resolve %s", config_.deskflowHost());
+        return false;
+    }
+    // The context carries mbedTLS structs; keep it off this task's 8KB stack.
+    sslclient_context *ctx = new (std::nothrow) sslclient_context();
+    if (ctx == nullptr) {
+        snprintf(lastError_, sizeof(lastError_), "out of memory for cert capture");
+        return false;
+    }
+    ssl_init(ctx);
+    ctx->handshake_timeout = 12000;
+    // start_ssl_client only loads our client cert when a CA is supplied and
+    // verification is on. We do not have the server's CA yet - that is the
+    // point - so pass our own cert as a throwaway CA to take that path, then
+    // drop verification to OPTIONAL below so the bogus CA is ignored and the
+    // handshake completes. Mutual TLS still works (the server receives our real
+    // client cert); the server presents its certificate in its first flight,
+    // which is what we read out afterwards.
+    const int sock = start_ssl_client(
+        ctx, addr, config_.deskflowPort(), config_.deskflowHost(), 12000,
+        /*rootCABuff=*/identity_.certificatePem(), /*useBundle=*/false,
+        /*cli_cert=*/identity_.certificatePem(), /*cli_key=*/identity_.privateKeyPem(),
+        /*pskIdent=*/nullptr, /*psKey=*/nullptr, /*insecure=*/false, /*alpn=*/nullptr);
+    bool ok = false;
+    if (sock >= 0) {
+        mbedtls_ssl_conf_authmode(&ctx->ssl_conf, MBEDTLS_SSL_VERIFY_OPTIONAL);
+        const uint32_t start = millis();
+        int ret;
+        while ((ret = mbedtls_ssl_handshake(&ctx->ssl_ctx)) != 0) {
+            if (ret != MBEDTLS_ERR_SSL_WANT_READ && ret != MBEDTLS_ERR_SSL_WANT_WRITE) break;
+            if (millis() - start > 12000) { ret = -1; break; }
+            vTaskDelay(2);
+        }
+        if (ret == 0) {
+            const mbedtls_x509_crt *crt = mbedtls_ssl_get_peer_cert(&ctx->ssl_ctx);
+            if (crt != nullptr && crt->raw.p != nullptr && crt->raw.len > 0) {
+                ok = storePending(crt->raw.p, crt->raw.len);
+                if (!ok) snprintf(lastError_, sizeof(lastError_),
+                                  "captured certificate but could not store it");
+            } else {
+                snprintf(lastError_, sizeof(lastError_), "server sent no certificate");
+            }
+        } else {
+            snprintf(lastError_, sizeof(lastError_),
+                     "could not reach the server to read its certificate");
+        }
+    } else {
+        snprintf(lastError_, sizeof(lastError_), "cannot reach %s:%u",
+                 config_.deskflowHost(), (unsigned)config_.deskflowPort());
+    }
+    stop_ssl_socket(ctx);
+    delete ctx;
+    return ok;
+}
+
 // --- lifecycle -------------------------------------------------------------
 
 void DeskflowClient::disconnect(const char *why) {
@@ -448,9 +575,28 @@ void DeskflowClient::serviceOnce() {
     if (reconnectReq_) {
         reconnectReq_ = false;
         if (state_ != State::Idle) disconnect("settings changed");
+        // Settings changed - a freshly pasted cert, a new host - so any pending
+        // capture is stale. Drop it and re-evaluate from scratch.
+        awaitingTrust_ = false;
+        freePending();
         lastError_[0] = '\0';
         backoffMs_ = 0;         // retry at once rather than serving out a backoff
         lastAttemptMs_ = 0;
+    }
+
+    // Confirm a captured certificate: pin it, then connect for real. Done on
+    // this task so it does not race the TLS state the connect path reads.
+    if (trustReq_) {
+        trustReq_ = false;
+        if (pendingPem_ != nullptr) {
+            config_.setDeskflowServerCert(pendingPem_);   // pins it in NVS
+            freePending();
+            awaitingTrust_ = false;
+            if (state_ != State::Idle) disconnect("certificate trusted");
+            lastError_[0] = '\0';
+            backoffMs_ = 0;
+            lastAttemptMs_ = 0;
+        }
     }
 
     if (!config_.deskflowEnabled()) {
@@ -498,11 +644,29 @@ void DeskflowClient::serviceOnce() {
             }
             config_.copyServerCert(caCopy_, 4001);
             if (caCopy_[0] == '\0') {
-                snprintf(lastError_, sizeof(lastError_),
-                         "server certificate not set - paste the server's PEM in settings");
+                // No certificate pinned yet. Rather than making the user paste a
+                // PEM, capture the server's certificate once and wait for them
+                // to confirm its fingerprint (trust on first use). We never use
+                // an unconfirmed certificate for a real session, so the confirm
+                // step is the out-of-band check that defeats a first-connection
+                // MITM.
                 free(caCopy_);
                 caCopy_ = nullptr;
-                backoffMs_ = 30000;
+                if (awaitingTrust_) {
+                    // Already captured; idle until the user confirms. The state
+                    // and fingerprint are surfaced in the UI.
+                    backoffMs_ = 60000;
+                    return;
+                }
+                if (captureServerCert()) {
+                    awaitingTrust_ = true;
+                    snprintf(lastError_, sizeof(lastError_),
+                             "new server - confirm its certificate fingerprint to connect");
+                    backoffMs_ = 60000;
+                } else {
+                    // lastError_ already says why the capture failed; retry.
+                    backoffMs_ = backoffMs_ < 30000 ? backoffMs_ * 2 : 30000;
+                }
                 return;
             }
             tls_.setCACert(caCopy_);

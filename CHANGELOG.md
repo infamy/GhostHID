@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.6.16
+
+### Added
+
+* **Screen-server certificate: trust on first use** - connecting to a
+  Deskflow/Barrier/Synergy server over TLS no longer requires pasting the
+  server's PEM by hand. When no certificate is pinned, GhostHID makes one probe
+  handshake, captures the certificate the server offers, and shows its SHA-256
+  fingerprint in the web UI (and serial `kvm` status). You confirm it once -
+  **Trust & connect** in Settings, or `trustcert` on the console - and it is
+  pinned for good. Nothing unconfirmed is ever used for a live session, so the
+  confirm step is the out-of-band check that blocks a first-connection
+  impostor. Pasting a PEM ahead of time still works and skips the prompt.
+
+
 ## 0.6.15
 
 ### Fixed

@@ -419,6 +419,9 @@ CommandResult CommandProcessor::handleMessage(const char *json, size_t len,
         out["kvm_tls"]        = config_.deskflowTls();
         out["kvm_fp"]         = deskflow_ ? deskflow_->fingerprint() : "";
         out["kvm_ca_set"]     = config_.deskflowServerCert()[0] != '\0';
+        // Trust on first use: a captured, not-yet-confirmed server certificate.
+        out["kvm_cert_pending"] = deskflow_ ? deskflow_->certTrustPending() : false;
+        out["kvm_pending_fp"]   = deskflow_ ? deskflow_->pendingFingerprint() : "";
         out["scroll_invert"]  = config_.scrollInvert();
         if (measureJson(out) + 1 > outSize) {
             reply(outResponse, outSize,
@@ -426,6 +429,20 @@ CommandResult CommandProcessor::handleMessage(const char *json, size_t len,
         } else {
             serializeJson(out, outResponse, outSize);
         }
+        return CommandResult::Ok;
+    }
+
+    // Confirm a captured (trust-on-first-use) server certificate. Pinning is a
+    // security-sensitive change, so it rides the same authenticated session as
+    // set_config; the fingerprint the user is confirming came from get_config.
+    if (strcmp(type, "kvm_trust_cert") == 0) {
+        if (deskflow_ == nullptr || !deskflow_->certTrustPending()) {
+            reply(outResponse, outSize,
+                  "{\"type\":\"error\",\"error\":\"no certificate is awaiting confirmation\"}");
+            return CommandResult::BadRequest;
+        }
+        deskflow_->trustPendingCert();
+        reply(outResponse, outSize, "{\"type\":\"kvm_trust_cert\",\"ok\":true}");
         return CommandResult::Ok;
     }
 

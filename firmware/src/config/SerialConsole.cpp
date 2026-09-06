@@ -57,6 +57,7 @@ void SerialConsole::printHelp() const {
     Serial.println("  kvmscreen <name>     this screen's name in the server layout");
     Serial.println("  kvmsize <w> <h>      target's resolution, so the pointer lands right");
     Serial.println("  kvm on|off           enable or disable the screen client");
+    Serial.println("  trustcert            pin the server cert captured on first connect");
     Serial.println("  web off|on           start or stop the web UI now (this boot only)");
     Serial.println("  heap                 free and largest-block memory");
     Serial.println("  token <token>        pairing token (empty disables auth; else 6-48)");
@@ -243,6 +244,23 @@ void SerialConsole::execute(char *line) {
             Serial.printf("  size    %ux%u\r\n", (unsigned)config_.deskflowWidth(),
                           (unsigned)config_.deskflowHeight());
             Serial.printf("  state   %s\r\n", deskflow_.statusText());
+            if (deskflow_.certTrustPending()) {
+                Serial.printf("  cert    PENDING - run 'trustcert' to pin\r\n"
+                              "          %s\r\n", deskflow_.pendingFingerprint());
+            }
+        }
+    } else if (strcasecmp(line, "trustcert") == 0) {
+        // Confirm a captured (trust-on-first-use) server certificate. Gated like
+        // reset: pinning a cert is a security change, and a compromised target
+        // host reaching the console over USB must not make it (M1).
+        if (locked) {
+            Serial.println("locked: run 'unlock <token>' first");
+        } else if (!deskflow_.certTrustPending()) {
+            Serial.println("no certificate is awaiting confirmation");
+        } else {
+            Serial.printf("ok: pinning server certificate\r\n      %s\r\n",
+                          deskflow_.pendingFingerprint());
+            deskflow_.trustPendingCert();
         }
     } else if (strcasecmp(line, "kvmscreen") == 0) {
         if (config_.setDeskflowScreen(value)) Serial.printf("ok: screen name = %s\r\n", value);
