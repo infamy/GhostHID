@@ -26,6 +26,9 @@ constexpr int8_t PIN_BL   = GHOSTHID_LCD_BL;
 
 constexpr int16_t SCR_W = 320;
 constexpr int16_t SCR_H = 172;
+// The panel's corners are physically rounded, so content shoved pixel-tight into
+// a corner loses a few pixels. Keep corner text/markers this far off the edges.
+constexpr int16_t MARGIN = 12;
 
 constexpr uint16_t C_BG    = 0x0000;
 constexpr uint16_t C_CYAN  = 0x07FF;
@@ -59,7 +62,7 @@ void blSet(uint8_t duty) { ledcWrite(PIN_BL, duty); }
 // One labelled line at the given text size (2 = 12x16 px, readable on a 1.47").
 void line(int16_t y, const char *label, const char *value, uint16_t vc, uint8_t size = 2) {
     tft.setTextSize(size);
-    tft.setCursor(8, y);
+    tft.setCursor(MARGIN, y);
     tft.setTextColor(C_GREY);
     tft.print(label);
     tft.setTextColor(vc);
@@ -85,11 +88,11 @@ void drawGhost(int x, int y, int w, int h, uint16_t col, uint16_t bg) {
 // A small dot marking the physical BOOT button (bottom-right, where it sits) so
 // its "press to cycle pages" role is discoverable.
 void buttonHint(const char *what) {
-    tft.fillCircle(SCR_W - 8, SCR_H - 8, 3, C_CYAN);
+    tft.fillCircle(SCR_W - MARGIN, SCR_H - MARGIN, 3, C_CYAN);
     tft.setTextSize(1);
     tft.setTextColor(C_GREY);
     int16_t w = (int16_t)strlen(what) * 6;
-    tft.setCursor(SCR_W - 16 - w, SCR_H - 11);
+    tft.setCursor(SCR_W - MARGIN - 8 - w, SCR_H - MARGIN - 3);
     tft.print(what);
 }
 
@@ -172,26 +175,26 @@ void Display::drawStatusPage(const DisplayStatus &s) {
     tft.setTextColor(s.scrollLock ? C_GREEN : C_GREY); tft.setCursor(lx, ly); tft.print("SCRL");
 
     // --- corners: small operational status ---------------------------------
-    corner(4, 4, s.usbReady ? "USB ok" : "USB --", s.usbReady ? C_GREEN : C_RED, false);
+    corner(MARGIN, MARGIN, s.usbReady ? "USB ok" : "USB --", s.usbReady ? C_GREEN : C_RED, false);
 
     const bool kvmOff  = !s.kvmState || strcmp(s.kvmState, "off") == 0;
     const bool kvmConn = s.kvmState && strcmp(s.kvmState, "connected") == 0;
-    corner(SCR_W - 4, 4,
+    corner(SCR_W - MARGIN, MARGIN,
            kvmOff ? "off" : (kvmConn ? (s.kvmFocus ? "active" : "connected") : "connecting"),
            kvmOff ? C_GREY : (kvmConn ? C_GREEN : C_AMBER), true);
 
-    corner(4, SCR_H - 10, (s.staIp && s.staIp[0]) ? s.staIp : "AP only",
+    corner(MARGIN, SCR_H - MARGIN - 7, (s.staIp && s.staIp[0]) ? s.staIp : "AP only",
            (s.staIp && s.staIp[0]) ? C_CYAN : C_GREY, false);
 
     char c[16];
     snprintf(c, sizeof(c), "%d ctrl", s.clients);
-    corner(SCR_W - 4, SCR_H - 10, c, s.clients > 0 ? C_GREEN : C_GREY, true);
+    corner(SCR_W - MARGIN, SCR_H - MARGIN - 7, c, s.clients > 0 ? C_GREEN : C_GREY, true);
 }
 
 void Display::drawQrPage(const DisplayStatus &s) {
     tft.setTextSize(2);
     tft.setTextColor(C_CYAN);
-    tft.setCursor(8, 4);
+    tft.setCursor(MARGIN, 8);
     tft.print("Join Wi-Fi");
 
     if (s.apSsid && s.apSsid[0]) {
@@ -199,39 +202,72 @@ void Display::drawQrPage(const DisplayStatus &s) {
         snprintf(payload, sizeof(payload), "WIFI:S:%s;T:WPA;P:%s;;",
                  s.apSsid, s.apPass ? s.apPass : "");
         // Version 4 (33 modules) x scale 4 = 132px on the left.
-        drawQr(8, 32, 4, payload);
+        drawQr(MARGIN, 36, 4, payload);
     }
-    // SSID + password + pairing token in clear on the right, for manual entry.
+    // SSID + AP password in clear on the right, for manual entry. The pairing
+    // token has its own page.
     tft.setTextSize(2);
-    tft.setTextColor(C_GREY);  tft.setCursor(150, 26);  tft.print("SSID");
-    tft.setTextColor(C_WHITE); tft.setCursor(150, 44);  tft.print(s.apSsid ? s.apSsid : "");
-    tft.setTextColor(C_GREY);  tft.setCursor(150, 74);  tft.print("PASS");
-    tft.setTextColor(C_WHITE); tft.setCursor(150, 92);  tft.print(s.apPass ? s.apPass : "");
-    tft.setTextColor(C_GREY);  tft.setCursor(150, 122); tft.print("TOKEN");
-    tft.setTextColor(C_WHITE); tft.setCursor(150, 140);
-    // Group the token in 4-char blocks (e.g. "AB2C 9XKF") so it's easy to read
-    // off the screen and type. The stored token has no spaces; this is display
-    // only, and the web UI strips whitespace on entry.
+    tft.setTextColor(C_GREY);  tft.setCursor(150, 44);  tft.print("SSID");
+    tft.setTextColor(C_WHITE); tft.setCursor(150, 62);  tft.print(s.apSsid ? s.apSsid : "");
+    tft.setTextColor(C_GREY);  tft.setCursor(150, 100); tft.print("PASS");
+    tft.setTextColor(C_WHITE); tft.setCursor(150, 118); tft.print(s.apPass ? s.apPass : "");
+    buttonHint("page");
+}
+
+// Groups a token into 4-char blocks ("ABCD EFGH"). Display only - the stored
+// token has no spaces and the web UI strips whitespace on entry.
+static void groupToken(const char *tok, char *out, size_t cap) {
+    size_t j = 0;
+    for (size_t i = 0; tok[i] && j < cap - 2; ++i) {
+        if (i && (i % 4) == 0) out[j++] = ' ';
+        out[j++] = tok[i];
+    }
+    out[j] = '\0';
+}
+
+void Display::drawTokenPage(const DisplayStatus &s) {
+    tft.setTextSize(2);
+    tft.setTextColor(C_CYAN);
+    tft.setCursor(MARGIN, 8);
+    tft.print("Pairing token");
+    tft.drawFastHLine(MARGIN, 34, SCR_W - 2 * MARGIN, C_LINE);
+
     if (s.token && s.token[0]) {
-        char grp[80]; size_t j = 0;
-        for (size_t i = 0; s.token[i] && j < sizeof(grp) - 2; ++i) {
-            if (i && (i % 4) == 0) grp[j++] = ' ';
-            grp[j++] = s.token[i];
-        }
-        grp[j] = '\0';
+        char grp[80];
+        groupToken(s.token, grp, sizeof(grp));
+        const int len = (int)strlen(grp);
+        // Pick the biggest font that still fits across the panel.
+        const int avail = SCR_W - 2 * MARGIN;
+        uint8_t sz = 4;                                   // 24px/char
+        if (len * 24 > avail) sz = 3;                     // 18px/char
+        if (len * 18 > avail) sz = 2;                     // 12px/char
+        const int cw = sz == 4 ? 24 : sz == 3 ? 18 : 12;
+        int x = (SCR_W - len * cw) / 2;
+        if (x < MARGIN) x = MARGIN;
+        tft.setTextSize(sz);
+        tft.setTextColor(C_WHITE);
+        tft.setCursor(x, 84);
         tft.print(grp);
     } else {
-        tft.print("(none)");
+        tft.setTextSize(2);
+        tft.setTextColor(C_GREY);
+        tft.setCursor(MARGIN, 90);
+        tft.print("(auth disabled)");
     }
+
+    tft.setTextSize(1);
+    tft.setTextColor(C_GREY);
+    tft.setCursor(MARGIN, SCR_H - MARGIN - 7);
+    tft.print("enter this in the web UI");
     buttonHint("page");
 }
 
 void Display::drawInfoPage(const DisplayStatus &s) {
     tft.setTextSize(3);
     tft.setTextColor(C_CYAN);
-    tft.setCursor(8, 6);
+    tft.setCursor(MARGIN, 8);
     tft.print("Info");
-    tft.drawFastHLine(6, 36, SCR_W - 12, C_LINE);
+    tft.drawFastHLine(MARGIN, 36, SCR_W - 2 * MARGIN, C_LINE);
 
     int16_t y = 46;
     const int16_t dy = 25;
@@ -254,6 +290,7 @@ void Display::render(const DisplayStatus &s) {
     switch (page_) {
         case Page::Status: drawStatusPage(s); break;
         case Page::Qr:     drawQrPage(s);     break;
+        case Page::Token:  drawTokenPage(s);  break;
         case Page::Info:   drawInfoPage(s);   break;
         default:           drawStatusPage(s); break;
     }

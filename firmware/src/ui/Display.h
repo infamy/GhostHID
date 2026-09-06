@@ -35,7 +35,7 @@ struct DisplayStatus {
 
 class Display {
 public:
-    enum class Page : uint8_t { Status, Qr, Info, COUNT };
+    enum class Page : uint8_t { Status, Qr, Token, Info, COUNT };
 
     bool begin();
     bool available() const { return begun_; }
@@ -59,6 +59,7 @@ private:
     void render(const DisplayStatus &s);  // full redraw of the current page
     void drawStatusPage(const DisplayStatus &s);
     void drawQrPage(const DisplayStatus &s);
+    void drawTokenPage(const DisplayStatus &s);
     void drawInfoPage(const DisplayStatus &s);
     int  drawQr(int x, int y, int scale, const char *text);  // returns pixel side, 0 on fail
     void updateLed(const DisplayStatus &s);

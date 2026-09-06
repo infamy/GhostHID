@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.6.12
+
+On-device LCD tidy-up.
+
+### Fixed
+
+* **Rounded-corner clipping.** The panel's corners are physically rounded, so
+  text/markers placed pixel-tight into a corner lost a few pixels. All pages now
+  keep a safe inset from the edges (corner status labels, page titles, the BOOT
+  hint).
+
+### Changed
+
+* **Pairing token gets its own screen.** BOOT now cycles Status -> Join Wi-Fi ->
+  Pairing token -> Info. The token is shown large in two 4-char blocks
+  (`ABCD EFGH`), auto-sizing to fit; the Wi-Fi page keeps the SSID + AP password.
+  (Still auto-reverts to Status after 60 s, and only reachable by a physical BOOT
+  press.)
+
+
 ## 0.6.11
 
 The remaining hardware-independent open items from the review.
