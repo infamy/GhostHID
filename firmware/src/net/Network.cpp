@@ -178,6 +178,15 @@ bool hostIsOurs(String h) {
         const char *s = g_network->staAddress();
         if (s && s[0] && h == String(s)) return true;
     }
+    if (g_network) {
+        // The registered mDNS hostname is name-SUFFIX (same string as the AP
+        // SSID), not the bare device name - so the .local URL the README and
+        // boot log advertise must be matched here or the device's own page is
+        // refused (N2). ssid_ holds exactly that string.
+        String m = String(g_network->ssid());
+        m.toLowerCase();
+        if (m.length() && (h == m || h == m + ".local")) return true;
+    }
     if (g_config) {
         String n = String(g_config->deviceName());
         n.toLowerCase();

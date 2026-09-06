@@ -132,9 +132,16 @@ void Config::begin() {
     }
 
     // A stored AP password that fails validation would bring the AP up open.
-    // Fall back rather than do that.
+    // Re-randomise rather than fall back to the published default (N5): falling
+    // back to GHOSTHID_AP_PASSWORD left the board on "ghosthid-setup"
+    // permanently (the provisioned flag is already set, so nothing re-rolls it),
+    // and that constant could itself be invalid in a custom build.
     if (!validApPassword(apPass_)) {
-        snprintf(apPass_, sizeof(apPass_), "%s", GHOSTHID_AP_PASSWORD);
+        bootloader_random_enable();
+        randomCredential(apPass_, 12, sizeof(apPass_));
+        bootloader_random_disable();
+        g_prefs.putString(kKeyApPw, apPass_);
+        justProvisioned_ = true;   // surface the new one on the LCD/serial
     }
 }
 

@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.6.9
+
+Re-audit follow-ups on the credential/origin work.
+
+### Fixed
+
+* **N2 — the origin check refused the device's own mDNS URL.** `hostIsOurs` only
+  matched the bare device name, but the registered hostname (and AP SSID) is
+  `name-<MACsuffix>`, so a browser at the advertised `name-xxxx.local` URL was
+  rejected and the UI was only reachable by IP. It now matches that real name
+  (fails closed either way — a usability, not a security, regression).
+
+### Security
+
+* **N5 — a bad AP password no longer restores the published default.** If a
+  stored AP password failed validation the code fell back to `ghosthid-setup`,
+  and since the provisioned flag was already set it would never re-randomise —
+  leaving the board on the published default permanently. It now re-randomises
+  from the hardware RNG and surfaces the new value on the LCD/serial.
+
+
 ## 0.6.8
 
 ### Security
