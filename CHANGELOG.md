@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.7.0
+
+Milestone release. Rolls up the 0.6.14-0.6.27 work into a network keyboard/mouse
+that is materially more secure, more robust, and easier to onboard - and closes
+the entire line-level security review (0 open findings).
+
+### Highlights
+
+* **Trust-on-first-use for the screen-server certificate** - connect to a
+  Deskflow/Barrier server over TLS by confirming a fingerprint, no manual PEM.
+* **Multiple controllers** - up to 4 at once, each authenticating independently;
+  retires the single-controller slot whose lockout made the device feel broken.
+* **Onboarding fixed end to end** - a real login gate for the pairing token
+  (accepted with or without its display spaces, case-insensitive), a lockout
+  that says "locked, wait Ns - your token is fine" instead of blaming the token,
+  a softened/decaying rate-limit, and no strike-burning auto-connect.
+* **Network firmware updates (OTA)** hardened - per-request state, a single-owner
+  guard, immediate release on a dropped upload plus a stale-owner reclaim; no
+  cable needed for future updates.
+* **On-device LCD** - version on the status screen, a dedicated pairing-token
+  screen, a real device-suffix SSID (was `-0000`), rounded-corner insets, and a
+  QR/Wi-Fi page whose text no longer collides with the code.
+
+### Security
+
+The full line-level review is closed: H1/H2/H4/H5/H6/H7/H8/H9, M4/M5/M8, N2/N5,
+L1/L2/L4, the credential model, and the OTA auth/throttle path are all Fixed
+(H8 and H9 were regressions caught and fixed during the review). Remaining items
+are design backlog (Sealed mode + hardening ladder, protected mode, an audit
+log, tests, PSRAM), not defects.
+
+
 ## 0.6.27
 
 ### Fixed
