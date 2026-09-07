@@ -716,43 +716,19 @@ void Network::stopServers() {
     // begin re-registers cleanly.
     g_server.reset();
     serversUp_ = false;
-    for (auto &c : controllers_) c = Controller{};
-    controllerCount_ = 0;
+    controllers_.clear();
     Serial.printf("[web] stopped; heap now %u free, %u largest\r\n",
                   (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMaxAllocHeap());
 }
 
 bool Network::acquireClientSlot(uint32_t clientId) {
-    if (isClientConnected(clientId)) return true;      // already holding a slot
-    for (auto &c : controllers_) {
-        if (c.id == 0) {
-            c.id = clientId;
-            c.since = millis();
-            c.authTimedOut = false;
-            ++controllerCount_;
-            return true;
-        }
-    }
-    return false;   // every slot full
+    return controllers_.acquire(clientId, millis());
 }
 
 void Network::releaseClientSlot(uint32_t clientId) {
-    for (auto &c : controllers_) {
-        if (c.id == clientId && clientId != 0) {
-            c = Controller{};
-            if (controllerCount_ > 0) --controllerCount_;
-            return;
-        }
-    }
+    controllers_.release(clientId);
 }
 
-bool Network::isClientConnected(uint32_t clientId) const {
-    if (clientId == 0) return false;
-    for (const auto &c : controllers_) {
-        if (c.id == clientId) return true;
-    }
-    return false;
-}
 
 void Network::loop() {
     g_ws.cleanupClients();

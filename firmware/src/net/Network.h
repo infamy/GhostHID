@@ -9,6 +9,7 @@
 #include <stddef.h>
 
 #include "board_config.h"
+#include "ControllerTable.h"
 
 namespace ghosthid {
 
@@ -40,8 +41,8 @@ public:
     // Must be called from loop(): drives cleanup of dead WebSocket clients.
     void loop();
 
-    bool clientConnected() const { return controllerCount_ > 0; }
-    size_t clientCount() const { return controllerCount_; }
+    bool clientConnected() const { return controllers_.count() > 0; }
+    size_t clientCount() const { return controllers_.count(); }
     const char *ssid() const { return ssid_; }
     const char *apAddress() const { return apIp_; }
 
@@ -55,7 +56,7 @@ public:
     // the operator - the old single-slot behaviour was a foot-gun.
     bool acquireClientSlot(uint32_t clientId);
     void releaseClientSlot(uint32_t clientId);
-    bool isClientConnected(uint32_t clientId) const;
+    bool isClientConnected(uint32_t clientId) const { return controllers_.contains(clientId); }
 
     bool apActive() const { return apActive_; }
 
@@ -72,14 +73,7 @@ private:
     char apIp_[16]  = {};
     char staIp_[16] = {};
     // Concurrent controllers. Each entry is one connected WebSocket client.
-    static constexpr size_t kMaxControllers = GHOSTHID_MAX_CONTROLLERS;
-    struct Controller {
-        uint32_t id = 0;            // 0 = free slot
-        uint32_t since = 0;         // millis() when it connected (for the auth timeout)
-        bool     authTimedOut = false;  // already issued an auth-timeout close
-    };
-    Controller controllers_[kMaxControllers] = {};
-    size_t   controllerCount_ = 0;
+    ControllerTable controllers_;
     bool     apActive_ = false;
     bool     serversUp_ = false;
     uint32_t staStableSince_ = 0;

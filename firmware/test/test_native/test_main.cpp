@@ -62,6 +62,22 @@ void test_config_provisions_random_token();
 void test_keymap_named_keys();
 void test_keymap_single_char_is_itself();
 void test_keymap_unknown_is_zero();
+// --- ControllerTable ---
+void test_ct_acquire_release();
+void test_ct_idempotent_acquire();
+void test_ct_full_then_room();
+void test_ct_release_unknown_is_noop();
+void test_ct_rejects_zero_id();
+void test_ct_clear();
+void test_ct_entry_fields_for_timeout_sweep();
+// --- DeskflowWire ---
+void test_wire_readers();
+void test_is_matches_code();
+void test_keyid_printable_ascii();
+void test_keyid_special_keys();
+void test_keyid_unmapped_is_zero();
+void test_keyid_high_bit_fallback();
+void test_keyid_fuzz_full_range();
 
 int main() {
     UNITY_BEGIN();
@@ -110,6 +126,22 @@ int main() {
     RUN_TEST(test_keymap_named_keys);
     RUN_TEST(test_keymap_single_char_is_itself);
     RUN_TEST(test_keymap_unknown_is_zero);
+
+    RUN_TEST(test_ct_acquire_release);
+    RUN_TEST(test_ct_idempotent_acquire);
+    RUN_TEST(test_ct_full_then_room);
+    RUN_TEST(test_ct_release_unknown_is_noop);
+    RUN_TEST(test_ct_rejects_zero_id);
+    RUN_TEST(test_ct_clear);
+    RUN_TEST(test_ct_entry_fields_for_timeout_sweep);
+
+    RUN_TEST(test_wire_readers);
+    RUN_TEST(test_is_matches_code);
+    RUN_TEST(test_keyid_printable_ascii);
+    RUN_TEST(test_keyid_special_keys);
+    RUN_TEST(test_keyid_unmapped_is_zero);
+    RUN_TEST(test_keyid_high_bit_fallback);
+    RUN_TEST(test_keyid_fuzz_full_range);
 
     return UNITY_END();
 }
