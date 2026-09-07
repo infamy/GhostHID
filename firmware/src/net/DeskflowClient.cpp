@@ -6,6 +6,7 @@
 #include "board_config.h"
 #include "config/Config.h"
 #include "hid/HidDevice.h"
+#include "DeskflowWire.h"
 
 #include <new>
 
@@ -28,13 +29,6 @@ constexpr int16_t kProtocolMajor = 1;
 constexpr int16_t kProtocolMinor = 8;
 constexpr size_t  kMaxMessage    = 512;   // input messages are tiny; clipboard is ignored
 
-// Big-endian field helpers. The protocol is entirely network byte order.
-inline uint16_t rd16(const uint8_t *p) { return (uint16_t)((p[0] << 8) | p[1]); }
-inline int16_t  rdS16(const uint8_t *p) { return (int16_t)rd16(p); }
-inline uint32_t rd32(const uint8_t *p) {
-    return ((uint32_t)p[0] << 24) | ((uint32_t)p[1] << 16) |
-           ((uint32_t)p[2] << 8) | p[3];
-}
 inline void wr16(uint8_t *p, int16_t v) { p[0] = (uint8_t)(v >> 8); p[1] = (uint8_t)v; }
 inline void wr32(uint8_t *p, uint32_t v) {
     p[0] = (uint8_t)(v >> 24); p[1] = (uint8_t)(v >> 16);
@@ -67,54 +61,7 @@ bool commonNameOf(const char *pem, char *out, size_t outSize) {
     return ok;
 }
 
-inline bool is(const uint8_t *m, size_t len, const char *code) {
-    return len >= 4 && memcmp(m, code, 4) == 0;
-}
 
-// --- key mapping -----------------------------------------------------------
-//
-// KeyIDs are X11 keysyms with the 0xFF00 page moved to 0xEF00. Printable ASCII
-// maps to itself, which our HID layer already accepts directly; everything else
-// needs this table.
-struct KeyMap { uint16_t keyId; uint8_t hid; };
-
-const KeyMap kSpecialKeys[] = {
-    {0xEF08, key::Backspace}, {0xEF09, key::Tab},       {0xEF0D, key::Return},
-    {0xEF1B, key::Escape},    {0xEFFF, key::Delete},    {0xEF50, key::Home},
-    {0xEF51, key::LeftArrow}, {0xEF52, key::UpArrow},   {0xEF53, key::RightArrow},
-    {0xEF54, key::DownArrow}, {0xEF55, key::PageUp},    {0xEF56, key::PageDown},
-    {0xEF57, key::End},       {0xEF63, key::Insert},    {0xEFE5, key::CapsLock},
-    {0xEF8D, key::Return},    {0xEF80, key::Space},     {0xEF89, key::Tab},
-
-    {0xEFE1, key::LeftShift}, {0xEFE2, key::RightShift},
-    {0xEFE3, key::LeftCtrl},  {0xEFE4, key::RightCtrl},
-    {0xEFE9, key::LeftAlt},   {0xEFEA, key::RightAlt},
-    {0xEF7E, key::RightAlt},                            // AltGr
-    // Meta and Super both land on GUI: a keyboard has one such key per side,
-    // and the target decides what it means.
-    {0xEFE7, key::LeftGui},   {0xEFE8, key::RightGui},
-    {0xEFEB, key::LeftGui},   {0xEFEC, key::RightGui},
-
-    {0xEFBE, key::F1},  {0xEFBF, key::F2},  {0xEFC0, key::F3},  {0xEFC1, key::F4},
-    {0xEFC2, key::F5},  {0xEFC3, key::F6},  {0xEFC4, key::F7},  {0xEFC5, key::F8},
-    {0xEFC6, key::F9},  {0xEFC7, key::F10}, {0xEFC8, key::F11}, {0xEFC9, key::F12},
-};
-
-// Returns 0 when the key has no USB HID equivalent worth sending.
-uint8_t keyIdToHid(uint16_t keyId) {
-    if (keyId >= 0x20 && keyId <= 0x7E) return (uint8_t)keyId;   // printable ASCII
-    for (const KeyMap &k : kSpecialKeys) {
-        if (k.keyId == keyId) return k.hid;
-    }
-    // Fallback for a server that sets high bits on an otherwise plain
-    // character. Better to type the right key than to drop it silently.
-    const uint16_t low = keyId & 0x00FF;
-    if ((keyId & 0xFF00) != 0 && low >= 0x20 && low <= 0x7E &&
-        (keyId & 0xFF00) != 0xEF00) {
-        return (uint8_t)low;
-    }
-    return 0;
-}
 
 }  // namespace
 
@@ -266,156 +213,6 @@ void DeskflowClient::sendScreenInfo() {
 
 // --- dispatch --------------------------------------------------------------
 
-void DeskflowClient::dispatch(const uint8_t *m, size_t len) {
-    lastTrafficMs_ = millis();
-
-    if (is(m, len, "CALV")) { sendCode("CALV"); return; }   // keep-alive
-    if (is(m, len, "CNOP")) { return; }
-    if (is(m, len, "QINF")) { sendScreenInfo(); return; }
-    if (is(m, len, "CIAK")) { return; }
-    if (is(m, len, "CROP")) { return; }
-    if (is(m, len, "DSOP")) { return; }                     // options: nothing to set
-    if (is(m, len, "DCLP")) { return; }                     // no clipboard on a HID device
-    if (is(m, len, "CSEC")) { return; }                     // screensaver
-    if (is(m, len, "LSYN")) { return; }                     // language sync (1.8+)
-
-    if (is(m, len, "CINN")) {                               // pointer entered this screen
-        if (len >= 12) {
-            absX_ = (int16_t)rd16(m + 4);
-            absY_ = (int16_t)rd16(m + 6);
-            haveAbs_ = true;
-        }
-        hasFocus_ = true;
-        return;
-    }
-
-    if (is(m, len, "COUT")) {                               // pointer left this screen
-        // Whatever was held when the pointer left must not stay held: the
-        // controller has stopped sending us key-up events.
-        hid_.releaseAll();
-        hasFocus_ = false;
-        return;
-    }
-
-    if (is(m, len, "DMMV") && len >= 8) {                   // absolute move
-        ++nMove_;
-        absX_ = rdS16(m + 4);
-        absY_ = rdS16(m + 6);
-        haveAbs_ = true;                                    // emitted after the drain
-        return;
-    }
-
-    if (is(m, len, "DMRM") && len >= 8) {                   // relative move
-        ++nMove_;
-        relDx_ += rdS16(m + 4);
-        relDy_ += rdS16(m + 6);
-        return;
-    }
-
-    if ((is(m, len, "DMDN") || is(m, len, "DMUP")) && len >= 5) {
-        const bool down = is(m, len, "DMDN");
-        MouseButton b;
-        switch (m[4]) {                                     // 1 left, 2 middle, 3 right
-            case 1:  b = MouseButton::Left;   break;
-            case 2:  b = MouseButton::Middle; break;
-            case 3:  b = MouseButton::Right;  break;
-            default: return;
-        }
-        ++nBtn_;
-        // Flush first: a click has to happen where the pointer now is, not
-        // where it was before the pending motion was applied.
-        flushPointer();
-        if (down) hid_.mouseButtonDown(b); else hid_.mouseButtonUp(b);
-        return;
-    }
-
-    if (is(m, len, "DMWM") && len >= 8) {                   // wheel: x then y delta
-        const int16_t xd = rdS16(m + 4), yd = rdS16(m + 6);
-        // The protocol works in units of 120 per detent, as Windows does.
-        if (yd) hid_.mouseWheel(yd / 120 ? yd / 120 : (yd > 0 ? 1 : -1));
-        if (xd) hid_.mousePan(xd / 120 ? xd / 120 : (xd > 0 ? 1 : -1));
-        return;
-    }
-
-    // DKDL is protocol 1.8's key-down: a distinct wire code, not a variant of
-    // DKDN (kMsgDKeyDownLang = "DKDL%2i%2i%2i%s"). A 1.8 server sends only
-    // DKDL for key-down and never DKDN, which is why key-ups arrived alone.
-    // The first three fields sit at the same offsets in both; DKDL appends a
-    // length-prefixed language string we have no use for.
-    if (is(m, len, "DKDL") || is(m, len, "DKDN") || is(m, len, "DKUP")) {
-        ++nKey_;
-        const bool down = is(m, len, "DKDL") || is(m, len, "DKDN");
-        {
-            char *dst = down ? lastKeyDownRaw_ : lastKeyRaw_;
-            size_t n = len < 16 ? len : 16;
-            char *w = dst;
-            for (size_t i = 0; i < n && (w - dst) < 36; ++i) w += snprintf(w, 4, "%02x", m[i]);
-            *w = '\0';
-        }
-        if (len < 10) {
-            snprintf(lastUnhandled_, sizeof(lastUnhandled_), "K%u", (unsigned)len);
-            return;
-        }
-        const uint16_t keyId  = rd16(m + 4);
-        const uint16_t button = rd16(m + 8);
-
-        if (down) {
-            uint8_t code = keyIdToHid(keyId);
-            if (code == 0) {
-                snprintf(lastUnhandled_, sizeof(lastUnhandled_), "k%04x", (unsigned)keyId);
-                return;
-            }
-            // Remember which HID key this physical button produced, because the
-            // matching key-up will not say.
-            rememberKey(button, code);
-            hid_.keyDown(code);
-        } else {
-            // Key-up carries KeyID 0 and identifies the key by button alone.
-            uint8_t code = forgetKey(button);
-            if (code == 0) code = keyIdToHid(keyId);   // fall back if we missed the down
-            if (code == 0) {
-                snprintf(lastUnhandled_, sizeof(lastUnhandled_), "u%04x", (unsigned)button);
-                return;
-            }
-            hid_.keyUp(code);
-        }
-        return;
-    }
-
-    if (is(m, len, "DKRP") && len >= 12) {                  // auto-repeat
-        const uint16_t keyId = rd16(m + 4);
-        const uint8_t code = keyIdToHid(keyId);
-        // The target does its own auto-repeat once a key is held, so a repeat
-        // message needs no action; re-sending would double it.
-        (void)code;
-        return;
-    }
-
-    if (is(m, len, "CBYE")) { disconnect("server closed the session"); return; }
-    if (is(m, len, "EBSY")) { disconnect("screen name already in use"); return; }
-    if (is(m, len, "EUNK")) {
-        // The commonest setup mistake, so say what to do about it.
-        char msg[80];
-        snprintf(msg, sizeof(msg), "server has no screen named '%s'", config_.deskflowScreen());
-        disconnect(msg);
-        backoffMs_ = 30000;     // no point retrying hard; this needs a human
-        return;
-    }
-    if (is(m, len, "EBAD")) { disconnect("server reported a protocol violation"); return; }
-    if (is(m, len, "EICV")) { disconnect("incompatible protocol version"); return; }
-
-    // Anything else: remember the code so an unexpected message is visible
-    // rather than silently ignored.
-    ++nOther_;
-    {
-        size_t n = len < 16 ? len : 16;
-        char *w = lastOtherRaw_;
-        for (size_t i = 0; i < n && (w - lastOtherRaw_) < 36; ++i) {
-            w += snprintf(w, 4, "%02x", m[i]);
-        }
-        *w = '\0';
-    }
-}
 
 // --- trust on first use ----------------------------------------------------
 
@@ -790,38 +587,8 @@ void DeskflowClient::serviceOnce() {
     }
 }
 
-void DeskflowClient::rememberKey(uint16_t button, uint8_t hid) {
-    for (size_t i = 0; i < heldByButtonCount_; ++i) {
-        if (heldByButton_[i].button == button) { heldByButton_[i].hid = hid; return; }
-    }
-    if (heldByButtonCount_ < kMaxHeld) {
-        heldByButton_[heldByButtonCount_++] = {button, hid};
-    }
-}
 
-uint8_t DeskflowClient::forgetKey(uint16_t button) {
-    for (size_t i = 0; i < heldByButtonCount_; ++i) {
-        if (heldByButton_[i].button == button) {
-            const uint8_t hid = heldByButton_[i].hid;
-            heldByButton_[i] = heldByButton_[--heldByButtonCount_];
-            return hid;
-        }
-    }
-    return 0;
-}
 
-void DeskflowClient::flushPointer() {
-    if (haveAbs_) {
-        const float w = config_.deskflowWidth() > 0 ? config_.deskflowWidth() : 1;
-        const float h = config_.deskflowHeight() > 0 ? config_.deskflowHeight() : 1;
-        hid_.mouseMoveAbsolute((float)absX_ / w, (float)absY_ / h);
-        haveAbs_ = false;
-    }
-    if (relDx_ != 0 || relDy_ != 0) {
-        hid_.mouseMove(relDx_, relDy_);
-        relDx_ = relDy_ = 0;
-    }
-}
 
 void DeskflowClient::run() {
     // A fixed beat, not a conditional one. The previous version measured

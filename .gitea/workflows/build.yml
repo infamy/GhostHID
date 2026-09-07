@@ -77,6 +77,38 @@ jobs:
           name: ghosthid-webflasher
           path: webflasher/
 
+  tests:
+    name: unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache PlatformIO packages
+        uses: actions/cache@v4
+        continue-on-error: true
+        with:
+          path: ~/.platformio
+          key: pio-${{ runner.os }}-${{ hashFiles('firmware/platformio.ini') }}
+          restore-keys: pio-${{ runner.os }}-
+
+      - name: Install PlatformIO and host toolchain
+        run: |
+          set -eu
+          # The native test env compiles with the host g++, not the xtensa
+          # toolchain, so make sure a compiler is present.
+          command -v g++ >/dev/null 2>&1 || { apt-get update -qq && \
+            apt-get install -y -qq build-essential; }
+          python3 -m venv /tmp/pio || { apt-get update -qq && \
+            apt-get install -y -qq python3-venv build-essential && python3 -m venv /tmp/pio; }
+          /tmp/pio/bin/pip install -q --upgrade pip
+          /tmp/pio/bin/pip install -q platformio==6.1.19
+
+      - name: Run host unit tests
+        # Compiles the real CommandProcessor / Config / Keymap / ControllerTable /
+        # Deskflow message interpreter against a shim layer + a recording HID stub
+        # and runs the Unity suite. No board involved.
+        run: /tmp/pio/bin/pio test -d firmware -e native
+
   web:
     name: web UI
     runs-on: ubuntu-latest
