@@ -52,7 +52,7 @@ DOCKER_RUN = docker run --rm -t \
 	$(PIO_ENVVARS) \
 	$(IMAGE)
 
-.PHONY: help image build rebuild clean distclean shell flash flash-factory monitor ports size localini ota dist webflasher
+.PHONY: help image build rebuild clean distclean shell flash flash-factory monitor ports size localini ota dist webflasher test
 
 help:
 	@echo "GhostHID"
@@ -201,3 +201,9 @@ monitor: $(ESPTOOL)
 	@# because asserting it resets the S2 and drops the port.
 	"$(FLASH_VENV)/bin/python" -m serial.tools.miniterm --dtr 1 --rts 0 \
 		--eol LF "$(PORT)" 115200
+
+# Host unit tests for the logic layer (CommandProcessor/Config) — no board, no
+# Docker; runs on the dev machine's PlatformIO. See firmware/test/test_native/.
+PIO ?= $(shell command -v pio 2>/dev/null || echo $$HOME/.platformio/penv/bin/pio)
+test:
+	cd firmware && $(PIO) test -e native
