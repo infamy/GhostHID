@@ -51,6 +51,16 @@ void test_kvm_trust_cert_nothing_pending();
 void test_set_config_scroll_invert_is_live();
 void test_set_config_rejects_short_token();
 void test_response_too_large_is_wellformed();
+// --- Sealed mode ---
+void test_config_sealed_defaults_off();
+void test_config_sealed_roundtrip();
+void test_config_factory_reset_clears_sealed();
+void test_sealed_blocks_set_config();
+void test_unsealed_allows_set_config();
+void test_sealed_blocks_kvm_trust_cert();
+void test_status_reports_sealed();
+void test_get_config_reports_sealed();
+void test_sealed_still_accepts_input();
 // --- Config ---
 void test_config_token_validation();
 void test_config_ap_password_validation();
@@ -126,6 +136,16 @@ int main() {
     RUN_TEST(test_set_config_scroll_invert_is_live);
     RUN_TEST(test_set_config_rejects_short_token);
     RUN_TEST(test_response_too_large_is_wellformed);
+
+    RUN_TEST(test_config_sealed_defaults_off);
+    RUN_TEST(test_config_sealed_roundtrip);
+    RUN_TEST(test_config_factory_reset_clears_sealed);
+    RUN_TEST(test_sealed_blocks_set_config);
+    RUN_TEST(test_unsealed_allows_set_config);
+    RUN_TEST(test_sealed_blocks_kvm_trust_cert);
+    RUN_TEST(test_status_reports_sealed);
+    RUN_TEST(test_get_config_reports_sealed);
+    RUN_TEST(test_sealed_still_accepts_input);
 
     RUN_TEST(test_config_token_validation);
     RUN_TEST(test_config_ap_password_validation);

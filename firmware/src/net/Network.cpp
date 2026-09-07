@@ -346,6 +346,14 @@ String buildExportJson() {
 
 void onOtaBody(AsyncWebServerRequest *request, uint8_t *data, size_t len,
                size_t index, size_t total) {
+    // A sealed device installs no firmware over the network: reflashing it is a
+    // deliberate physical-presence operation (unseal first, or hold BOOT at reset
+    // for ROM download mode). Checked before authorisation so the reason returned
+    // is "sealed", not a misleading "unauthorized".
+    if (g_config != nullptr && g_config->sealed()) {
+        otaFail(request, 403, "device is sealed - firmware updates are disabled");
+        return;
+    }
     // Authorise before ANY side effect. The contention prologue - which
     // disconnects the screen client and blocks the async task - used to run
     // before this check, so an unauthenticated peer could drop the session and

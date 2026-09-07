@@ -57,6 +57,11 @@ h1{font-size:14px;margin:0;font-weight:600;white-space:nowrap;letter-spacing:.04
 #kvm.ok{color:var(--ok);border-color:var(--ok)}
 /* Holding the pointer is the state worth noticing, so it is the only filled one. */
 #kvm.focus{background:var(--ok);color:#02120a;border-color:var(--ok)}
+/* Sealed is a locked-down device; a filled amber badge so it reads as a mode, not
+   a transient status. It only ever appears when the device reports sealed. */
+#sealed{font-size:10px;padding:3px 7px;border-radius:5px;white-space:nowrap;flex:none;
+        letter-spacing:.08em;font-weight:600;background:var(--warn);color:#1a1200;
+        border:1px solid var(--warn)}
 #panic{min-height:32px;padding:5px 10px;font-size:12px;flex:none;
        border-color:var(--warn);color:var(--warn)}
 #panic:hover{border-color:var(--warn)}
@@ -215,6 +220,7 @@ select{background:#0e1a29;color:var(--fg);border:1px solid var(--line);border-ra
   <span id="stat">connecting…</span><span id="rtt"></span>
   <span id="usb" class="bad">USB&nbsp;?</span>
   <span id="kvm" hidden></span>
+  <span id="sealed" title="This device is sealed: configuration and firmware updates are locked. To change settings, hold BOOT ~5s on the device to re-enable its serial console, then run 'unlock' and 'unseal'." hidden>SEALED</span>
   <button id="panic" title="Release every key and mouse button currently held down on the target">Release keys</button>
 </header>
 
@@ -403,6 +409,13 @@ select{background:#0e1a29;color:var(--fg);border:1px solid var(--line);border-ra
 
   <!-- ================= SETTINGS ================= -->
   <div class="tab" id="tab-settings">
+    <div id="sealed_note" hidden style="background:var(--warn);color:#1a1200;
+         border-radius:6px;padding:10px 12px;margin:0 0 12px;font-size:13px">
+      <b>This device is sealed.</b> Settings and firmware updates are locked over the
+      network. To change anything, hold the <b>BOOT</b> button on the device for about
+      5&nbsp;seconds to re-enable its serial console, then run <code>unlock &lt;token&gt;</code>
+      and <code>unseal</code>.
+    </div>
     <section>
       <h2>Wi-Fi (station)</h2>
       <p class="hint" style="margin:0 0 8px">
@@ -862,6 +875,20 @@ function setUsb(ok){
   el.className = ok?"ok":"bad";
   $("#warn").classList.toggle("show", ok===false);
 }
+// Sealed mode is read-only from the web UI's side: show the badge, and disable
+// the Settings save so a save that the device would reject is never even offered.
+// The device is the only place it can be undone (physical BOOT hold + unseal).
+function setSealed(on){
+  $("#sealed").hidden = !on;
+  var save=$("#c_save");
+  if(save){
+    save.disabled = !!on;
+    save.title = on ? "Device is sealed — settings are locked. Unseal on the device to change them."
+                    : "";
+  }
+  var note=$("#sealed_note");
+  if(note) note.hidden = !on;
+}
 function send(o){ if(ws&&ws.readyState===1) ws.send(JSON.stringify(o)); }
 
 // Host lock-LED state, bit order matching the USB output report.
@@ -942,6 +969,7 @@ function connect(){
         if(mb){ if(m.ctrls>1){ $("#multi_n").textContent=m.ctrls; mb.hidden=false; } else mb.hidden=true; } }
     }
     if(typeof m.kvm==="number") setKvmBadge(m.kvm);
+    if(typeof m.sealed==="boolean") setSealed(m.sealed);
     if(typeof m.usb==="boolean"){
       setUsb(m.usb);
       $("#a_usb").textContent = m.usb
@@ -984,6 +1012,7 @@ function connect(){
              try{localStorage.removeItem("ghosthid.token");}catch(e){}
              log("auth rejected — check the token shown on the device, then Connect"); }
     } else if(m.type==="config"){
+      if(typeof m.sealed==="boolean") setSealed(m.sealed);
       fill("#c_ssid", m.sta_ssid);
       fill("#c_name", m.name);
       $("#a_name").textContent=m.name||"—";

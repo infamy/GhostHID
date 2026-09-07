@@ -53,8 +53,25 @@ bool ctEq(const char *a, const char *b) {
 }  // namespace
 
 void SerialConsole::begin() {
+    // While sealed the USB CDC interface is not enumerated at all (main() drops
+    // it at boot), so there is nothing to greet. Stay silent.
+    if (config_.sealed()) return;
     Serial.println();
     Serial.println("Type 'help' for the setup console.");
+}
+
+void SerialConsole::armUnseal() {
+    if (!config_.sealed() || unsealArmed_) return;
+    unsealArmed_ = true;
+    // Serial was just brought back by main() on the BOOT hold. Greet so the user
+    // can see the port is live and knows the two remaining steps.
+    Serial.println();
+    Serial.println("*** BOOT held - serial console re-enabled ***");
+    Serial.println("This device is SEALED. To unseal:");
+    Serial.println("  1) unlock <token>");
+    Serial.println("  2) unseal");
+    Serial.println("Reboot or unplug without unsealing returns to HID-only (no serial).");
+    Serial.print("> ");
 }
 
 void SerialConsole::printHelp() const {
@@ -76,6 +93,9 @@ void SerialConsole::printHelp() const {
     Serial.println("  unlock <token>       same pairing token as 'token'; allows");
     Serial.println("                       wifi/token/reset changes this boot");
     Serial.println("  name <name>          device name - sets the AP SSID and mDNS name");
+    Serial.println("  seal                 lock down: HID-only USB, no serial, no net");
+    Serial.println("                       config/OTA, no plaintext KVM (needs unlock)");
+    Serial.println("  unseal               undo seal (needs a ~5s BOOT hold, then unlock)");
     Serial.println("  reset                erase all settings");
     Serial.println("  reboot               restart to apply changes");
     Serial.println("  bootloader           reboot into USB download mode for flashing");
@@ -308,6 +328,38 @@ void SerialConsole::execute(char *line) {
             config_.factoryReset();
             Serial.println("ok: settings erased - reboot to apply build-time defaults");
         }
+    } else if (strcasecmp(line, "seal") == 0) {
+        // Lock the device down. Token-gated like every other security change so a
+        // target host on the USB seam can't seal the device against its owner.
+        if (locked) {
+            Serial.println("locked: run 'unlock <token>' first");
+        } else if (config_.sealed()) {
+            Serial.println("already sealed");
+        } else {
+            config_.setSealed(true);
+            Serial.println("ok: sealing. The device reboots HID-only with NO serial console.");
+            Serial.println("    To get back in: hold BOOT ~5s to re-enable serial, then");
+            Serial.println("    'unlock <token>' and 'unseal'. Rebooting...");
+            Serial.flush();
+            delay(250);
+            esp_restart();
+        }
+    } else if (strcasecmp(line, "unseal") == 0) {
+        // Two factors, both required: the physical BOOT hold (unsealArmed_) that
+        // re-enabled this console, and the token (unlock). Neither alone unseals.
+        if (!config_.sealed()) {
+            Serial.println("not sealed");
+        } else if (!unsealArmed_) {
+            Serial.println("locked: hold the BOOT button ~5s first to arm unseal");
+        } else if (locked) {
+            Serial.println("locked: run 'unlock <token>' first");
+        } else {
+            config_.setSealed(false);
+            Serial.println("ok: unsealed - rebooting with the serial console restored.");
+            Serial.flush();
+            delay(250);
+            esp_restart();
+        }
     } else if (strcasecmp(line, "reboot") == 0) {
         Serial.println("rebooting...");
         processor_.requestReboot();
@@ -332,6 +384,14 @@ void SerialConsole::execute(char *line) {
 }
 
 void SerialConsole::feed() {
+    // Sealed and not yet armed by a physical BOOT hold: the console is closed.
+    // Normally the CDC interface isn't even enumerated (main drops it), so there
+    // is nothing to read; this is defence in depth for any path where the port
+    // is present anyway. Drain and ignore - no echo, no execution, no prompt.
+    if (config_.sealed() && !unsealArmed_) {
+        while (Serial.available() > 0) Serial.read();
+        return;
+    }
     while (Serial.available() > 0) {
         const int c = Serial.read();
         if (c < 0) return;

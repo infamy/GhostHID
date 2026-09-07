@@ -59,6 +59,16 @@ public:
     bool scrollInvert() const { return scrollInvert_; }
     bool setScrollInvert(bool on);
 
+    // Sealed mode. When true the device is locked down for unattended
+    // deployment: the USB serial console is dropped from the descriptor
+    // (HID-only enumeration), network config writes and OTA are refused, and a
+    // plaintext screen-client session is refused. It is a single all-or-nothing
+    // switch, persisted here. Cleared by factoryReset() along with everything
+    // else - which is fine, because reaching factoryReset() at all needs the
+    // same physical-BOOT + token proof that unsealing does (see SealedMode #1).
+    bool sealed() const { return sealed_; }
+    void setSealed(bool on);
+
     // --- Deskflow / Barrier / Input Leap screen client ----------------------
     // The advertised width and height are the coordinate space the server
     // addresses this screen in, so they should match the target's real
@@ -135,6 +145,7 @@ private:
     char name_[kNameMax + 1]     = {};
     bool apAlways_ = false;
     bool scrollInvert_ = false;
+    bool sealed_ = false;
     bool justProvisioned_ = false;
     bool     dfEnabled_ = false;
     char     dfHost_[64]   = {};

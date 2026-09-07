@@ -71,22 +71,29 @@ bool buttonPressedRaw() {
 #endif
 }
 
-// A debounced button with short/long distinction. Long press fires once at the
-// hold threshold (while still held); short press fires on release if it never
-// became a long press. On a board with an LCD, short cycles pages and long is
-// the panic release; without an LCD any press is the panic release.
-enum class BtnEvent : uint8_t { None, Short, Long };
-constexpr uint32_t kBtnLongMs = 800;
+// A debounced button with short/long/very-long distinction. Long and very-long
+// each fire once at their threshold (while still held); short fires on release
+// if it never became a long press. On a board with an LCD, short cycles pages
+// and long is the panic release; without an LCD any press is the panic release.
+// Very-long (~5s) is the sealed-mode unseal gesture: it re-enables the serial
+// console on a sealed device (see loop()).
+enum class BtnEvent : uint8_t { None, Short, Long, VeryLong };
+constexpr uint32_t kBtnLongMs     = 800;
+constexpr uint32_t kBtnVeryLongMs = 5000;
 
 BtnEvent buttonEvent() {
 #if GHOSTHID_PIN_BUTTON >= 0
     static bool wasDown = false;
     static uint32_t downAt = 0;
     static bool longFired = false;
+    static bool veryLongFired = false;
     const bool down = buttonPressedRaw();
     const uint32_t now = millis();
-    if (down && !wasDown) { wasDown = true; downAt = now; longFired = false; }
-    else if (down && wasDown && !longFired && (now - downAt) >= kBtnLongMs) {
+    if (down && !wasDown) {
+        wasDown = true; downAt = now; longFired = false; veryLongFired = false;
+    } else if (down && wasDown && !veryLongFired && (now - downAt) >= kBtnVeryLongMs) {
+        veryLongFired = true; return BtnEvent::VeryLong;
+    } else if (down && wasDown && !longFired && (now - downAt) >= kBtnLongMs) {
         longFired = true; return BtnEvent::Long;
     } else if (!down && wasDown) {
         wasDown = false;
@@ -126,6 +133,19 @@ void setup() {
     // Settings must load before the radio comes up: they carry the SSID,
     // passphrases and token the network layer needs.
     config.begin();
+
+    // Sealed mode: enumerate HID-only. Drop the USB CDC (serial) interface so
+    // the whole serial command surface is off the bus - "not present" is less
+    // exposure than "present but refusing". With CDC_ON_BOOT the stack is already
+    // up with CDC by now, so this is a brief re-enumeration; Serial writes become
+    // no-ops afterwards (setTxTimeoutMs(0) above already made them non-blocking).
+    // A ~5s BOOT hold brings it back for unsealing (see loop()).
+    // NOTE: the exact enumeration behaviour of end() mid-boot needs on-hardware
+    // confirmation - tracked in the SealedMode issue.
+    if (config.sealed()) {
+        Serial.end();
+    }
+
     if (config.justProvisioned()) {
         Serial.println();
         Serial.println("=== First boot: generated per-device credentials ===");
@@ -177,6 +197,12 @@ void setup() {
         config.markDeskflowAttempt(false);
         Serial.printf("[boot] screen client %s\r\n",
                       deskflow.connected() ? "connected" : "not connected, carrying on");
+    } else if (config.sealed() && config.deskflowEnabled() && !config.deskflowTls()) {
+        // A sealed device refuses the plaintext screen-client path: it is an
+        // unauthenticated keystroke channel, which a locked-down deployment must
+        // not run. Encrypted (kvm_tls on) KVM is unaffected and handled above.
+        Serial.println("[boot] sealed: refusing plaintext screen client "
+                       "(turn kvm_tls on to use KVM while sealed)");
     } else {
         deskflow.begin();
     }
@@ -218,6 +244,8 @@ void serviceDisplay() {
     st.capsLock   = hid.capsLock();
     st.numLock    = hid.numLock();
     st.scrollLock = hid.scrollLock();
+    st.sealed     = config.sealed();
+    st.unsealArmed = console.unsealArmed();
     display.update(st);
 }
 #endif
@@ -255,6 +283,18 @@ void loop() {
     // pages and a long press is the panic release; without an LCD any press is
     // the panic release. The release path is never lost.
     switch (buttonEvent()) {
+        case BtnEvent::VeryLong:
+            // ~5s hold. On a SEALED device this is the physical factor for
+            // unsealing: bring the USB serial console back and arm the `unseal`
+            // command. (The long-press panic release already fired at 800ms, so
+            // input is released by now.) On an unsealed device it does nothing
+            // beyond that release.
+            if (config.sealed()) {
+                Serial.begin(115200);
+                Serial.setTxTimeoutMs(0);
+                console.armUnseal();
+            }
+            break;
         case BtnEvent::Short:
 #ifdef GHOSTHID_HAS_LCD
             display.nextPage();

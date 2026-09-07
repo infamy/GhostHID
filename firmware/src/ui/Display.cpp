@@ -69,6 +69,15 @@ void line(int16_t y, const char *label, const char *value, uint16_t vc, uint8_t 
     tft.print(value);
 }
 
+// One horizontally-centred line at the given text size (char cell is 6*size wide).
+void centerLine(int16_t y, const char *s, uint16_t col, uint8_t size) {
+    tft.setTextSize(size);
+    tft.setTextColor(col);
+    const int16_t w = (int16_t)strlen(s) * 6 * size;
+    tft.setCursor((SCR_W - w) / 2, y);
+    tft.print(s);
+}
+
 // The GhostHID mark: a rounded dome, scalloped "feet", two eyes - the favicon,
 // drawn with primitives so there's no bitmap to embed. (x,y) is the top-left.
 void drawGhost(int x, int y, int w, int h, uint16_t col, uint16_t bg) {
@@ -312,8 +321,31 @@ void Display::drawInfoPage(const DisplayStatus &s) {
     buttonHint("page");
 }
 
+// Shown whenever the device is sealed, in place of every normal page. The whole
+// point is to be unmistakable: a big word, a distinct colour, and the exact
+// steps to get back in (hold BOOT to re-enable serial, then unseal).
+void Display::drawSealedPage(const DisplayStatus &s) {
+    const uint16_t accent = s.unsealArmed ? C_GREEN : C_AMBER;
+
+    centerLine(14, "SEALED", accent, 5);
+    tft.drawFastHLine(MARGIN, 66, SCR_W - 2 * MARGIN, C_LINE);
+    centerLine(76, "HID only - no serial", C_GREY, 2);
+
+    if (s.unsealArmed) {
+        centerLine(106, "Serial re-enabled", C_GREEN, 2);
+        centerLine(128, "unlock <token>, then", C_WHITE, 2);
+        centerLine(150, "unseal", C_WHITE, 2);
+    } else {
+        centerLine(106, "Hold BOOT ~5s to", C_WHITE, 2);
+        centerLine(128, "re-enable serial,", C_WHITE, 2);
+        centerLine(150, "then unlock + unseal", C_GREY, 2);
+    }
+}
+
 void Display::render(const DisplayStatus &s) {
     tft.fillScreen(C_BG);
+    // Sealed overrides page cycling entirely - there is only one thing to show.
+    if (s.sealed) { drawSealedPage(s); return; }
     switch (page_) {
         case Page::Status: drawStatusPage(s); break;
         case Page::Qr:     drawQrPage(s);     break;
@@ -329,12 +361,18 @@ void Display::updateLed(const DisplayStatus &s) {
     // an active screen session (green with focus, cyan connected); then a web
     // controller (cyan); then idle (dim - blue on a network, magenta AP-only).
     uint32_t c;
+    // Sealed is the loudest state of all: steady amber when locked down, steady
+    // green once a BOOT hold has re-enabled serial for unsealing.
+    if (s.sealed) {
+        c = s.unsealArmed ? rgb.Color(0, 120, 0) : rgb.Color(120, 40, 0);
+    } else {
     const bool kvmConn = s.kvmState && strcmp(s.kvmState, "connected") == 0;
     if (!s.usbReady)              c = rgb.Color(120, 0, 0);
     else if (kvmConn)            c = rgb.Color(0, 120, s.kvmFocus ? 40 : 90);
     else if (s.clients > 0)      c = rgb.Color(0, 60, 90);
     else if (s.staIp && s.staIp[0]) c = rgb.Color(0, 10, 24);
     else                         c = rgb.Color(24, 0, 20);
+    }
 
     static uint32_t last = 0xFFFFFFFF;
     if (c != last) { last = c; rgb.setPixelColor(0, c); rgb.show(); }
@@ -386,11 +424,12 @@ void Display::update(const DisplayStatus &s) {
     drawAt = millis();
 
     char sig[224];
-    snprintf(sig, sizeof(sig), "%d|%s|%s|%s|%s|%d|%s|%d|%d|%s|%d%d%d|%u",
+    snprintf(sig, sizeof(sig), "%d|%s|%s|%s|%s|%d|%s|%d|%d|%s|%d%d%d|%d%d|%u",
              (int)page_, s.deviceName, s.apSsid, s.apIp, s.staIp,
              s.usbReady ? 1 : 0, s.kvmState, s.kvmFocus ? 1 : 0, s.clients,
              s.version,
              s.capsLock ? 1 : 0, s.numLock ? 1 : 0, s.scrollLock ? 1 : 0,
+             s.sealed ? 1 : 0, s.unsealArmed ? 1 : 0,
              page_ == Page::Info ? (unsigned)(s.uptimeSec / 30) : 0u);  // Info: refresh ~2x/min
     static char lastSig[224] = {0};
     if (!dirty_ && strcmp(sig, lastSig) == 0) return;
