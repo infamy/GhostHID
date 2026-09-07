@@ -1,132 +1,115 @@
-// Host unit tests for CommandProcessor — the safety-critical logic layer.
-// Runs on the dev machine (platform = native), no board, via `pio test -e native`.
-// HidDevice is a recording stub; Config/Keymap are the real code compiled against
-// a small shim layer. No shipped firmware code is modified to make this build.
-#include <unity.h>
-#include <Arduino.h>
-#include <string.h>
+// Host unit-test runner. Compiles the real CommandProcessor / Config / Keymap
+// on the dev machine (platform = native) against a shim layer + a recording HID
+// stub. No board, no shipped-code changes. Run with `make test`.
+#include "test_common.h"
 
-#include "protocol/CommandProcessor.h"
-#include "hid/HidDevice.h"
-#include "config/Config.h"
-#include "test_hooks.h"
-
-using namespace ghosthid;
-
-// Definition of the shim's test-controllable clock.
+// Shared state referenced by test_common.h helpers.
 uint32_t g_test_millis = 1000;
+char     g_buf[1200];
 
-static char buf[1200];
-
-static void send(CommandProcessor &p, uint32_t cid, const char *json) {
-    p.handleMessage(cid, json, strlen(json), buf, sizeof(buf));
+// Config keeps its NVS in a single file-scope Preferences, so it persists across
+// tests in one process. Clear it (and the recording HID) before every test for
+// isolation, and reset the shim clock.
+void setUp() {
+    hidhook::reset();
+    g_test_millis = 1000;
+    Config c; c.factoryReset();     // wipes the in-memory Preferences shim
 }
-static bool replied(const char *needle) { return strstr(buf, needle) != nullptr; }
-
-// Build a processor with a known token set. Objects are per-test (fresh auth
-// counters); the caller keeps them alive for the test body.
-#define SETUP_PROC()                              \
-    HidDevice hid;                                \
-    Config cfg;                                   \
-    cfg.begin();                                  \
-    cfg.setAuthToken("TESTTOKEN");                \
-    CommandProcessor p(hid, cfg)
-
-void setUp() { hidhook::reset(); g_test_millis = 1000; }
 void tearDown() {}
 
-// 1. Auth: a wrong token is refused, the right token is accepted.
-void test_auth_wrong_then_right() {
-    SETUP_PROC();
-    p.beginSession(1);
-    send(p, 1, "{\"type\":\"auth\",\"token\":\"WRONG\"}");
-    TEST_ASSERT_TRUE(replied("\"ok\":false"));
-    send(p, 1, "{\"type\":\"auth\",\"token\":\"TESTTOKEN\"}");
-    TEST_ASSERT_TRUE(replied("\"ok\":true"));
-}
-
-// 2. The auth gate: input before authenticating never reaches the HID layer.
-void test_unauthenticated_input_blocked() {
-    SETUP_PROC();
-    p.beginSession(1);
-    send(p, 1, "{\"type\":\"key\",\"key\":\"ENTER\",\"pressed\":true}");
-    TEST_ASSERT_TRUE(replied("unauthenticated"));
-    TEST_ASSERT_EQUAL_INT(0, hidhook::keyDownCalls);
-}
-
-// 3. Once authenticated, a key reaches the HID layer.
-void test_authenticated_key_reaches_hid() {
-    SETUP_PROC();
-    p.beginSession(1);
-    send(p, 1, "{\"type\":\"auth\",\"token\":\"TESTTOKEN\"}");
-    send(p, 1, "{\"type\":\"key\",\"key\":\"ENTER\",\"pressed\":true}");
-    TEST_ASSERT_EQUAL_INT(1, hidhook::keyDownCalls);
-    TEST_ASSERT_TRUE(hid.anythingHeld());
-}
-
-// 4. H8 regression: a controller that disconnects while holding a key must not
-//    leave it stuck — endSession releases held input.
-void test_h8_release_held_input_on_disconnect() {
-    SETUP_PROC();
-    p.beginSession(1);
-    send(p, 1, "{\"type\":\"auth\",\"token\":\"TESTTOKEN\"}");
-    send(p, 1, "{\"type\":\"key\",\"key\":\"ENTER\",\"pressed\":true}");
-    TEST_ASSERT_TRUE(hid.anythingHeld());
-    const int before = hidhook::releaseAllCalls;
-    p.endSession(1);
-    TEST_ASSERT_TRUE(hidhook::releaseAllCalls > before);
-    TEST_ASSERT_FALSE(hid.anythingHeld());
-}
-
-// 5. Multi-controller: auth is per client — one client's login must not
-//    authorise another.
-void test_per_client_auth_isolation() {
-    SETUP_PROC();
-    p.beginSession(1);
-    p.beginSession(2);
-    send(p, 1, "{\"type\":\"auth\",\"token\":\"TESTTOKEN\"}");   // client 1 in
-    send(p, 2, "{\"type\":\"key\",\"key\":\"ENTER\",\"pressed\":true}");  // client 2 not
-    TEST_ASSERT_TRUE(replied("unauthenticated"));
-    const int before = hidhook::keyDownCalls;
-    send(p, 1, "{\"type\":\"key\",\"key\":\"ENTER\",\"pressed\":true}");  // client 1 ok
-    TEST_ASSERT_TRUE(hidhook::keyDownCalls > before);
-}
-
-// 6. Rate-limit: 3 wrong tokens lock out even the correct token; the lockout is
-//    reported distinctly (locked); and it decays after a quiet period.
-void test_rate_limit_lockout_and_decay() {
-    SETUP_PROC();
-    p.beginSession(1);
-    for (int i = 0; i < 3; ++i) send(p, 1, "{\"type\":\"auth\",\"token\":\"WRONG\"}");
-    // Correct token now, but inside the cooldown -> refused as locked, not "bad token".
-    send(p, 1, "{\"type\":\"auth\",\"token\":\"TESTTOKEN\"}");
-    TEST_ASSERT_TRUE(replied("\"locked\":true"));
-    // Quiet for >2 min -> counters decay -> the correct token works again.
-    g_test_millis += 130000;
-    send(p, 1, "{\"type\":\"auth\",\"token\":\"TESTTOKEN\"}");
-    TEST_ASSERT_TRUE(replied("\"ok\":true"));
-}
-
-// 7. M4/M5: mouse_abs rejects non-finite coordinates instead of casting UB.
-void test_mouse_abs_rejects_non_finite() {
-    SETUP_PROC();
-    p.beginSession(1);
-    send(p, 1, "{\"type\":\"auth\",\"token\":\"TESTTOKEN\"}");
-    send(p, 1, "{\"type\":\"mouse_abs\",\"x\":1e400,\"y\":0.5}");   // 1e400 -> inf
-    TEST_ASSERT_TRUE(replied("finite"));
-    TEST_ASSERT_EQUAL_INT(0, hidhook::mouseAbsCalls);
-    send(p, 1, "{\"type\":\"mouse_abs\",\"x\":0.5,\"y\":0.5}");     // valid
-    TEST_ASSERT_EQUAL_INT(1, hidhook::mouseAbsCalls);
-}
+// --- CommandProcessor ---
+void test_auth_wrong_then_right();
+void test_auth_case_insensitive();
+void test_auth_ignores_spaces();
+void test_no_token_means_open();
+void test_unauthenticated_input_blocked();
+void test_per_client_auth_isolation();
+void test_rate_limit_lockout_and_decay();
+void test_lockout_requests_disconnect();
+void test_h8_release_held_input_on_disconnect();
+void test_disconnect_of_last_controller_releases();
+void test_key_down_then_up();
+void test_unknown_key_rejected();
+void test_text_types();
+void test_mouse_move();
+void test_mouse_button_press_release();
+void test_mouse_button_unknown_rejected();
+void test_mouse_wheel();
+void test_mouse_abs_rejects_non_finite();
+void test_mouse_abs_clamps_out_of_range();
+void test_media_key();
+void test_media_unknown_rejected();
+void test_system_key();
+void test_system_unknown_rejected();
+void test_usb_not_ready_blocks_input();
+void test_ota_lock_blocks_input();
+void test_bad_json_rejected();
+void test_ping_pong();
+void test_get_config_shape();
+void test_status_shape();
+void test_kvm_trust_cert_nothing_pending();
+void test_set_config_scroll_invert_is_live();
+void test_set_config_rejects_short_token();
+void test_response_too_large_is_wellformed();
+// --- Config ---
+void test_config_token_validation();
+void test_config_ap_password_validation();
+void test_config_device_name_validation();
+void test_config_screen_size_validation();
+void test_config_server_validation();
+void test_config_provisions_random_token();
+// --- Keymap ---
+void test_keymap_named_keys();
+void test_keymap_single_char_is_itself();
+void test_keymap_unknown_is_zero();
 
 int main() {
     UNITY_BEGIN();
+
     RUN_TEST(test_auth_wrong_then_right);
+    RUN_TEST(test_auth_case_insensitive);
+    RUN_TEST(test_auth_ignores_spaces);
+    RUN_TEST(test_no_token_means_open);
     RUN_TEST(test_unauthenticated_input_blocked);
-    RUN_TEST(test_authenticated_key_reaches_hid);
-    RUN_TEST(test_h8_release_held_input_on_disconnect);
     RUN_TEST(test_per_client_auth_isolation);
     RUN_TEST(test_rate_limit_lockout_and_decay);
+    RUN_TEST(test_lockout_requests_disconnect);
+    RUN_TEST(test_h8_release_held_input_on_disconnect);
+    RUN_TEST(test_disconnect_of_last_controller_releases);
+    RUN_TEST(test_key_down_then_up);
+    RUN_TEST(test_unknown_key_rejected);
+    RUN_TEST(test_text_types);
+    RUN_TEST(test_mouse_move);
+    RUN_TEST(test_mouse_button_press_release);
+    RUN_TEST(test_mouse_button_unknown_rejected);
+    RUN_TEST(test_mouse_wheel);
     RUN_TEST(test_mouse_abs_rejects_non_finite);
+    RUN_TEST(test_mouse_abs_clamps_out_of_range);
+    RUN_TEST(test_media_key);
+    RUN_TEST(test_media_unknown_rejected);
+    RUN_TEST(test_system_key);
+    RUN_TEST(test_system_unknown_rejected);
+    RUN_TEST(test_usb_not_ready_blocks_input);
+    RUN_TEST(test_ota_lock_blocks_input);
+    RUN_TEST(test_bad_json_rejected);
+    RUN_TEST(test_ping_pong);
+    RUN_TEST(test_get_config_shape);
+    RUN_TEST(test_status_shape);
+    RUN_TEST(test_kvm_trust_cert_nothing_pending);
+    RUN_TEST(test_set_config_scroll_invert_is_live);
+    RUN_TEST(test_set_config_rejects_short_token);
+    RUN_TEST(test_response_too_large_is_wellformed);
+
+    RUN_TEST(test_config_token_validation);
+    RUN_TEST(test_config_ap_password_validation);
+    RUN_TEST(test_config_device_name_validation);
+    RUN_TEST(test_config_screen_size_validation);
+    RUN_TEST(test_config_server_validation);
+    RUN_TEST(test_config_provisions_random_token);
+
+    RUN_TEST(test_keymap_named_keys);
+    RUN_TEST(test_keymap_single_char_is_itself);
+    RUN_TEST(test_keymap_unknown_is_zero);
+
     return UNITY_END();
 }
