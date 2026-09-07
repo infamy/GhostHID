@@ -104,6 +104,12 @@ public:
     // the two together are what crashed a device mid-use.
     void suspend();
 
+#ifdef GHOSTHID_NATIVE_TEST
+    // Host-test only (never compiled into device firmware): feed one raw protocol
+    // message straight to the interpreter so dispatch() can be unit-tested.
+    void test_dispatch(const uint8_t *m, size_t len) { dispatch(m, len); }
+#endif
+
 private:
     enum class State : uint8_t { Idle, Connecting, Handshaking, Active };
 

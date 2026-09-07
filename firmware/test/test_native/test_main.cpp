@@ -78,6 +78,17 @@ void test_keyid_special_keys();
 void test_keyid_unmapped_is_zero();
 void test_keyid_high_bit_fallback();
 void test_keyid_fuzz_full_range();
+// --- DeskflowClient::dispatch ---
+void test_dispatch_key_down_up();
+void test_dispatch_unknown_keyid_ignored();
+void test_dispatch_short_key_msg_ignored();
+void test_dispatch_mouse_button();
+void test_dispatch_mouse_button_invalid();
+void test_dispatch_moves_counted();
+void test_dispatch_wheel();
+void test_dispatch_focus_enter_leave_releases();
+void test_dispatch_unknown_code_counted();
+void test_dispatch_fuzz_no_crash();
 
 int main() {
     UNITY_BEGIN();
@@ -142,6 +153,17 @@ int main() {
     RUN_TEST(test_keyid_unmapped_is_zero);
     RUN_TEST(test_keyid_high_bit_fallback);
     RUN_TEST(test_keyid_fuzz_full_range);
+
+    RUN_TEST(test_dispatch_key_down_up);
+    RUN_TEST(test_dispatch_unknown_keyid_ignored);
+    RUN_TEST(test_dispatch_short_key_msg_ignored);
+    RUN_TEST(test_dispatch_mouse_button);
+    RUN_TEST(test_dispatch_mouse_button_invalid);
+    RUN_TEST(test_dispatch_moves_counted);
+    RUN_TEST(test_dispatch_wheel);
+    RUN_TEST(test_dispatch_focus_enter_leave_releases);
+    RUN_TEST(test_dispatch_unknown_code_counted);
+    RUN_TEST(test_dispatch_fuzz_no_crash);
 
     return UNITY_END();
 }
