@@ -1,8 +1,9 @@
-// The one definition of the sealed-mode USB CDC console object. See usb_serial.h.
+// The one definition of the sealed-mode serial facade. See usb_serial.h.
 //
 // Not part of the native test build (excluded by that env's build_src_filter).
-// itf 0 matches the single-CDC layout arduino-esp32 uses; begun conditionally in
-// main()'s setup() (unsealed boots) or by the BOOT-hold unseal gesture.
-#include <USBCDC.h>
+// The underlying USBCDC is created lazily by begin(); constructing it is what
+// adds the CDC interface to the USB descriptor, so a sealed boot - which never
+// calls begin() - stays HID-only.
+#include "usb_serial.h"
 
-USBCDC UsbSerial(0);
+SealAwareSerial UsbSerial;
