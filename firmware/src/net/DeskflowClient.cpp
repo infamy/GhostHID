@@ -109,7 +109,18 @@ bool DeskflowClient::readMessage(uint8_t *buf, size_t cap, size_t &outLen) {
     if (!readExactly(hdr, 4, 500)) { disconnect("truncated length"); return false; }
     const uint32_t len = rd32(hdr);
 
-    if (len == 0 || len > 64 * 1024) { disconnect("implausible message length"); return false; }
+    if (len == 0) { disconnect("zero-length message"); return false; }
+
+    // Sanity ceiling. We PARSE only small messages (<= cap); anything larger is a
+    // clipboard transfer we drain and discard, so the ceiling only needs to guard
+    // against a desynced/garbage length - it must NOT be so low that a real
+    // clipboard trips it. The server sends the WHOLE clipboard to this screen on
+    // every focus-enter, and an image or a large text selection on the source
+    // machine is easily megabytes; a 64KB cap here dropped the link on every such
+    // copy, and since the server resends on reconnect it looped until the
+    // clipboard changed to something small. Drain up to a few MB instead.
+    constexpr uint32_t kMaxDrain = 4u * 1024 * 1024;
+    if (len > kMaxDrain) { disconnect("implausible message length"); return false; }
 
     if (len > cap) {
         // Almost certainly a clipboard transfer. We have no clipboard to offer,
