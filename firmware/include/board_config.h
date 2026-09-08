@@ -19,7 +19,7 @@
 // ---------------------------------------------------------------------------
 
 #ifndef GHOSTHID_VERSION
-#define GHOSTHID_VERSION "0.8.1"
+#define GHOSTHID_VERSION "0.8.2"
 #endif
 
 // How the target computer sees us in its USB device list.

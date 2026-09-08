@@ -26,7 +26,17 @@ namespace ghosthid {
 namespace {
 
 constexpr int16_t kProtocolMajor = 1;
-constexpr int16_t kProtocolMinor = 8;
+// We deliberately announce protocol 1.5, not the latest (1.8). The server builds
+// a per-client proxy from the version we advertise, and clipboard sending was
+// introduced in the 1.6 proxy - ClientProxy1_6::setClipboard is the only one that
+// puts a DCLP on the wire; every proxy <=1.5 has setClipboard as a no-op. So a 1.5
+// client is NEVER sent a clipboard, by the server's own version negotiation, with
+// no server config. GhostHID has no clipboard to paste, and this dodges the whole
+// multi-MB-clipboard failure mode (a mid-transfer drop wedges the server). Nothing
+// we use is lost: input still arrives (the server falls back to DKDN key-downs,
+// which dispatch() already handles, plus DMRM/DMWM/DMMV, all <=1.5). We echo back
+// min(serverMinor, this) so an older server is never over-advertised to.
+constexpr int16_t kProtocolMinor = 5;
 constexpr size_t  kMaxMessage    = 512;   // input messages are tiny; clipboard is ignored
 
 inline void wr16(uint8_t *p, int16_t v) { p[0] = (uint8_t)(v >> 8); p[1] = (uint8_t)v; }
@@ -124,18 +134,59 @@ bool DeskflowClient::readMessage(uint8_t *buf, size_t cap, size_t &outLen) {
 
     if (len > cap) {
         // Almost certainly a clipboard transfer. We have no clipboard to offer,
-        // so drain it rather than dropping the connection over it. Drain into the
-        // caller's full buffer, not a 64-byte sink: Barrier resends the whole
-        // clipboard every time focus enters this screen, and draining tens of KB
-        // 64 bytes at a time blocked this task long enough (tens of ms) that
-        // incoming data piled up in lwIP and the largest heap block collapsed,
-        // killing the session. cap (512) bytes per read is 8x fewer iterations
-        // and reuses memory already on the stack.
+        // so drain it rather than dropping the connection over it. The server
+        // resends the WHOLE clipboard on every focus-enter, and it can be several
+        // MB (an image on the source machine), so this must survive a large, slow
+        // transfer without giving up.
+        //
+        // Drain with an INACTIVITY deadline, not a fixed per-chunk one: a multi-MB
+        // TLS transfer over Wi-Fi routinely stalls for a second or two mid-stream,
+        // and a fixed 2s-per-chunk cap turned that into a disconnect -> reconnect
+        // -> the server resends -> loop, until the clipboard shrank. Here we only
+        // give up after a sustained silence, and reset the timer on any progress.
+        // Read into a dedicated 4KB sink, not the 512B message buffer: bigger
+        // reads mean ~8x fewer mbedtls_ssl_read() calls, which is most of the
+        // cost, so a multi-MB clipboard drains in a fraction of the time and the
+        // pointer/keys queued behind it (this is one message on a single stream)
+        // resume sooner. Static because only the KVM task ever drains, and it
+        // keeps this large buffer off the task's small stack. Only a TCP window
+        // plus a TLS record is ever in flight, so the heap is never at risk.
+        // 16KB sink ~= a full TLS record, so mbedtls hands us the most it can per
+        // call and we make the fewest calls (per-call overhead is a big part of the
+        // cost after the crypto itself). Static: only the KVM task drains, and this
+        // keeps a large buffer off its small stack.
+        static uint8_t sink[16384];
         uint32_t left = len;
+        uint32_t lastData = millis();
+        unsigned sinceYield = 0;
         while (left > 0) {
-            const size_t chunk = left < cap ? left : cap;
-            if (!readExactly(buf, chunk, 2000)) { disconnect("drain failed"); return false; }
-            left -= chunk;
+            if (!sock_->connected()) { disconnect("drain: link lost"); return false; }
+            // NOTE: never write (e.g. a keep-alive) from inside this loop. The
+            // arduino TLS write() closes the whole socket on any stalled write,
+            // and under this read pressure that closes mid-TLS-record, which the
+            // server sees as a protocol error and wedges its session. Keep-alives
+            // during a big clipboard are sent at a message boundary in
+            // serviceOnce() instead. Each wire frame is <=512KB (the server chunks
+            // clipboards), so this only blocks ~a chunk, and serviceOnce() drains
+            // one oversized frame per pass so it can keep-alive between chunks.
+            const size_t want = left < sizeof(sink) ? left : sizeof(sink);
+            const int n = sock_->read(sink, want);
+            if (n > 0) {
+                left -= (uint32_t)n;
+                lastData = millis();
+                lastTrafficMs_ = millis();   // this IS traffic; don't trip the silence watchdog
+                // CRITICAL: yield during a *continuous* stream. A multi-MB clipboard
+                // arrives fast enough that this loop never hits the no-data branch,
+                // and mbedtls decrypt is CPU-bound - so without this the KVM task
+                // (pinned to core 1) starves that core's idle task and the Task
+                // Watchdog reboots the device mid-drain (~5s), which the server sees
+                // as the client dying, then resends on reconnect -> crash loop.
+                // Yield every ~64KB: ample watchdog headroom, immeasurable on speed.
+                if (++sinceYield >= 4) { sinceYield = 0; delay(1); }
+                continue;
+            }
+            if (millis() - lastData > 10000) { disconnect("drain stalled"); return false; }
+            delay(1);   // yield while waiting for more data
         }
         outLen = 0;
         return true;
@@ -147,10 +198,17 @@ bool DeskflowClient::readMessage(uint8_t *buf, size_t cap, size_t &outLen) {
 }
 
 void DeskflowClient::sendMessage(const uint8_t *payload, size_t len) {
-    uint8_t hdr[4];
-    wr32(hdr, (uint32_t)len);
-    sock_->write(hdr, 4);
-    sock_->write(payload, len);
+    // ONE write, not two. Previously this wrote the 4-byte length then the body
+    // as separate write() calls; if the first succeeded and the second stalled or
+    // tore the socket down, the server was left holding a length prefix with no
+    // body - a framing desync it reports as "protocol error from client" and that
+    // can wedge its session until restarted. Frame it and write it atomically.
+    // All outbound messages are tiny (the hello reply, ~79 bytes, is the largest).
+    uint8_t frame[4 + 96];
+    if (len > sizeof(frame) - 4) return;   // never emit an oversized frame
+    wr32(frame, (uint32_t)len);
+    memcpy(frame + 4, payload, len);
+    sock_->write(frame, 4 + len);
     sock_->flush();
 }
 
@@ -191,9 +249,12 @@ void DeskflowClient::handshake(const uint8_t *msg, size_t len) {
     const size_t nameLen = strlen(screen);
     uint8_t out[7 + 2 + 2 + 4 + 64];
     size_t o = 0;
+    // Echo back min(server's minor, ours): never advertise a version higher than
+    // the server offered, but cap at 1.5 so clipboard is never pushed to us.
+    const int16_t replyMinor = (minor < kProtocolMinor) ? minor : kProtocolMinor;
     memcpy(out + o, serverName_, 7); o += 7;
     wr16(out + o, kProtocolMajor);   o += 2;
-    wr16(out + o, kProtocolMinor);   o += 2;
+    wr16(out + o, replyMinor);       o += 2;
     wr32(out + o, (uint32_t)nameLen); o += 4;      // %s is a length-prefixed string
     memcpy(out + o, screen, nameLen); o += nameLen;
     sendMessage(out, o);
@@ -355,7 +416,18 @@ void DeskflowClient::disconnect(const char *why) {
     // Free the session's private copy of the CA PEM now the socket is gone.
     free(caCopy_);
     caCopy_ = nullptr;
+
+    // Anti-wedge backoff. If we drop while Active - especially mid-clipboard,
+    // when the server may still be sending us a multi-MB DCLP - reconnecting as
+    // the same screen name within the server's ~9s keep-alive flatline finds the
+    // old session still half-registered, and the server rejects the reconnect
+    // ("protocol error from client <unknown>") until it is manually restarted.
+    // Backing off past that window lets the server fully tear the stale session
+    // down first. Intentional paths (reconnect/suspend/trust) override this after
+    // the call, so a user-driven change still reconnects promptly.
+    const bool wasActive = (state_ == State::Active);
     state_ = State::Idle;
+    if (wasActive) backoffMs_ = 12000;
     lastAttemptMs_ = millis();
 }
 
@@ -571,7 +643,12 @@ void DeskflowClient::serviceOnce() {
     int guard = 256;
     while (guard-- > 0 && sock_->available() >= 4) {
         if (!readMessage(buf, sizeof(buf), len)) return;
-        if (len == 0) continue;                     // drained an oversized message
+        // Drained an oversized frame (a clipboard chunk). Stop batching and return
+        // so the rest of serviceOnce() runs between chunks - flushPointer(), and
+        // crucially the normal pump on the NEXT pass, which is the only safe point
+        // to echo a keep-alive the server interleaves between chunks. Never write
+        // from inside a drain; do it here at a whole-message boundary.
+        if (len == 0) break;
         if (state_ == State::Handshaking) handshake(buf, len);
         else                              dispatch(buf, len);
     }

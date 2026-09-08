@@ -26,6 +26,7 @@ void DeskflowClient::dispatch(const uint8_t *m, size_t len) {
     if (is(m, len, "CROP")) { return; }
     if (is(m, len, "DSOP")) { return; }                     // options: nothing to set
     if (is(m, len, "DCLP")) { return; }                     // no clipboard on a HID device
+    if (is(m, len, "CCLP")) { return; }                     // clipboard-grab notice: ignore
     if (is(m, len, "CSEC")) { return; }                     // screensaver
     if (is(m, len, "LSYN")) { return; }                     // language sync (1.8+)
 
