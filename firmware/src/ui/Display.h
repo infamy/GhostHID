@@ -31,6 +31,8 @@ struct DisplayStatus {
     bool        capsLock    = false;    // host lock-LED state (feedback from target)
     bool        numLock     = false;
     bool        scrollLock  = false;
+    bool        sealed      = false;    // sealed mode active - overrides every page
+    bool        unsealArmed = false;    // BOOT held: serial re-enabled for unsealing
 };
 
 class Display {
@@ -61,6 +63,7 @@ private:
     void drawQrPage(const DisplayStatus &s);
     void drawTokenPage(const DisplayStatus &s);
     void drawInfoPage(const DisplayStatus &s);
+    void drawSealedPage(const DisplayStatus &s);  // shown whenever s.sealed
     int  drawQr(int x, int y, int scale, const char *text);  // returns pixel side, 0 on fail
     void updateLed(const DisplayStatus &s);
 };

@@ -277,6 +277,7 @@ CommandResult CommandProcessor::handleMessage(uint32_t clientId, const char *jso
         out["type"]         = "status";
         out["version"]      = GHOSTHID_VERSION;
         out["usb"]          = hid_.ready();
+        out["sealed"]       = config_.sealed();
         out["held"]         = static_cast<unsigned>(hid_.heldKeyCount());
         out["heap_free"]    = (unsigned)ESP.getFreeHeap();
         out["heap_largest"] = (unsigned)ESP.getMaxAllocHeap();
@@ -488,6 +489,7 @@ CommandResult CommandProcessor::handleMessage(uint32_t clientId, const char *jso
         out["token_set"]      = config_.authToken()[0] != '\0';
         out["name"]           = config_.deviceName();
         out["ap_always"]      = config_.apAlways();
+        out["sealed"]         = config_.sealed();
         out["reboot_pending"] = config_.rebootPending();
         out["kvm_on"]         = config_.deskflowEnabled();
         out["kvm_host"]       = config_.deskflowHost();
@@ -517,6 +519,13 @@ CommandResult CommandProcessor::handleMessage(uint32_t clientId, const char *jso
     // security-sensitive change, so it rides the same authenticated session as
     // set_config; the fingerprint the user is confirming came from get_config.
     if (strcmp(type, "kvm_trust_cert") == 0) {
+        // Pinning a certificate is a trust change; a sealed device refuses it over
+        // the network for the same reason it refuses set_config.
+        if (config_.sealed()) {
+            reply(outResponse, outSize,
+                  "{\"type\":\"error\",\"error\":\"device is sealed - configuration is locked\",\"sealed\":true}");
+            return CommandResult::BadRequest;
+        }
         if (deskflow_ == nullptr || !deskflow_->certTrustPending()) {
             reply(outResponse, outSize,
                   "{\"type\":\"error\",\"error\":\"no certificate is awaiting confirmation\"}");
@@ -528,6 +537,13 @@ CommandResult CommandProcessor::handleMessage(uint32_t clientId, const char *jso
     }
 
     if (strcmp(type, "set_config") == 0) {
+        // Sealed devices are read-only over the network: reconfiguration requires
+        // physically re-enabling the serial console (BOOT hold) and unsealing.
+        if (config_.sealed()) {
+            reply(outResponse, outSize,
+                  "{\"type\":\"error\",\"error\":\"device is sealed - configuration is locked\",\"sealed\":true}");
+            return CommandResult::BadRequest;
+        }
         const char *err = nullptr;
 
         if (doc["sta_ssid"].is<const char *>()) {

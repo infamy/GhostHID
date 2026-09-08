@@ -113,6 +113,20 @@ section{padding:clamp(56px,9vw,104px) 0;position:relative}
 .card .n{font-family:var(--mono);font-size:12px;color:var(--cyan);font-weight:700}
 .card h3{font-size:20px;margin:14px 0 8px}
 .card p{color:var(--dim);font-size:14.5px;margin:0;line-height:1.6}
+.feature{background:linear-gradient(135deg,var(--cyan-deep),var(--panel));
+  border:1px solid #17505c;border-radius:14px;padding:clamp(22px,3.4vw,34px);
+  margin-bottom:16px;display:grid;grid-template-columns:1.15fr 1fr;
+  gap:clamp(20px,3vw,44px);align-items:center}
+.feature .eyebrow{color:var(--cyan)}
+.feature h3{font-family:var(--disp);font-size:clamp(23px,3.3vw,31px);
+  margin:10px 0 12px;line-height:1.12}
+.feature .lead p{color:var(--fg);opacity:.85;font-size:15.5px;line-height:1.65;margin:0}
+.feature ul{list-style:none;margin:0;padding:0;display:grid;gap:13px}
+.feature li{font-family:var(--mono);font-size:13.5px;color:var(--dim);
+  padding-left:22px;position:relative;line-height:1.55}
+.feature li b{color:var(--fg);font-weight:700}
+.feature li::before{content:"■";color:var(--cyan);position:absolute;left:0;top:1px;font-size:11px}
+@media(max-width:760px){.feature{grid-template-columns:1fr;gap:20px}}
 .more{margin-top:18px;font-family:var(--mono);font-size:13.5px;color:var(--dim);
   border:1px dashed var(--line);border-radius:10px;padding:14px 18px}
 .more b{color:var(--fg);font-weight:400}
@@ -273,6 +287,18 @@ footer a{color:var(--dim)}
       <h2>Secure by design.</h2>
       <p>It types into any computer, so it's built like something you'd trust with the keys. Every line here is something you can check in the source.</p>
     </div>
+    <div class="feature">
+      <div class="lead">
+        <span class="eyebrow">Flagship</span>
+        <h3>Sealed mode: lock it down, leave it in place.</h3>
+        <p>For a device you deploy and walk away from. One command locks it, and the pairing token stops being a master key — undoing it takes physical hands on the board, not just the token or the network.</p>
+      </div>
+      <ul>
+        <li><b>Off the bus.</b> Sealed, it enumerates as a keyboard only — the serial console isn't even there to probe.</li>
+        <li><b>Read-only over the wire.</b> No config changes, no firmware updates, no plaintext screen sessions.</li>
+        <li><b>Physical to undo.</b> Hold BOOT on the device to bring the console back, then your token. Two factors, both at the board.</li>
+      </ul>
+    </div>
     <div class="grid">
       <div class="card"><div class="n">✓</div><h3>Encrypted both ways</h3><p>Screen sessions run over mutual TLS. The server's certificate is captured and confirmed on first connect — no keys to paste, and no silent plaintext fallback.</p></div>
       <div class="card"><div class="n">✓</div><h3>No shared default</h3><p>Every board generates its own random pairing token and access-point password on first boot. There's nothing to look up and reuse across devices.</p></div>
@@ -293,7 +319,7 @@ footer a{color:var(--dim)}
       <ul>
         <li><b>Plugs in directly.</b> Integrated USB-A plug — no cable, no dongle.</li>
         <li><b>Dual-core headroom.</b> The screen session and the web server never fight for the radio.</li>
-        <li><b>Printable case.</b> OpenSCAD + STL + a ready-to-slice 3MF, exact-fit to the board's drawing.</li>
+        <li><b>Printable case.</b> OpenSCAD + STL + a ready-to-slice 3MF, measured off the board's STEP model — with a proper BOOT button.</li>
         <li><b>Yours to change.</b> MIT-licensed firmware, web UI and hardware, all in one repo.</li>
       </ul>
     </div>
