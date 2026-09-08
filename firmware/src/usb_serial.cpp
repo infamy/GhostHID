@@ -2,13 +2,17 @@
 // usb_serial.h for the TinyUSB constraint that forces this to happen here, at
 // static-init time, rather than in setup().
 //
-// Two hardware findings shaped this:
-//   - A CDC interface can only be added before USB.begin()/tinyusb_init().
-//   - It must be added before the HID globals reserve their endpoints, or CDC's
-//     endpoint reservation fails - so this runs at a high init_priority, ahead of
-//     the default-priority USBHID objects, and NVS is initialised explicitly
-//     because it is not yet up this early (a plain Preferences read fails and
-//     would fall open to "serial present").
+// The one real constraint (confirmed against arduino-esp32 3.3.x + ESP-IDF 5.5):
+// a USB interface can only be added BEFORE USB.begin()/tinyusb_init()
+// (tinyusb_enable_interface() silently fails once USB has started). Constructing
+// the USBCDC at static init satisfies that. Endpoint numbers are fixed and
+// disjoint (HID keyboard = EP1 in/out; CDC = EP3 out, EP4/EP5 in), so order
+// relative to the HID globals does NOT matter - the init_priority below only
+// orders UsbSerial before EarlyCdc, which attaches to it.
+//
+// NVS is initialised explicitly here because at static-init time the core has not
+// done so yet: a plain Preferences read returns the default and would fall open to
+// "serial present" on a sealed device.
 //
 // Not part of the native test build (excluded by that env's build_src_filter).
 #include "usb_serial.h"
@@ -49,6 +53,6 @@ struct EarlyCdc {
     }
 };
 
-EarlyCdc g_earlyCdc __attribute__((init_priority(102)));   // after UsbSerial(101), before HID
+EarlyCdc g_earlyCdc __attribute__((init_priority(102)));   // after UsbSerial(101)
 
 }  // namespace

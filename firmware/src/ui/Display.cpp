@@ -325,36 +325,32 @@ void Display::drawInfoPage(const DisplayStatus &s) {
 // point is to be unmistakable: a big word, a distinct colour, and the exact
 // steps to get back in (hold BOOT to re-enable serial, then unseal).
 void Display::drawSealedPage(const DisplayStatus &s) {
-    const uint16_t accent = s.unsealArmed ? C_GREEN : C_AMBER;
-
-    // The brand mark up top, tinted to the state colour, so a sealed device is
-    // still recognisably a GhostHID at a glance.
-    const int gw = 38, gh = 42;
-    drawGhost((SCR_W - gw) / 2, 6, gw, gh, accent, C_BG);
-
-    centerLine(52, "SEALED", accent, 3);
-    tft.drawFastHLine(MARGIN, 80, SCR_W - 2 * MARGIN, C_LINE);
-
+    // Text cell height is 8*size px; each region below is spaced so [y, y+8*size]
+    // ranges never overlap on the 172px-tall panel. The two states get distinct
+    // layouts so the armed screen's token has room and never collides with the
+    // heading.
     if (s.unsealArmed) {
-        // Serial is back and the token is needed to unseal, so show it (physical
-        // access was already proven by the BOOT hold). Format 8-char tokens as
-        // two 4-blocks, matching how the Token page shows them.
-        centerLine(88, "Serial on - to unseal:", C_GREEN, 1);
+        // Armed (green): serial is back, waiting for the token. Small ghost, a
+        // short heading, then the token big and clear, then the two steps.
+        const int gw = 30, gh = 32;
+        drawGhost((SCR_W - gw) / 2, 4, gw, gh, C_GREEN, C_BG);   // 4..~41
+        centerLine(46, "UNSEAL", C_GREEN, 3);                    // 46..70
+        tft.drawFastHLine(MARGIN, 78, SCR_W - 2 * MARGIN, C_LINE);
+        centerLine(88, "enter this token:", C_GREY, 1);          // 88..96
         char tok[24] = {};
         const char *t = s.token ? s.token : "";
-        if (strlen(t) == 8) {
-            snprintf(tok, sizeof(tok), "%.4s %.4s", t, t + 4);
-        } else {
-            snprintf(tok, sizeof(tok), "%s", t);
-        }
-        centerLine(102, "unlock", C_GREY, 2);
-        centerLine(124, tok[0] ? tok : "(no token)", C_CYAN, 3);
-        centerLine(154, "then type: unseal", C_GREY, 2);
+        if (strlen(t) == 8) snprintf(tok, sizeof(tok), "%.4s %.4s", t, t + 4);
+        else                snprintf(tok, sizeof(tok), "%s", t);
+        centerLine(108, tok[0] ? tok : "(no token)", C_CYAN, 3); // 108..132
+        centerLine(152, "unlock <token>, unseal", C_GREY, 1);    // 152..160
     } else {
-        centerLine(90, "HID only - no serial", C_GREY, 2);
-        centerLine(114, "Hold BOOT ~5s to", C_WHITE, 2);
-        centerLine(135, "re-enable serial,", C_WHITE, 2);
-        centerLine(156, "then unlock + unseal", C_GREY, 2);
+        // Sealed (amber): the lockdown state and how to begin unsealing.
+        const int gw = 38, gh = 42;
+        drawGhost((SCR_W - gw) / 2, 6, gw, gh, C_AMBER, C_BG);   // 6..~55
+        centerLine(62, "SEALED", C_AMBER, 3);                    // 62..86
+        tft.drawFastHLine(MARGIN, 94, SCR_W - 2 * MARGIN, C_LINE);
+        centerLine(104, "HID only - no serial", C_GREY, 2);      // 104..120
+        centerLine(132, "Hold BOOT 5s to unseal", C_WHITE, 2);   // 132..148
     }
 }
 

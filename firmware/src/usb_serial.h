@@ -26,7 +26,11 @@
 #include <Arduino.h>     // defines `Serial` (= UART0 when CDC_ON_BOOT=0); pulled first
 #include <USBCDC.h>
 
-class SealAwareSerial : public Print {
+// Derives from Stream (not just Print) so `&UsbSerial` is usable anywhere a
+// `Stream*` is expected - the force-include remaps `Serial` across libraries too
+// (e.g. Adafruit BusIO's debug Stream default), which would not compile against a
+// Print-only facade.
+class SealAwareSerial : public Stream {
 public:
     // Called once at static init (see usb_serial.cpp) when a CDC should exist this
     // boot. Constructing the USBCDC is what registers the interface, so this is the
@@ -37,9 +41,10 @@ public:
     void begin(unsigned long baud = 0) { if (cdc_) cdc_->begin(baud); }
     void end()                       { if (cdc_) cdc_->end(); }
     void setTxTimeoutMs(uint32_t t)  { if (cdc_) cdc_->setTxTimeoutMs(t); }
-    int  available()                 { return cdc_ ? cdc_->available() : 0; }
-    int  read()                      { return cdc_ ? cdc_->read() : -1; }
-    void flush()                     { if (cdc_) cdc_->flush(); }
+    int  available() override        { return cdc_ ? cdc_->available() : 0; }
+    int  read() override             { return cdc_ ? cdc_->read() : -1; }
+    int  peek() override             { return cdc_ ? cdc_->peek() : -1; }
+    void flush() override            { if (cdc_) cdc_->flush(); }
     size_t write(uint8_t b) override { return cdc_ ? cdc_->write(b) : 0; }
     size_t write(const uint8_t *buf, size_t n) override {
         return cdc_ ? cdc_->write(buf, n) : 0;
