@@ -11,6 +11,7 @@
 // Network never touches HID; HidDevice never learns where a command came from.
 
 #include <Arduino.h>
+#include <Preferences.h>
 
 #include "board_config.h"
 #include "config/Config.h"
@@ -116,16 +117,32 @@ uint32_t g_heapAfterBoot = 0, g_heapAfterWifi = 0, g_heapAfterServer = 0;
 bool g_bootComplete = false;
 
 void setup() {
-    Serial.begin(115200);
-    // Never let the USB-CDC console block the firmware. arduino-esp32's USBCDC
-    // blocks Serial.write() when a host has the port open but is not draining it
-    // fast enough - e.g. a serial monitor over a slow (SSH) link. A blocked
-    // write stalls whatever task is logging; during a screen-client reconnect
-    // that is the Deskflow task, which then misses keep-alives and is dropped by
-    // the server, which triggers another reconnect and more logging - a
-    // self-sustaining stall loop. Timeout 0 makes the console drop output rather
-    // than ever block on it, so attaching a monitor can never wedge the device.
-    Serial.setTxTimeoutMs(0);
+    // Sealed mode: bring the USB serial console up ONLY when unsealed, and do it
+    // before USB.begin() (in hid.begin) finalises the descriptor - so a sealed
+    // device enumerates HID-only, with no CDC interface on the bus at all. The
+    // seal flag is read straight from NVS here because this decision precedes
+    // config.begin(). CDC_ON_BOOT=0 (see platformio.ini) is what makes this ours
+    // to control; `Serial` is remapped to our CDC object by usb_serial.h.
+    bool sealedBoot = false;
+    {
+        Preferences seal;
+        if (seal.begin("ghosthid", /*readOnly=*/true)) {
+            sealedBoot = seal.getBool("sealed", false);
+            seal.end();
+        }
+    }
+    if (!sealedBoot) {
+        Serial.begin(115200);
+        // Never let the USB-CDC console block the firmware. arduino-esp32's USBCDC
+        // blocks Serial.write() when a host has the port open but is not draining
+        // it fast enough - e.g. a serial monitor over a slow (SSH) link. A blocked
+        // write stalls whatever task is logging; during a screen-client reconnect
+        // that is the Deskflow task, which then misses keep-alives and is dropped
+        // by the server, which triggers another reconnect and more logging - a
+        // self-sustaining stall loop. Timeout 0 makes the console drop output
+        // rather than block on it, so a monitor can never wedge the device.
+        Serial.setTxTimeoutMs(0);
+    }
     g_heapAfterBoot = ESP.getMaxAllocHeap();
     ledBegin();
     buttonBegin();
@@ -133,18 +150,6 @@ void setup() {
     // Settings must load before the radio comes up: they carry the SSID,
     // passphrases and token the network layer needs.
     config.begin();
-
-    // Sealed mode: enumerate HID-only. Drop the USB CDC (serial) interface so
-    // the whole serial command surface is off the bus - "not present" is less
-    // exposure than "present but refusing". With CDC_ON_BOOT the stack is already
-    // up with CDC by now, so this is a brief re-enumeration; Serial writes become
-    // no-ops afterwards (setTxTimeoutMs(0) above already made them non-blocking).
-    // A ~5s BOOT hold brings it back for unsealing (see loop()).
-    // NOTE: the exact enumeration behaviour of end() mid-boot needs on-hardware
-    // confirmation - tracked in the SealedMode issue.
-    if (config.sealed()) {
-        Serial.end();
-    }
 
     if (config.justProvisioned()) {
         Serial.println();

@@ -327,18 +327,34 @@ void Display::drawInfoPage(const DisplayStatus &s) {
 void Display::drawSealedPage(const DisplayStatus &s) {
     const uint16_t accent = s.unsealArmed ? C_GREEN : C_AMBER;
 
-    centerLine(14, "SEALED", accent, 5);
-    tft.drawFastHLine(MARGIN, 66, SCR_W - 2 * MARGIN, C_LINE);
-    centerLine(76, "HID only - no serial", C_GREY, 2);
+    // The brand mark up top, tinted to the state colour, so a sealed device is
+    // still recognisably a GhostHID at a glance.
+    const int gw = 38, gh = 42;
+    drawGhost((SCR_W - gw) / 2, 6, gw, gh, accent, C_BG);
+
+    centerLine(52, "SEALED", accent, 3);
+    tft.drawFastHLine(MARGIN, 80, SCR_W - 2 * MARGIN, C_LINE);
 
     if (s.unsealArmed) {
-        centerLine(106, "Serial re-enabled", C_GREEN, 2);
-        centerLine(128, "unlock <token>, then", C_WHITE, 2);
-        centerLine(150, "unseal", C_WHITE, 2);
+        // Serial is back and the token is needed to unseal, so show it (physical
+        // access was already proven by the BOOT hold). Format 8-char tokens as
+        // two 4-blocks, matching how the Token page shows them.
+        centerLine(88, "Serial on - to unseal:", C_GREEN, 1);
+        char tok[24] = {};
+        const char *t = s.token ? s.token : "";
+        if (strlen(t) == 8) {
+            snprintf(tok, sizeof(tok), "%.4s %.4s", t, t + 4);
+        } else {
+            snprintf(tok, sizeof(tok), "%s", t);
+        }
+        centerLine(102, "unlock", C_GREY, 2);
+        centerLine(124, tok[0] ? tok : "(no token)", C_CYAN, 3);
+        centerLine(154, "then type: unseal", C_GREY, 2);
     } else {
-        centerLine(106, "Hold BOOT ~5s to", C_WHITE, 2);
-        centerLine(128, "re-enable serial,", C_WHITE, 2);
-        centerLine(150, "then unlock + unseal", C_GREY, 2);
+        centerLine(90, "HID only - no serial", C_GREY, 2);
+        centerLine(114, "Hold BOOT ~5s to", C_WHITE, 2);
+        centerLine(135, "re-enable serial,", C_WHITE, 2);
+        centerLine(156, "then unlock + unseal", C_GREY, 2);
     }
 }
 
