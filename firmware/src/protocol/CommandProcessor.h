@@ -91,6 +91,11 @@ private:
     static constexpr size_t kMaxSessions = GHOSTHID_MAX_CONTROLLERS;
     uint32_t sessionId_[kMaxSessions]   = {};   // connected client ids (0 = free)
     bool     sessionAuthed_[kMaxSessions] = {}; // parallel: has that client authed
+    // Per-session challenge nonce for challenge-response auth (16 random bytes as
+    // 32 hex chars). Issued on a "challenge" request; the client proves knowledge
+    // of the token with HMAC-SHA256(token, nonce) so the token never crosses the
+    // wire in cleartext (H3). Empty until a challenge is issued; cleared on use.
+    char     sessionNonce_[kMaxSessions][33] = {};
     size_t   sessionCount_ = 0;
     int  findSession(uint32_t clientId) const;  // index, or -1 if not connected
 

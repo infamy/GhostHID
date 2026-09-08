@@ -7,9 +7,12 @@
 #include <stdio.h>
 #include <string.h>
 
+#include <esp_random.h>
+
 #include "Keymap.h"
 #include "board_config.h"
 #include "config/Config.h"
+#include "crypto/Hmac.h"
 #include "net/DeskflowClient.h"
 #include "net/TlsArena.h"
 
@@ -86,6 +89,7 @@ void CommandProcessor::beginSession(uint32_t clientId) {
             // authenticated so the device is usable without a pairing step.
             const char *tok = config_.authToken();
             sessionAuthed_[i] = (tok == nullptr || tok[0] == '\0');
+            sessionNonce_[i][0] = '\0';         // no challenge issued yet
             ++sessionCount_;
             break;
         }
@@ -154,6 +158,37 @@ CommandResult CommandProcessor::handleMessage(uint32_t clientId, const char *jso
 
     const char *type = doc["type"] | "";
 
+    // --- challenge (for challenge-response auth) ----------------------------
+    // The client requests a nonce, then proves it knows the token with
+    // HMAC-SHA256(token, nonce) in the "auth" message below - so the token never
+    // crosses the wire in cleartext (H3). Legacy cleartext-token auth still works
+    // for raw API clients; the web UI uses this path.
+    if (strcmp(type, "challenge") == 0) {
+        const char *tok = config_.authToken();
+        if (tok == nullptr || tok[0] == '\0') {
+            reply(outResponse, outSize,
+                  "{\"type\":\"challenge\",\"nonce\":\"\",\"auth_required\":false}");
+            return CommandResult::Ok;
+        }
+        const int si = findSession(clientId);
+        if (si < 0) {
+            reply(outResponse, outSize,
+                  "{\"type\":\"error\",\"error\":\"no session\"}");
+            return CommandResult::BadRequest;
+        }
+        static const char *hexd = "0123456789abcdef";
+        char *nb = sessionNonce_[si];               // 16 random bytes -> 32 hex
+        for (int b = 0; b < 16; ++b) {
+            const uint8_t r = static_cast<uint8_t>(esp_random());
+            nb[b * 2] = hexd[r >> 4];
+            nb[b * 2 + 1] = hexd[r & 0xf];
+        }
+        nb[32] = '\0';
+        reply(outResponse, outSize,
+              "{\"type\":\"challenge\",\"nonce\":\"%s\",\"auth_required\":true}", nb);
+        return CommandResult::Ok;
+    }
+
     // --- auth ---------------------------------------------------------------
     if (strcmp(type, "auth") == 0) {
         const char *rawGiven = doc["token"] | "";
@@ -204,7 +239,29 @@ CommandResult CommandProcessor::handleMessage(uint32_t clientId, const char *jso
         char givU[64], tokU[64];
         upperCopy(givU, given, sizeof(givU));
         upperCopy(tokU, tok, sizeof(tokU));
-        if (needTok && !ctEquals(givU, tokU)) {
+
+        // Prefer challenge-response when the client sends a proof: verify
+        // HMAC-SHA256(token, nonce) so the token stays off the wire. Fall back to
+        // the legacy cleartext token compare otherwise. Case-folding matches the
+        // token path (client HMACs over the upper-cased, space-stripped token).
+        bool authOk;
+        const char *proof = doc["proof"] | "";
+        if (proof[0] != '\0') {
+            const int si = findSession(clientId);
+            const char *nonce = (si >= 0) ? sessionNonce_[si] : "";
+            if (nonce[0] == '\0') {
+                authOk = false;                    // no outstanding challenge
+            } else {
+                char expected[65];
+                hmacSha256Hex(tokU, nonce, expected, sizeof(expected));
+                authOk = ctEquals(proof, expected);
+                if (si >= 0) sessionNonce_[si][0] = '\0';   // one-shot: no replay
+            }
+        } else {
+            authOk = !needTok || ctEquals(givU, tokU);
+        }
+
+        if (needTok && !authOk) {
             // Three strikes -> a cooldown and a forced disconnect. The counters
             // survive reconnects (see the header note), so this actually bounds
             // the guess rate instead of resetting on every new socket.
