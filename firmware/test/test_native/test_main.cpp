@@ -51,6 +51,13 @@ void test_kvm_trust_cert_nothing_pending();
 void test_set_config_scroll_invert_is_live();
 void test_set_config_rejects_short_token();
 void test_response_too_large_is_wellformed();
+// --- Authenticated input (secure envelope) ---
+void test_secure_negotiated();
+void test_secure_input_accepted();
+void test_secure_bad_mac_rejected();
+void test_secure_replay_rejected();
+void test_secure_counter_advances();
+void test_plain_input_rejected_in_secure_mode();
 // --- Challenge-response auth ---
 void test_challenge_response_ok();
 void test_challenge_response_wrong_proof();
@@ -146,6 +153,13 @@ int main() {
     RUN_TEST(test_set_config_scroll_invert_is_live);
     RUN_TEST(test_set_config_rejects_short_token);
     RUN_TEST(test_response_too_large_is_wellformed);
+
+    RUN_TEST(test_secure_negotiated);
+    RUN_TEST(test_secure_input_accepted);
+    RUN_TEST(test_secure_bad_mac_rejected);
+    RUN_TEST(test_secure_replay_rejected);
+    RUN_TEST(test_secure_counter_advances);
+    RUN_TEST(test_plain_input_rejected_in_secure_mode);
 
     RUN_TEST(test_challenge_response_ok);
     RUN_TEST(test_challenge_response_wrong_proof);

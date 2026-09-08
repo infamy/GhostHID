@@ -90,6 +90,9 @@ void CommandProcessor::beginSession(uint32_t clientId) {
             const char *tok = config_.authToken();
             sessionAuthed_[i] = (tok == nullptr || tok[0] == '\0');
             sessionNonce_[i][0] = '\0';         // no challenge issued yet
+            sessionSecure_[i] = false;
+            sessionMacKey_[i][0] = '\0';
+            sessionCounter_[i] = 0;
             ++sessionCount_;
             break;
         }
@@ -157,6 +160,49 @@ CommandResult CommandProcessor::handleMessage(uint32_t clientId, const char *jso
     }
 
     const char *type = doc["type"] | "";
+
+    // --- secure envelope (authenticated input, opt-in) ----------------------
+    // {"type":"secure","c":<counter>,"m":"<inner command JSON>","mac":"<hmac>"}.
+    // Verify HMAC(macKey,"<c>:"+m) and a forward-only counter, then re-dispatch the
+    // inner command flagged as authenticated. This is what makes a forged or
+    // replayed keystroke/mouse command impossible once secure mode is on.
+    if (strcmp(type, "secure") == 0) {
+        if (inSecureFrame_) {                    // no nesting
+            reply(outResponse, outSize,
+                  "{\"type\":\"error\",\"error\":\"nested secure frame\"}");
+            return CommandResult::BadRequest;
+        }
+        const int i = findSession(clientId);
+        if (i < 0 || !sessionSecure_[i]) {
+            reply(outResponse, outSize,
+                  "{\"type\":\"error\",\"error\":\"not in secure mode\"}");
+            return CommandResult::BadRequest;
+        }
+        const uint32_t c = doc["c"] | 0u;
+        const char *m   = doc["m"] | "";
+        const char *mac = doc["mac"] | "";
+        if (m[0] == '\0' || mac[0] == '\0') {
+            reply(outResponse, outSize,
+                  "{\"type\":\"error\",\"error\":\"malformed secure frame\"}");
+            return CommandResult::BadRequest;
+        }
+        char pfx[16]; snprintf(pfx, sizeof(pfx), "%u:", (unsigned)c);
+        char expected[65];
+        hmacSha256Hex2(sessionMacKey_[i], pfx, m, expected, sizeof(expected));
+        if (!ctEquals(mac, expected)) {
+            reply(outResponse, outSize, "{\"type\":\"error\",\"error\":\"bad mac\"}");
+            return CommandResult::Unauthenticated;
+        }
+        if (c <= sessionCounter_[i]) {           // replay / out-of-order
+            reply(outResponse, outSize, "{\"type\":\"error\",\"error\":\"stale counter\"}");
+            return CommandResult::BadRequest;
+        }
+        sessionCounter_[i] = c;
+        inSecureFrame_ = true;
+        const CommandResult r = handleMessage(clientId, m, strlen(m), outResponse, outSize);
+        inSecureFrame_ = false;
+        return r;
+    }
 
     // --- challenge (for challenge-response auth) ----------------------------
     // The client requests a nonce, then proves it knows the token with
@@ -245,6 +291,8 @@ CommandResult CommandProcessor::handleMessage(uint32_t clientId, const char *jso
         // the legacy cleartext token compare otherwise. Case-folding matches the
         // token path (client HMACs over the upper-cased, space-stripped token).
         bool authOk;
+        char pendingMacKey[65] = {};              // set iff secure requested + proof ok
+        const bool wantSecure = doc["secure"] | false;
         const char *proof = doc["proof"] | "";
         if (proof[0] != '\0') {
             const int si = findSession(clientId);
@@ -255,6 +303,13 @@ CommandResult CommandProcessor::handleMessage(uint32_t clientId, const char *jso
                 char expected[65];
                 hmacSha256Hex(tokU, nonce, expected, sizeof(expected));
                 authOk = ctEquals(proof, expected);
+                if (authOk && wantSecure) {
+                    // Per-session MAC key from the nonce, domain-separated from the
+                    // proof so the wire-visible proof leaks nothing about it.
+                    char macMsg[40];
+                    snprintf(macMsg, sizeof(macMsg), "%s|mac", nonce);
+                    hmacSha256Hex(tokU, macMsg, pendingMacKey, sizeof(pendingMacKey));
+                }
                 if (si >= 0) sessionNonce_[si][0] = '\0';   // one-shot: no replay
             }
         } else {
@@ -290,13 +345,22 @@ CommandResult CommandProcessor::handleMessage(uint32_t clientId, const char *jso
         authFails_ = 0;
         authLockouts_ = 0;
         authCooldownUntil_ = 0;
+        bool secureOn = false;
         {
             const int i = findSession(clientId);
-            if (i >= 0) sessionAuthed_[i] = true;
+            if (i >= 0) {
+                sessionAuthed_[i] = true;
+                if (pendingMacKey[0] != '\0') {
+                    memcpy(sessionMacKey_[i], pendingMacKey, sizeof(sessionMacKey_[i]));
+                    sessionSecure_[i] = true;
+                    sessionCounter_[i] = 0;
+                    secureOn = true;
+                }
+            }
         }
         reply(outResponse, outSize,
-              "{\"type\":\"auth\",\"ok\":true,\"version\":\"%s\",\"usb\":%s}",
-              GHOSTHID_VERSION, hid_.ready() ? "true" : "false");
+              "{\"type\":\"auth\",\"ok\":true,\"secure\":%s,\"version\":\"%s\",\"usb\":%s}",
+              secureOn ? "true" : "false", GHOSTHID_VERSION, hid_.ready() ? "true" : "false");
         return CommandResult::Ok;
     }
 
@@ -376,6 +440,17 @@ CommandResult CommandProcessor::handleMessage(uint32_t clientId, const char *jso
         strcmp(type, "mouse_button") == 0 ||
         strcmp(type, "mouse_wheel") == 0 ||
         strcmp(type, "media") == 0 || strcmp(type, "system") == 0;
+    // Once a session enables authenticated input, a plain (un-enveloped) input
+    // command is refused - otherwise an attacker could just skip the MAC. The
+    // inner command of a verified secure envelope arrives with inSecureFrame_ set.
+    if (isInput && !inSecureFrame_) {
+        const int si = findSession(clientId);
+        if (si >= 0 && sessionSecure_[si]) {
+            reply(outResponse, outSize,
+                  "{\"type\":\"error\",\"error\":\"authenticated channel required\"}");
+            return CommandResult::BadRequest;
+        }
+    }
     if (isInput && locked_) {
         reply(outResponse, outSize,
               "{\"type\":\"error\",\"error\":\"%s\"}", lockReason_);

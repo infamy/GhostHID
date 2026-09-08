@@ -116,17 +116,46 @@ void hmacSha256(const uint8_t *key, size_t keyLen,
     final(c, out);
 }
 
-void hmacSha256Hex(const char *key, const char *msg, char *outHex, size_t cap) {
-    if (cap < 65) { if (cap) outHex[0] = '\0'; return; }
-    uint8_t mac[32];
-    hmacSha256(reinterpret_cast<const uint8_t *>(key), strlen(key),
-               reinterpret_cast<const uint8_t *>(msg), strlen(msg), mac);
+static void toHex(const uint8_t mac[32], char *outHex) {
     static const char *hex = "0123456789abcdef";
     for (int i = 0; i < 32; ++i) {
         outHex[i * 2]     = hex[mac[i] >> 4];
         outHex[i * 2 + 1] = hex[mac[i] & 0xf];
     }
     outHex[64] = '\0';
+}
+
+void hmacSha256Hex(const char *key, const char *msg, char *outHex, size_t cap) {
+    if (cap < 65) { if (cap) outHex[0] = '\0'; return; }
+    uint8_t mac[32];
+    hmacSha256(reinterpret_cast<const uint8_t *>(key), strlen(key),
+               reinterpret_cast<const uint8_t *>(msg), strlen(msg), mac);
+    toHex(mac, outHex);
+}
+
+void hmacSha256Hex2(const char *key, const char *m1, const char *m2,
+                    char *outHex, size_t cap) {
+    if (cap < 65) { if (cap) outHex[0] = '\0'; return; }
+    const size_t keyLen = strlen(key);
+    uint8_t k[64];
+    if (keyLen > 64) { sha256(reinterpret_cast<const uint8_t *>(key), keyLen, k);
+                       memset(k + 32, 0, 32); }
+    else { memcpy(k, key, keyLen); memset(k + keyLen, 0, 64 - keyLen); }
+    uint8_t ipad[64], opad[64];
+    for (int i = 0; i < 64; ++i) { ipad[i] = k[i] ^ 0x36; opad[i] = k[i] ^ 0x5c; }
+
+    uint8_t inner[32];
+    Sha256Ctx c; init(c);
+    update(c, ipad, 64);
+    update(c, reinterpret_cast<const uint8_t *>(m1), strlen(m1));
+    update(c, reinterpret_cast<const uint8_t *>(m2), strlen(m2));
+    final(c, inner);
+
+    init(c);
+    update(c, opad, 64);
+    update(c, inner, 32);
+    final(c, inner);
+    toHex(inner, outHex);
 }
 
 }  // namespace ghosthid

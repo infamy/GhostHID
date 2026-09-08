@@ -96,6 +96,17 @@ private:
     // of the token with HMAC-SHA256(token, nonce) so the token never crosses the
     // wire in cleartext (H3). Empty until a challenge is issued; cleared on use.
     char     sessionNonce_[kMaxSessions][33] = {};
+    // Authenticated-input mode (opt-in, negotiated at auth): once on, every INPUT
+    // command must arrive inside a "secure" envelope carrying a monotonic counter
+    // and HMAC(macKey, counter:message), so a LAN attacker can't forge or replay
+    // keystrokes/mouse. macKey is derived from the challenge nonce + token (domain-
+    // separated from the auth proof); the counter only ever moves forward.
+    bool     sessionSecure_[kMaxSessions] = {};
+    char     sessionMacKey_[kMaxSessions][65] = {};   // hex; empty = not secure
+    uint32_t sessionCounter_[kMaxSessions] = {};      // highest counter accepted
+    // Set only while re-dispatching the inner command of a verified secure
+    // envelope, so the input gate knows this command arrived authenticated.
+    bool     inSecureFrame_ = false;
     size_t   sessionCount_ = 0;
     int  findSession(uint32_t clientId) const;  // index, or -1 if not connected
 

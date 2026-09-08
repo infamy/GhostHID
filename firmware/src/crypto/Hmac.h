@@ -25,4 +25,9 @@ void hmacSha256(const uint8_t *key, size_t keyLen,
 // hex chars + NUL into `outHex` (must be >= 65 bytes).
 void hmacSha256Hex(const char *key, const char *msg, char *outHex, size_t cap);
 
+// Same, over the concatenation msg1 || msg2 - so a MAC over "counter:message" can
+// be computed without allocating a buffer to hold the whole thing.
+void hmacSha256Hex2(const char *key, const char *msg1, const char *msg2,
+                    char *outHex, size_t cap);
+
 }  // namespace ghosthid

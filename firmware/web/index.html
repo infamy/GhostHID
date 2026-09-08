@@ -829,6 +829,9 @@ with connect("ws://192.168.4.1/ws") as ws:
 var $=function(s){return document.querySelector(s)};
 var dot=$("#dot"), stat=$("#stat"), logEl=$("#log");
 var ws=null, ready=false, retryTimer=null, authRejected=false, lockedUntil=0;
+// Authenticated-input mode (#1): once negotiated, every message is wrapped with a
+// monotonic counter + HMAC(macKey, counter:message) so input can't be forged/replayed.
+var secureActive=false, macKey="", secureCtr=0, pendingMacKey="";
 
 function log(m){ logEl.textContent=(new Date().toLocaleTimeString()+"  "+m+"\n"+logEl.textContent).slice(0,1400); }
 function setState(ok,msg){
@@ -889,7 +892,19 @@ function setSealed(on){
   var note=$("#sealed_note");
   if(note) note.hidden = !on;
 }
-function send(o){ if(ws&&ws.readyState===1) ws.send(JSON.stringify(o)); }
+function send(o){
+  if(!(ws&&ws.readyState===1)) return;
+  if(secureActive){
+    // Wrap in a MAC'd, counter-tagged envelope. The device MACs "<c>:"+m over the
+    // exact inner string, so we MAC the same JSON.stringify(o) we embed as "m".
+    secureCtr++;
+    var m=JSON.stringify(o);
+    ws.send(JSON.stringify({type:"secure",c:secureCtr,m:m,
+                            mac:hmacSha256Hex(macKey,secureCtr+":"+m)}));
+  } else {
+    ws.send(JSON.stringify(o));
+  }
+}
 
 // Host lock-LED state, bit order matching the USB output report.
 function setLocks(b){
@@ -991,6 +1006,7 @@ function connect(){
   clearTimeout(retryTimer);
   if(ws){ try{ws.close()}catch(e){} }
   setState(false,"connecting…");
+  secureActive=false; secureCtr=0;         // renegotiate authenticated mode per session
   ws=new WebSocket("ws://"+location.host+"/ws");
   // Ask for a challenge; we answer with an HMAC proof (see the challenge handler
   // below) so the token is never sent in cleartext.
@@ -1010,7 +1026,10 @@ function connect(){
       if(m.auth_required===false){ send({type:"auth"}); }
       else {
         var t=$("#tok").value.replace(/\s+/g,"").toUpperCase();
-        send({type:"auth",proof:hmacSha256Hex(t,m.nonce)});
+        // Derive the MAC key exactly as the device does, and opt into authenticated
+        // input. It activates only once the device confirms secure:true below.
+        pendingMacKey=hmacSha256Hex(t, m.nonce+"|mac");
+        send({type:"auth",proof:hmacSha256Hex(t,m.nonce),secure:true});
       }
       return;
     }
@@ -1024,6 +1043,7 @@ function connect(){
     }
     if(m.type==="auth"){
       if(m.ok){ authRejected=false; lockedUntil=0;
+                if(m.secure){ macKey=pendingMacKey; secureCtr=0; secureActive=true; }
                 setState(true,"connected"+(m.version?" · "+m.version:""));
                 localStorage.setItem("ghosthid.token",$("#tok").value.replace(/\s+/g,""));
                 $("#a_ver").textContent = m.version || "—";
