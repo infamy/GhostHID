@@ -21,6 +21,7 @@ constexpr char kKeyName[]   = "name";
 constexpr char kKeyApAlways[] = "ap_always";
 constexpr char kKeyScrollInv[] = "scroll_inv";
 constexpr char kKeySealed[]    = "sealed";
+constexpr char kKeyUnsealWin[] = "unseal_win";
 constexpr char kKeyDfOn[]     = "df_on";
 constexpr char kKeyDfHost[]   = "df_host";
 constexpr char kKeyDfPort[]   = "df_port";
@@ -108,6 +109,7 @@ void Config::begin() {
     apAlways_ = g_prefs.getBool(kKeyApAlways, true);
     scrollInvert_ = g_prefs.getBool(kKeyScrollInv, false);
     sealed_ = g_prefs.getBool(kKeySealed, false);
+    unsealWin_ = g_prefs.getBool(kKeyUnsealWin, false);
 
     dfEnabled_ = g_prefs.getBool(kKeyDfOn, false);
     loadInto(kKeyDfHost, "", dfHost_, sizeof(dfHost_));
@@ -208,6 +210,11 @@ void Config::setSealed(bool on) {
     // boot, so the caller reboots to apply. rebootPending_ is not set here: the
     // serial console applies this by rebooting directly after seal/unseal, and
     // this must never be triggered by a network write.
+}
+
+void Config::setUnsealWindow(bool on) {
+    unsealWin_ = on;
+    g_prefs.putBool(kKeyUnsealWin, on);
 }
 
 bool Config::setApAlways(bool always) {

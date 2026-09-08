@@ -11,7 +11,6 @@
 // Network never touches HID; HidDevice never learns where a command came from.
 
 #include <Arduino.h>
-#include <Preferences.h>
 
 #include "board_config.h"
 #include "config/Config.h"
@@ -117,21 +116,12 @@ uint32_t g_heapAfterBoot = 0, g_heapAfterWifi = 0, g_heapAfterServer = 0;
 bool g_bootComplete = false;
 
 void setup() {
-    // Sealed mode: bring the USB serial console up ONLY when unsealed, and do it
-    // before USB.begin() (in hid.begin) finalises the descriptor - so a sealed
-    // device enumerates HID-only, with no CDC interface on the bus at all. The
-    // seal flag is read straight from NVS here because this decision precedes
-    // config.begin(). CDC_ON_BOOT=0 (see platformio.ini) is what makes this ours
-    // to control; `Serial` is remapped to our CDC object by usb_serial.h.
-    bool sealedBoot = false;
-    {
-        Preferences seal;
-        if (seal.begin("ghosthid", /*readOnly=*/true)) {
-            sealedBoot = seal.getBool("sealed", false);
-            seal.end();
-        }
-    }
-    if (!sealedBoot) {
+    // Whether this boot has a USB serial console was decided at static init
+    // (usb_serial.cpp) from the sealed / unseal-window NVS flags - it must be, as
+    // the CDC interface can only join the descriptor before USB.begin(). Here we
+    // just start the driver on the CDC if one exists (unsealed, or an unseal
+    // window); a sealed boot has none and every Serial.* call is a safe no-op.
+    if (UsbSerial.present()) {
         Serial.begin(115200);
         // Never let the USB-CDC console block the firmware. arduino-esp32's USBCDC
         // blocks Serial.write() when a host has the port open but is not draining
@@ -150,6 +140,16 @@ void setup() {
     // Settings must load before the radio comes up: they carry the SSID,
     // passphrases and token the network layer needs.
     config.begin();
+
+    // Unseal window: a ~5s BOOT hold on a sealed device set this flag and rebooted
+    // so the console could come up (it just did, above). Consume the flag now -
+    // one-shot, so if the operator doesn't unseal, the next boot is HID-only again
+    // - and arm the `unseal` command. The device stays sealed (network gates hold)
+    // until `unseal` actually runs.
+    if (config.unsealWindow()) {
+        config.setUnsealWindow(false);
+        console.armUnseal();
+    }
 
     if (config.justProvisioned()) {
         Serial.println();
@@ -289,15 +289,16 @@ void loop() {
     // the panic release. The release path is never lost.
     switch (buttonEvent()) {
         case BtnEvent::VeryLong:
-            // ~5s hold. On a SEALED device this is the physical factor for
-            // unsealing: bring the USB serial console back and arm the `unseal`
-            // command. (The long-press panic release already fired at 800ms, so
-            // input is released by now.) On an unsealed device it does nothing
-            // beyond that release.
-            if (config.sealed()) {
-                Serial.begin(115200);
-                Serial.setTxTimeoutMs(0);
-                console.armUnseal();
+            // ~5s hold on a SEALED device requests unsealing. A sealed device has
+            // no serial console and one cannot be added at runtime (TinyUSB refuses
+            // an interface once USB has started), so persist a one-shot window flag
+            // and reboot: the next boot brings the console up and arms `unseal`
+            // (see setup()). The long-press panic release already fired at 800ms.
+            // No-op on an unsealed device.
+            if (config.sealed() && !config.unsealWindow()) {
+                config.setUnsealWindow(true);
+                delay(150);
+                ESP.restart();
             }
             break;
         case BtnEvent::Short:

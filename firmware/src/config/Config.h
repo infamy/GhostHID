@@ -69,6 +69,15 @@ public:
     bool sealed() const { return sealed_; }
     void setSealed(bool on);
 
+    // One-shot "unseal window". A sealed device has no serial console, and a CDC
+    // interface can only be added to the USB descriptor at boot (TinyUSB refuses
+    // it once USB has started). So the ~5s BOOT-hold unseal gesture sets this flag
+    // and reboots: the next boot brings the console up (see usb_serial.cpp) and
+    // arms the `unseal` command. It is consumed (cleared) on that boot, so if the
+    // operator doesn't unseal, the following boot returns to HID-only.
+    bool unsealWindow() const { return unsealWin_; }
+    void setUnsealWindow(bool on);
+
     // --- Deskflow / Barrier / Input Leap screen client ----------------------
     // The advertised width and height are the coordinate space the server
     // addresses this screen in, so they should match the target's real
@@ -146,6 +155,7 @@ private:
     bool apAlways_ = false;
     bool scrollInvert_ = false;
     bool sealed_ = false;
+    bool unsealWin_ = false;
     bool justProvisioned_ = false;
     bool     dfEnabled_ = false;
     char     dfHost_[64]   = {};
