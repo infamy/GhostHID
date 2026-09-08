@@ -204,7 +204,7 @@ footer a{color:var(--dim)}
       <a href="#what">What</a>
       <a href="#features">Features</a>
       <a href="#see">Screens</a>
-      <a href="#secure">Secure</a>
+      <a href="security/">Security</a>
       <a href="#hardware">Hardware</a>
       <a href="#start">Get started</a>
     </nav>
@@ -301,12 +301,18 @@ footer a{color:var(--dim)}
     </div>
     <div class="grid">
       <div class="card"><div class="n">✓</div><h3>Encrypted both ways</h3><p>Screen sessions run over mutual TLS. The server's certificate is captured and confirmed on first connect — no keys to paste, and no silent plaintext fallback.</p></div>
+      <div class="card"><div class="n">✓</div><h3>The token never travels</h3><p>Controllers prove they know the pairing token with a challenge-response handshake — the token itself never crosses the wire. From there, every keystroke and mouse move is carried in a signed, counted envelope, so input can't be forged, tampered with, or replayed.</p></div>
       <div class="card"><div class="n">✓</div><h3>No shared default</h3><p>Every board generates its own random pairing token and access-point password on first boot. There's nothing to look up and reuse across devices.</p></div>
       <div class="card"><div class="n">✓</div><h3>Resists guessing</h3><p>Tokens are checked in constant time, with an escalating lockout after repeated failures — on the web control channel and the firmware-update endpoint alike.</p></div>
       <div class="card"><div class="n">✓</div><h3>Never a stuck key</h3><p>If a controller drops — lost Wi-Fi, a closed tab — the device releases every held key and button on the target. Guaranteed by the layering, not left to chance.</p></div>
       <div class="card"><div class="n">✓</div><h3>Stays on your network</h3><p>No cloud, no account, no telemetry. The web app is served straight off the device; nothing it does leaves your LAN.</p></div>
       <div class="card"><div class="n">✓</div><h3>Nothing hidden</h3><p>A generic USB keyboard ID so it doesn't trip endpoint security — and MIT-licensed firmware, web UI and hardware you can read end to end.</p></div>
+      <div class="card"><div class="n">✓</div><h3>Signed, reproducible builds</h3><p>Releases are signed with minisign so you can verify a build before it ever touches a machine, and the toolchain and every library are pinned — a given commit always compiles to the same bytes.</p></div>
       <div class="card"><div class="n">✓</div><h3>No clipboard crossing</h3><p>GhostHID is a keyboard and mouse, not a clipboard peer. It opts out of clipboard sharing at the protocol level, so whatever you copy on your computer is never sent to the device — nothing to leak, nothing to buffer.</p></div>
+    </div>
+    <div class="more" style="display:flex;gap:18px;align-items:center;flex-wrap:wrap;justify-content:space-between">
+      <span>We publish the whole picture — the full threat model, every deliberate trade-off, and the list of things this <b style="color:var(--fg)">deliberately doesn't defend against</b>.</span>
+      <a class="btn ghost" href="security/">Read the security posture →</a>
     </div>
   </div>
 </section>

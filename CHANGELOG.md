@@ -1,5 +1,61 @@
 # Changelog
 
+## 0.9.0
+
+First public release. Builds on the sealed-mode and stability work of the 0.8.x
+line with an authenticated control channel, signed releases, and a pinned,
+reproducible build - the baseline we're comfortable putting in front of people.
+
+### Highlights
+
+* **Challenge-response authentication (H3)** - the pairing token never crosses
+  the wire. On connect the device issues a random nonce; the client proves it
+  knows the token with `HMAC-SHA256(token, nonce)`. A passive listener on the
+  Wi-Fi never sees anything replayable.
+* **Authenticated input** - once a session opts in, every keystroke and mouse
+  command travels in a MAC'd envelope with a monotonic counter
+  (`HMAC(sessionKey, "<counter>:<command>")`). Forged, tampered, or replayed
+  input is refused, and plain input is rejected on a secure session. The
+  per-session key is derived from the token and nonce and never transmitted.
+* **Signed releases (minisign)** - release artifacts are signed so you can
+  verify provenance before flashing. The public key is in the README; the
+  device itself enforces nothing (bring your own board).
+* **Reproducible builds** - the PlatformIO platform, framework, and every
+  library are pinned to exact versions, so a given commit always produces the
+  same bytes we sign under.
+
+### Security
+
+Closes H3 (token exposure) via challenge-response, and adds message
+authentication so the input path has integrity, not just transport encryption.
+No armed/disarmed model - the device stays fully functional unattended.
+
+## 0.8.2
+
+* **KVM clipboard stability** - GhostHID now announces Deskflow/Barrier protocol
+  1.5, so the server never attempts to send clipboard data to the device. Large
+  clipboards (notably images) previously stalled a TLS write mid-record, which
+  tore down the connection and could wedge the server until it was restarted.
+  Outgoing messages are also coalesced into a single write. GhostHID does not
+  sync the clipboard by design (payloads can't be safely round-tripped), so
+  nothing of value is lost.
+
+## 0.8.1
+
+* Bound the inbound clipboard drain (size cap + inactivity timeout) as a partial
+  mitigation for oversized clipboards. Superseded by the protocol-1.5 fix in
+  0.8.2.
+
+## 0.8.0
+
+* **Sealed mode** - a reversible lockdown that enumerates HID-only with no USB
+  CDC serial interface at all (not just disabled - absent), and refuses network
+  config, OTA, and plaintext KVM. Unsealing requires two factors: a physical
+  ~5-second hold of the BOOT button to re-enable serial, plus the pairing token.
+  The status LCD shows a clear SEALED indicator with the ghost logo and on-screen
+  unseal instructions. All-or-nothing, no tiers.
+
+
 ## 0.7.0
 
 Milestone release. Rolls up the 0.6.14-0.6.27 work into a network keyboard/mouse

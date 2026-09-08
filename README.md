@@ -251,6 +251,29 @@ make dist        # -> dist/ghosthid-esp32-s2-key/
 
 If your runner uses different labels, change `runs-on` in the workflow.
 
+## Verifying a release
+
+Release artifacts are signed with [minisign](https://jedisct1.github.io/minisign/).
+Each `.zip` and the raw `ghosthid-firmware.bin` ships with a matching `.minisig`.
+Verify before flashing:
+
+```bash
+# GhostHID release signing key (public):
+minisign -Vm ghosthid-firmware.bin -P RWSGHOSTHIDPUBKEYPLACEHOLDERREPLACEBEFORELAUNCH000000
+```
+
+Or keep the key in a file and use `-p`:
+
+```bash
+echo "untrusted comment: GhostHID release signing key
+RWSGHOSTHIDPUBKEYPLACEHOLDERREPLACEBEFORELAUNCH000000" > ghosthid.pub
+minisign -Vm ghosthid-esp32-s3-lcd147.zip -p ghosthid.pub
+```
+
+A `Signature and comment signature verified` line means the file is authentic and
+untampered. The device enforces nothing about signing (it's a bring-your-own-board
+project); verification is provenance for you, the person doing the flashing.
+
 ## Porting
 
 The ESP32-S2 is the only target right now. Board specifics are confined to

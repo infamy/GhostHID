@@ -1,0 +1,374 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Security — GhostHID</title>
+<meta name="description" content="GhostHID's security posture and threat model: what it defends, what it deliberately does not, and the reasoning behind every decision. Published in full.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><path fill='%2300e5ff' d='M15 55 L15 26 A17 17 0 0 1 49 26 L49 55 L49 48 L46 48 L46 55 L41 55 L41 48 L39 48 L39 55 L33 55 L33 48 L29 48 L29 55 L26 55 L26 48 L23 48 L23 55 Z'/><rect x='24' y='24' width='5' height='10' rx='1.5' fill='%2301050b'/><rect x='35' y='24' width='5' height='10' rx='1.5' fill='%2301050b'/></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#01050b; --bg2:#070e17; --panel:#0a121c; --line:#182838;
+  --fg:#e9f2f9; --dim:#8ba1b6; --faint:#5b7085;
+  --cyan:#00e5ff; --cyan-deep:#0a2a33; --warn:#ffb454; --bad:#ff6b85;
+  --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --disp:"Space Grotesk",system-ui,sans-serif;
+  --gut:clamp(20px,5vw,72px);
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--fg);
+  font:16px/1.7 var(--disp);-webkit-font-smoothing:antialiased;overflow-x:hidden}
+a{color:var(--cyan);text-decoration:none}
+a:hover{text-decoration:underline}
+h1,h2,h3{font-weight:700;letter-spacing:-.02em;line-height:1.12;margin:0}
+.mono{font-family:var(--mono)}
+.wrap{max-width:1120px;margin:0 auto;padding:0 var(--gut)}
+.eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.28em;text-transform:uppercase;
+  color:var(--cyan);font-weight:700}
+
+body::before{content:"";position:fixed;inset:0;z-index:-2;
+  background:radial-gradient(120% 70% at 50% -10%, rgba(0,229,255,.09), transparent 60%),var(--bg)}
+body::after{content:"";position:fixed;inset:0;z-index:-1;opacity:.4;
+  background-image:linear-gradient(var(--line) 1px,transparent 1px),
+    linear-gradient(90deg,var(--line) 1px,transparent 1px);
+  background-size:46px 46px;
+  -webkit-mask-image:radial-gradient(130% 80% at 50% 0%,#000 20%,transparent 70%);
+          mask-image:radial-gradient(130% 80% at 50% 0%,#000 20%,transparent 70%)}
+
+header.nav{position:sticky;top:0;z-index:30;backdrop-filter:blur(10px);
+  background:rgba(1,5,11,.72);border-bottom:1px solid var(--line)}
+.nav .wrap{display:flex;align-items:center;gap:16px;height:60px}
+.brand{display:flex;align-items:center;gap:10px;font-weight:700;color:var(--fg)}
+.brand:hover{text-decoration:none}
+.brand b{color:var(--cyan)}
+.nav nav{margin-left:auto;display:flex;gap:26px;font-size:14px}
+.nav nav a{color:var(--dim)}.nav nav a:hover{color:var(--fg);text-decoration:none}
+@media(max-width:760px){.nav nav{display:none}}
+
+.hero{padding:clamp(48px,8vw,96px) 0 32px}
+.hero h1{font-size:clamp(38px,7vw,72px);letter-spacing:-.04em;margin:.2em 0 .3em}
+.hero .lede{font-size:clamp(17px,2.1vw,21px);color:var(--fg);max-width:44ch}
+.hero .sub{color:var(--dim);margin-top:14px;max-width:56ch;font-size:16px}
+
+.layout{display:grid;grid-template-columns:220px 1fr;gap:clamp(24px,5vw,64px);
+  align-items:start;padding-bottom:96px}
+@media(max-width:900px){.layout{grid-template-columns:1fr}}
+.toc{position:sticky;top:84px;font-family:var(--mono);font-size:12.5px;line-height:1.5}
+@media(max-width:900px){.toc{position:static;border:1px solid var(--line);border-radius:12px;
+  padding:18px 20px;background:var(--panel)}}
+.toc .t{color:var(--faint);letter-spacing:.16em;text-transform:uppercase;font-size:11px;
+  margin-bottom:12px}
+.toc ol{list-style:none;margin:0;padding:0;counter-reset:toc}
+.toc li{counter-increment:toc;margin:0 0 9px}
+.toc a{color:var(--dim);display:block;padding-left:22px;position:relative}
+.toc a::before{content:counter(toc,decimal-leading-zero);position:absolute;left:0;
+  color:var(--faint);font-size:11px}
+.toc a:hover{color:var(--cyan);text-decoration:none}
+
+article{max-width:72ch;min-width:0}
+article section{padding-top:clamp(40px,6vw,64px);scroll-margin-top:76px}
+article h2{font-size:clamp(24px,3.6vw,34px);margin:10px 0 0}
+article h3{font-size:19px;margin:34px 0 0;letter-spacing:-.01em}
+article p{color:var(--dim);margin:14px 0 0}
+article p strong,article li strong{color:var(--fg);font-weight:700}
+article em{color:var(--fg);font-style:italic}
+article ul,article ol{color:var(--dim);margin:14px 0 0;padding-left:22px}
+article li{margin:9px 0}
+article code{font-family:var(--mono);font-size:.88em;background:#000509;
+  border:1px solid var(--line);border-radius:4px;padding:1px 6px;color:var(--fg)}
+.rule{height:1px;background:var(--line);margin-top:clamp(40px,6vw,64px)}
+
+.callout{border:1px solid #17505c;background:linear-gradient(135deg,var(--cyan-deep),var(--panel));
+  border-radius:14px;padding:clamp(20px,3vw,28px);margin-top:24px}
+.callout p{color:var(--fg);opacity:.92;margin:0}
+.callout p + p{margin-top:12px}
+.callout .k{font-family:var(--mono);font-size:11px;letter-spacing:.18em;text-transform:uppercase;
+  color:var(--cyan);font-weight:700;margin-bottom:10px}
+
+table{width:100%;border-collapse:collapse;margin-top:20px;font-size:14.5px;display:block;
+  overflow-x:auto;white-space:nowrap}
+@media(min-width:700px){table{display:table;white-space:normal}}
+th,td{text-align:left;padding:12px 14px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--faint);font-weight:700}
+td{color:var(--dim)}
+td:first-child{color:var(--fg);font-weight:500}
+tr.none td:last-child{color:var(--warn)}
+
+.principles{list-style:none;padding:0;margin:24px 0 0;counter-reset:p;display:grid;gap:14px}
+.principles li{counter-increment:p;background:linear-gradient(180deg,var(--panel),var(--bg2));
+  border:1px solid var(--line);border-radius:14px;padding:22px 24px;margin:0;
+  transition:border-color .2s}
+.principles li:hover{border-color:rgba(0,229,255,.4)}
+.principles h3{margin:0;font-size:18px;display:flex;gap:12px;align-items:baseline}
+.principles h3::before{content:counter(p,decimal-leading-zero);font-family:var(--mono);
+  font-size:12px;color:var(--cyan);font-weight:700;flex:none}
+.principles p{margin-top:10px;font-size:15px}
+
+.nongoals{list-style:none;padding:0;margin:24px 0 0;counter-reset:n;display:grid;gap:10px}
+.nongoals li{counter-increment:n;margin:0;padding:16px 18px 16px 52px;position:relative;
+  background:var(--panel);border:1px solid var(--line);border-left:2px solid var(--warn);
+  border-radius:0 10px 10px 0;color:var(--dim);font-size:15px}
+.nongoals li::before{content:counter(n);position:absolute;left:20px;top:16px;
+  font-family:var(--mono);font-size:12px;color:var(--warn);font-weight:700}
+.nongoals li b{color:var(--fg)}
+
+.status{display:inline-flex;align-items:center;gap:8px;font-family:var(--mono);font-size:11.5px;
+  letter-spacing:.1em;text-transform:uppercase;color:var(--warn);
+  border:1px solid rgba(255,180,84,.35);background:rgba(255,180,84,.07);
+  border-radius:999px;padding:4px 12px;margin-top:16px;font-weight:700}
+
+footer{border-top:1px solid var(--line);background:var(--bg2);padding:36px 0;
+  font-size:14px;color:var(--faint)}
+footer .wrap{display:flex;gap:20px;flex-wrap:wrap;align-items:center}
+footer nav{margin-left:auto;display:flex;gap:22px}
+footer a{color:var(--dim)}
+</style>
+</head>
+<body>
+
+<header class="nav">
+  <div class="wrap">
+    <a class="brand" href="../"><svg viewBox="0 0 64 64" width="22" height="22" aria-hidden="true"><path fill="#00e5ff" d="M15 55 L15 26 A17 17 0 0 1 49 26 L49 55 L49 48 L46 48 L46 55 L41 55 L41 48 L39 48 L39 55 L33 55 L33 48 L29 48 L29 55 L26 55 L26 48 L23 48 L23 55 Z"/><rect x="24" y="24" width="5" height="10" rx="1.5" fill="#01050b"/><rect x="35" y="24" width="5" height="10" rx="1.5" fill="#01050b"/></svg> <span>Ghost<b>HID</b></span></a>
+    <nav>
+      <a href="../">Overview</a>
+      <a href="../#hardware">Hardware</a>
+      <a href="../#start">Get started</a>
+      <a href="#" data-repo>Source</a>
+    </nav>
+  </div>
+</header>
+
+<div class="wrap hero">
+  <span class="eyebrow">Security</span>
+  <h1>The whole picture,<br>including the bad parts.</h1>
+  <p class="lede">This is our complete security posture and threat model. Not a summary — the same document our own reviewers read.</p>
+  <p class="sub">A device that types into other people's computers should not ask you to take its security on faith. Everything below is published because you cannot stay inside a boundary nobody described to you.</p>
+</div>
+
+<div class="wrap layout">
+
+  <aside class="toc">
+    <div class="t">Contents</div>
+    <ol>
+      <li><a href="#start-here">Read this first</a></li>
+      <li><a href="#guards">What guards what</a></li>
+      <li><a href="#defends">What it defends against</a></li>
+      <li><a href="#nongoals">What it does not</a></li>
+      <li><a href="#beliefs">Why it's built this way</a></li>
+      <li><a href="#decisions">Decisions on purpose</a></li>
+      <li><a href="#deploy">Deploying it safely</a></li>
+      <li><a href="#defenders">If you defend machines</a></li>
+      <li><a href="#review">How this gets reviewed</a></li>
+      <li><a href="#report">Reporting a problem</a></li>
+    </ol>
+  </aside>
+
+  <article>
+
+    <section id="start-here">
+      <span class="eyebrow">01</span>
+      <h2>Read this first</h2>
+      <p>GhostHID is a keyboard. Anyone who can drive it can type into a logged-in session, and typing into a logged-in session is the same thing as running commands there.</p>
+      <div class="callout">
+        <div class="k">The sentence everything follows from</div>
+        <p>This is not a device where a security failure means someone wiggles your mouse. <strong>An authentication failure here is full compromise of the target machine</strong> — no driver, no agent, no EDR hook, no audit trail, behind a USB identity chosen to look like the keyboard already on the desk.</p>
+        <p>We design from that sentence, not from a softer one. If a control would not hold against “the attacker gets a shell”, we do not call it a boundary.</p>
+      </div>
+      <p>Plug this into machines you administer. That is not a legal disclaimer — it is the boundary the design actually assumes, and the rest of this page explains exactly where it sits.</p>
+    </section>
+
+    <div class="rule"></div>
+
+    <section id="guards">
+      <span class="eyebrow">02</span>
+      <h2>What guards what</h2>
+      <table>
+        <thead><tr><th>Boundary</th><th>Guarded by</th></tr></thead>
+        <tbody>
+          <tr><td>Radio range → the device's own AP</td><td>WPA2 with a per-device random passphrase, set on first boot</td></tr>
+          <tr><td>The AP or your LAN → the WebSocket</td><td>Pairing token on every command; browser-origin and <code>Host</code> checks; auth attempts throttled</td></tr>
+          <tr><td>A screen server → HID input</td><td>Mutual TLS with the server's certificate pinned, when <code>kvm_tls</code> is on</td></tr>
+          <tr class="none"><td>The target machine → the device</td><td><strong>Nothing while unsealed</strong> — deliberate, see non-goal 1. <strong>Sealed:</strong> no serial interface exists on the bus at all.</td></tr>
+        </tbody>
+      </table>
+      <p>Three details there are the ones reviewers ask about.</p>
+      <p><strong>The token gates commands, not the connection.</strong> A peer that reaches the socket still cannot type, read config, push firmware or export settings. Refusing at the command layer rather than the door is what makes “reached the socket” a non-event.</p>
+      <p><strong>WebSockets ignore the browser's same-origin policy</strong>, so a page you never opened could otherwise reach the device from your own browser. The handshake's <code>Origin</code> is checked against the device's real address, and the <code>Host</code> header is cross-checked to blunt DNS rebinding.</p>
+      <p><strong>Secrets are write-only across the network.</strong> The Wi-Fi passphrase, AP passphrase and pairing token can be set but never read back — the API reports only whether each is set, and the serial console masks them. This holds against the network. It does not hold against someone holding the board.</p>
+    </section>
+
+    <div class="rule"></div>
+
+    <section id="defends">
+      <span class="eyebrow">03</span>
+      <h2>What it defends against</h2>
+      <ul>
+        <li><strong>Someone in range who wasn't given the passphrase.</strong> The access point is WPA2, never open. Each device generates its own random passphrase and token on first boot, so no two boards share credentials and there is no published default to guess. A stored passphrase that fails validation is re-randomised rather than silently bringing the AP up open.</li>
+        <li><strong>A drive-by from another web page.</strong> Origin and <code>Host</code> are checked explicitly, because WebSockets are not covered by the same-origin policy. A page you did not open cannot reach the socket.</li>
+        <li><strong>Token guessing.</strong> Repeated auth failures trip an escalating cooldown and drop the connection; an unauthenticated connection that squats the client slot is timed out. Guesses cannot be sprayed at line rate, and the slot cannot be held against you.</li>
+        <li><strong>An unauthenticated peer on your network.</strong> The token gates every HID command, every config read and write, the firmware-update endpoint and the config export.</li>
+        <li><strong>Recovering the token, or forging input, from the network.</strong> The token is never transmitted — a controller proves it with a challenge-response handshake over a fresh random nonce. Once authenticated, every input command carries a MAC and a monotonic counter, so a peer who captures traffic can't replay it, tamper with it, or synthesise input of their own.</li>
+        <li><strong>Reading your secrets back out over the network.</strong> Credentials are write-only, as above.</li>
+        <li><strong>A rogue screen server.</strong> With <code>kvm_tls</code> on, the connection is mutual TLS against a certificate you pinned. Nothing else can feed input down that path.</li>
+        <li><strong>Keys stuck down on the target.</strong> Three independent layers — the disconnect handler releases everything immediately; a watchdog releases everything if a controller holds input then goes silent for 750&nbsp;ms; and the BOOT button is a physical panic release that needs no network at all.</li>
+        <li><strong>A failed update.</strong> Dual-slot OTA — an interrupted upload leaves the running firmware untouched.</li>
+        <li><strong>The target machine taking over the device — once sealed.</strong> A sealed device enumerates <em>HID-only</em>: there is no serial interface on the USB bus for a process on the target to talk to. Undoing it takes a five-second physical BOOT hold, a reboot, and an explicit unseal command — and the window is one-shot, so a device left alone comes back HID-only on the next boot. This is the answer to non-goal 1, and the reason to seal anything you deploy and walk away from.</li>
+      </ul>
+    </section>
+
+    <div class="rule"></div>
+
+    <section id="nongoals">
+      <span class="eyebrow">04</span>
+      <h2>What it does not defend against</h2>
+      <p>Non-goals, not oversights. Anyone deploying this should be able to recite them.</p>
+      <ol class="nongoals">
+        <li><b>The machine you plug it into — unless the device is sealed.</b> On an unsealed device the USB serial console has no authentication, so any process on the target can reconfigure it: repoint the Wi-Fi, change or clear the pairing token, factory-reset it. It cannot read your passwords, but it can take the device over across the USB boundary. <b>Sealing closes this</b> by removing the serial interface from the bus entirely. Treat an unsealed device plugged into a machine you do not administer as that machine's device.</li>
+        <li><b>Anyone who has the token.</b> It is a bearer credential — no per-user identity, no revocation beyond changing it, and no record of who used it.</li>
+        <li><b>Reading what a session sends.</b> The token itself is safe on the wire — since 0.9.0 it's proven by challenge-response and never transmitted, and input travels in a MAC'd, counted envelope that can't be forged or replayed. What isn't encrypted is the <em>content</em>: the transport is still <code>ws://</code> / <code>http://</code>, so a peer who already holds the AP passphrase and captures the traffic can read what a session does — the keys you send — without being able to recover the token or inject input. A TLS control plane would close this; it's the accepted residual gap.</li>
+        <li><b>Local flash extraction.</b> Storage is not encrypted and secure boot is not enabled, deliberately, so the Wi-Fi passphrase, pairing token and TLS private key are readable by anyone who can put the board into download mode. Treat the token as also granting “dump every secret”.</li>
+        <li><b>Firmware you choose to flash — by design.</b> This is a bring-your-own-board project: the device runs whatever image you give it. The token is therefore the power to install firmware.</li>
+        <li><b>A screen server reached with <code>kvm_tls</code> off.</b> Plain TCP, no authentication of the peer. The setting exists for bench use; leaving it off in the field hands a keyboard to whoever can win a DNS race.</li>
+        <li><b>An image that boots but breaks networking.</b> There is no automatic rollback, so recovery is physical.</li>
+      </ol>
+    </section>
+
+    <div class="rule"></div>
+
+    <section id="beliefs">
+      <span class="eyebrow">05</span>
+      <h2>Why it's built this way</h2>
+      <p>Seven principles. Each is listed with what it cost or caused — a principle that never forced a trade-off is decoration.</p>
+      <ol class="principles">
+        <li>
+          <h3>Start from the worst case, not the demo</h3>
+          <p>The threat we model is arbitrary command execution, because that is what the device <em>is</em>. That framing is why the token gates every command rather than merely the connection, why token comparison is constant-time, and why the update path is treated as equal in severity to the keystroke path — installing firmware and typing a command are the same privilege here.</p>
+        </li>
+        <li>
+          <h3>No two devices share a secret</h3>
+          <p>There is no default password. There never was, and there is nothing to look up. On first boot each board generates its own random AP passphrase and pairing token, seeded from bootloader entropy before the radio is up. Two GhostHIDs side by side have nothing in common an attacker can reuse.</p>
+        </li>
+        <li>
+          <h3>Fail closed, and be loud about it</h3>
+          <p>An invalid stored passphrase is re-randomised, not quietly restored to a default. An over-long response becomes a well-formed error rather than truncated JSON. A squatting peer is timed out. When the device is unsure it refuses and says so, rather than degrading into something that still works but no longer protects you.</p>
+        </li>
+        <li>
+          <h3>The owner owns the board</h3>
+          <p>This is a bring-your-own-ESP32 project, and the device must never refuse to run an image its owner flashed. That single commitment rules out the two controls a checklist would demand — secure boot and on-device signature enforcement — and we are comfortable with that, for the reasons below.</p>
+        </li>
+        <li>
+          <h3>If it cannot hold, don't call it a boundary</h3>
+          <p>We have rejected security features on these grounds and written down why, rather than shipping them for the feature list. An arm/disarm model was dropped as incompatible with the unattended use case. A proposed keystroke-filtering mode is documented as <em>friction and a tripwire, not a boundary</em> — including which bypass path stays open, and why closing it would be worse.</p>
+        </li>
+        <li>
+          <h3>A stuck key is a security bug</h3>
+          <p>The worst thing this device can physically do to a target is hold a modifier down. That gets three <em>independent</em> layers, not one — any of them can fail without the other two caring.</p>
+        </li>
+        <li>
+          <h3>Publish the gaps</h3>
+          <p>The list of things this device does not defend against sits in the documentation in the same voice as the features, and on this page above the philosophy rather than below it. A user who does not know the boundary cannot stay inside it.</p>
+        </li>
+      </ol>
+    </section>
+
+    <div class="rule"></div>
+
+    <section id="decisions">
+      <span class="eyebrow">06</span>
+      <h2>Decisions we made on purpose</h2>
+      <p>Six places we did not do the obvious thing. The reasoning matters more than the conclusion.</p>
+
+      <h3>No secure boot, no flash encryption</h3>
+      <p>Locking the board to signed images only defends against a physical attacker replacing firmware — a threat this device <strong>already concedes</strong>, because anyone holding the board can read storage regardless. The cost is burning one-way fuses, bricking on a mistake, and permanently converting a bring-your-own board into an appliance its owner cannot modify. Paying an irreversible price to partially cover a threat we have already accepted is a bad trade.</p>
+
+      <h3>Signed releases, zero on-device enforcement</h3>
+      <p>Release artifacts will be signed so anyone who wants provenance can verify a download is genuinely ours before flashing it. Verification is operator-side and opt-in. On-device enforcement was considered and rejected twice over: it would defeat the build-your-own premise, and it buys little even on its own terms, since updating already requires the token and the token already grants full keyboard control. Trust for whoever wants it; lock-in for nobody.</p>
+      <span class="status">Specified, not yet shipped — a gate before first release</span>
+
+      <h3>The USB identity is generic, and we say why</h3>
+      <p>The device presents a generic keyboard identity rather than an Espressif one, so the target cannot practically distinguish it from the keyboard already plugged in. That is the product working as intended, and it is also precisely the risk. The two are not separable, so we do not present it as a security feature — it is stated as what makes the deployment boundary matter.</p>
+
+      <h3>The serial console is open for bootstrap — and removable afterwards</h3>
+      <p>A brand-new board has to be configurable by someone holding it, so the console starts open. The dangerous commands — changing Wi-Fi, changing or clearing the token, factory reset, entering the bootloader — sit behind an unlock gate once a token is set. A full console password was proposed and downgraded on purpose: physical or USB access already implies reading storage, so a password there protects nothing real while making first-run setup worse.</p>
+      <p>Sealing is the real answer, and it is a stronger one than a password. Rather than protecting the console, it <em>deletes</em> it: the interface is never added to the USB descriptor, so a sealed device offers the target nothing to attack. That constraint is genuinely hardware-shaped — an interface can only join the descriptor before the USB stack starts — which is why sealing takes effect across a reboot rather than at runtime, and why unsealing needs physical hands rather than a network command.</p>
+
+      <h3>Credentials on the screen need a physical press</h3>
+      <p>The pairing token is shown on the LCD only on a page reached by physically pressing BOOT, and it reverts to the status page after 60 seconds. Hiding it entirely was considered and rejected: it is the only recovery path on a device whose stored config survives a reflash. Requiring physical presence to reveal a credential is the correct shape.</p>
+
+      <h3>The token stays off the wire; session content is not yet encrypted</h3>
+      <p>As of 0.9.0 the pairing token is never transmitted: a controller proves it knows the token with a challenge-response handshake — the device sends a random nonce, the client returns <code>HMAC-SHA256(token, nonce)</code>, and only the proof crosses the wire. Every keystroke and mouse move then rides in a MAC'd envelope with a monotonic counter, so input can't be forged, tampered with, or replayed. The remaining gap, stated as non-goal 3, is confidentiality of the <em>content</em>: the transport is still <code>ws://</code> / <code>http://</code>, so a peer with the AP passphrase who captures the traffic can read what a session sends — though not recover the token or inject input. Closing it needs a TLS control plane, recorded as an accepted limitation rather than papered over.</p>
+    </section>
+
+    <div class="rule"></div>
+
+    <section id="deploy">
+      <span class="eyebrow">07</span>
+      <h2>Deploying it safely</h2>
+      <p>The first-boot credentials get a fresh board talking; they are yours to keep or replace.</p>
+      <ol>
+        <li><strong>Note your per-device credentials.</strong> On first boot the AP passphrase and token are randomised and shown on the LCD (press BOOT to cycle to the Wi-Fi page) and on the serial console. Write them down, or set your own.</li>
+        <li><strong>If you set your own token, make it six or more characters</strong> and random. Length only defends the online-guessing path; it does nothing against a network sniffer or against someone holding the board, so six is plenty.</li>
+        <li><strong>Prefer the device's own access point</strong> over joining a shared network. Smaller exposure, and the AP is available regardless.</li>
+        <li><strong>Unplug it when you're not using it.</strong> It is a keyboard; it is only a risk while it is attached to something.</li>
+        <li><strong>Treat the token like an SSH key.</strong> Anyone who has it can type on the target and install firmware.</li>
+      </ol>
+    </section>
+
+    <div class="rule"></div>
+
+    <section id="defenders">
+      <span class="eyebrow">08</span>
+      <h2>If you defend machines</h2>
+      <p>If you are protecting computers rather than driving them remotely, this device is blocked the way any unexpected HID is blocked — USB device-authorisation policy. <code>USBGuard</code> on Linux, device-installation restrictions by device ID on Windows, an MDM-enforced allowlist on macOS.</p>
+      <p>The general control is <em>do not accept a newly-enumerated keyboard on a machine that already has one</em>, and it works against GhostHID exactly as well as it works against anything else in this category. The generic USB identity does not evade it, because that control does not depend on recognising the specific device.</p>
+      <p>We would rather you know that than not.</p>
+    </section>
+
+    <div class="rule"></div>
+
+    <section id="review">
+      <span class="eyebrow">09</span>
+      <h2>How this gets reviewed</h2>
+      <p>The security review is a <strong>living state document, not a log</strong>. Every finding is either fixed with the version that fixed it, accepted by design with the reasoning attached, or withdrawn with the argument recorded so it does not get re-raised in six months. Nothing is closed by assertion.</p>
+      <p>Two habits are worth naming because they are unusual.</p>
+      <p><strong>Withdrawn findings keep their reasoning.</strong> The arm/disarm model, the console password and hiding the on-screen token are all written up as <em>why not</em>, permanently. A reviewer can disagree with the conclusion and argue against the actual argument rather than guessing at it.</p>
+      <p><strong>Fixes that introduced follow-ups say so.</strong> One update-path fix created an ownership-cleanup problem that became its own tracked finding and its own fix, and that lineage is in the document. A review doc that only records wins is not a review doc.</p>
+      <p>Where things stand today: no open line-level findings. What remains is proposed hardening — a wear-aware audit log, the keystroke tripwire, a test harness for the safety-critical invariants — tracked as design work rather than as defects, because calling design work a defect is how backlogs start lying to you.</p>
+      <p>The known weak spots, in the order they should worry you: <strong>the plaintext control plane</strong>, <strong>the absence of any audit trail</strong>, and <strong>the untested safety invariants</strong>. All three are on this page, and none of them are secrets.</p>
+    </section>
+
+    <div class="rule"></div>
+
+    <section id="report">
+      <span class="eyebrow">10</span>
+      <h2>Reporting a problem</h2>
+      <p>Report privately to the maintainer rather than opening a public issue, and expect the finding to be tracked by name — fixed with a version, accepted with reasoning, or withdrawn with the argument. Findings that change the picture above will change this page too.</p>
+      <p>The full documents this page is drawn from live in the repository: the security posture, the threat model, and the working review state. <a href="#" data-repo>Read the source →</a></p>
+    </section>
+
+  </article>
+</div>
+
+<footer>
+  <div class="wrap">
+    <span>GhostHID — MIT licensed. No cloud, no account, no telemetry.</span>
+    <nav>
+      <a href="../">Overview</a>
+      <a href="../#start">Flash</a>
+      <a href="#" data-repo>Source</a>
+    </nav>
+  </div>
+</footer>
+
+<script>
+  var REPO = "";      // e.g. https://your.gitea/infamy/ghosthid
+  document.querySelectorAll("[data-repo]").forEach(function(a){ if(REPO) a.href = REPO; });
+</script>
+</body>
+</html>

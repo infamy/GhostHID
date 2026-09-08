@@ -11,3 +11,11 @@ webflasher/*.bin
 # site: large build artifacts (populated from a release for hosting)
 site/flash/*.bin
 site/downloads/*.bin
+
+# minisign release signing key - NEVER commit. Held by the operator; CI reads it
+# from the MINISIGN_KEY secret. The .pub key is public and lives in the README.
+ghosthid.key
+*.sec
+
+# Internal line-level review - working state, never published.
+SECURITY-REVIEW.md
