@@ -51,6 +51,23 @@ void test_kvm_trust_cert_nothing_pending();
 void test_set_config_scroll_invert_is_live();
 void test_set_config_rejects_short_token();
 void test_response_too_large_is_wellformed();
+// --- Authenticated input (secure envelope) ---
+void test_secure_negotiated();
+void test_secure_input_accepted();
+void test_secure_bad_mac_rejected();
+void test_secure_replay_rejected();
+void test_secure_counter_advances();
+void test_plain_input_rejected_in_secure_mode();
+// --- Challenge-response auth ---
+void test_challenge_response_ok();
+void test_challenge_response_wrong_proof();
+void test_proof_without_challenge_fails();
+void test_challenge_nonce_is_one_shot();
+void test_challenge_no_token_says_not_required();
+// --- Crypto ---
+void test_sha256_vectors();
+void test_hmac_sha256_vector();
+void test_hmac_long_key();
 // --- Sealed mode ---
 void test_config_sealed_defaults_off();
 void test_config_sealed_roundtrip();
@@ -136,6 +153,23 @@ int main() {
     RUN_TEST(test_set_config_scroll_invert_is_live);
     RUN_TEST(test_set_config_rejects_short_token);
     RUN_TEST(test_response_too_large_is_wellformed);
+
+    RUN_TEST(test_secure_negotiated);
+    RUN_TEST(test_secure_input_accepted);
+    RUN_TEST(test_secure_bad_mac_rejected);
+    RUN_TEST(test_secure_replay_rejected);
+    RUN_TEST(test_secure_counter_advances);
+    RUN_TEST(test_plain_input_rejected_in_secure_mode);
+
+    RUN_TEST(test_challenge_response_ok);
+    RUN_TEST(test_challenge_response_wrong_proof);
+    RUN_TEST(test_proof_without_challenge_fails);
+    RUN_TEST(test_challenge_nonce_is_one_shot);
+    RUN_TEST(test_challenge_no_token_says_not_required);
+
+    RUN_TEST(test_sha256_vectors);
+    RUN_TEST(test_hmac_sha256_vector);
+    RUN_TEST(test_hmac_long_key);
 
     RUN_TEST(test_config_sealed_defaults_off);
     RUN_TEST(test_config_sealed_roundtrip);

@@ -48,6 +48,32 @@ jobs:
           # folder over HTTPS, or just download it from the release.
           cp firmware/.pio/build/esp32-s3-lcd147/ghosthid-merged.bin webflasher/ghosthid-s3.bin
           zip -qr dist/ghosthid-webflasher.zip webflasher
+          # Also publish the raw merged image directly, so OTA users can verify and
+          # flash a single .bin without unzipping a bundle.
+          cp firmware/.pio/build/esp32-s3-lcd147/ghosthid-merged.bin dist/ghosthid-firmware.bin
+          ls -l dist/
+
+      - name: Sign artifacts (minisign)
+        # Provenance for whoever wants it - the device enforces nothing (BYO board).
+        # Skips cleanly until MINISIGN_KEY is set, so releases still publish unsigned
+        # in the meantime. The one-line public key is in the README for verification.
+        env:
+          MINISIGN_KEY: ${{ secrets.MINISIGN_KEY }}
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          set -eu
+          if [ -z "${MINISIGN_KEY:-}" ]; then
+            echo "MINISIGN_KEY not set - skipping signing (release will be unsigned)"
+            exit 0
+          fi
+          command -v minisign >/dev/null 2>&1 || { apt-get update -qq && \
+            apt-get install -y -qq minisign; }
+          TAG="${INPUT_TAG:-}"; [ -n "$TAG" ] || TAG="${GITHUB_REF##*/}"
+          printf '%s' "$MINISIGN_KEY" > /tmp/ghosthid.key
+          for f in dist/*.zip dist/*.bin; do
+            minisign -S -s /tmp/ghosthid.key -t "GhostHID $TAG" -m "$f"   # -> $f.minisig
+          done
+          rm -f /tmp/ghosthid.key
           ls -l dist/
 
       - name: Publish the release
@@ -61,6 +87,9 @@ jobs:
           TAG="${INPUT_TAG:-}"
           [ -n "$TAG" ] || TAG="${GITHUB_REF##*/}"
           python3 scripts/changelog_section.py "$TAG" > /tmp/notes.md
+          # Upload zips + the raw bin, plus any .minisig signatures if signing ran.
+          FILES="dist/ghosthid-esp32-s3-lcd147.zip dist/ghosthid-webflasher.zip dist/ghosthid-firmware.bin"
+          for sig in dist/*.minisig; do [ -e "$sig" ] && FILES="$FILES $sig"; done
           python3 scripts/gitea_release.py \
             "${GITHUB_SERVER_URL}/api/v1/repos/${GITHUB_REPOSITORY}" \
-            "$TAG" /tmp/notes.md dist/*.zip
+            "$TAG" /tmp/notes.md $FILES
