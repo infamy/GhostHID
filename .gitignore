@@ -32,3 +32,6 @@ ghosthid.key
 
 # Internal line-level review - working state, never published.
 SECURITY-REVIEW.md
+
+# Internal ops runbook - private infra, never published.
+OPERATIONS.md
