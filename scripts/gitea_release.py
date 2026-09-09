@@ -45,9 +45,21 @@ def ensure_release(base, tag, body, token):
     return rel["id"]
 
 
+def delete_existing(base, rel_id, name, token):
+    """Remove any asset already attached under this name, so re-running a
+    release job replaces assets instead of piling up duplicates."""
+    assets = json.load(api(f"{base}/releases/{rel_id}/assets", token))
+    for a in assets:
+        if a.get("name") == name:
+            api(f"{base}/releases/{rel_id}/assets/{a['id']}", token,
+                method="DELETE")
+            print(f"  removed stale {name} (id {a['id']})")
+
+
 def attach(base, rel_id, path, token):
     boundary = uuid.uuid4().hex
     name = Path(path).name
+    delete_existing(base, rel_id, name, token)
     body = b"".join([
         f"--{boundary}\r\n".encode(),
         f'Content-Disposition: form-data; name="attachment"; filename="{name}"\r\n'.encode(),
