@@ -94,3 +94,28 @@ jobs:
           python3 scripts/gitea_release.py \
             "${GITHUB_SERVER_URL}/api/v1/repos/${GITHUB_REPOSITORY}" \
             "$TAG" /tmp/notes.md $FILES
+
+      - name: Mirror the release to GitHub
+        # Pushes the tag to GitHub and creates the matching GitHub Release with the
+        # same signed assets, so cutting a tag in Gitea publishes to GitHub too.
+        # Skips cleanly until GH_PAT (a GitHub PAT with `repo` scope) is set. The
+        # created release fires GitHub's release:published, which redeploys Pages.
+        env:
+          GH_PAT: ${{ secrets.GH_PAT }}
+          GH_REPO: infamy/GhostHID
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          set -eu
+          if [ -z "${GH_PAT:-}" ]; then
+            echo "GH_PAT not set - skipping GitHub mirror"
+            exit 0
+          fi
+          TAG="${INPUT_TAG:-}"; [ -n "$TAG" ] || TAG="${GITHUB_REF##*/}"
+          # Push the tag (and its commit objects) so the release can attach to it.
+          git push "https://x-access-token:${GH_PAT}@github.com/${GH_REPO}.git" \
+            "refs/tags/${TAG}"
+          [ -f /tmp/notes.md ] || python3 scripts/changelog_section.py "$TAG" > /tmp/notes.md
+          FILES="dist/ghosthid-esp32-s3-lcd147.zip dist/ghosthid-webflasher.zip dist/ghosthid-firmware.bin"
+          for sig in dist/*.minisig; do [ -e "$sig" ] && FILES="$FILES $sig"; done
+          GH_TOKEN="$GH_PAT" GH_REPO="$GH_REPO" \
+            python3 scripts/github_publish.py "$TAG" /tmp/notes.md $FILES
