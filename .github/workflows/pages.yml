@@ -1,0 +1,81 @@
+# Deploys the static site in site/ to GitHub Pages (ghosthid.app).
+#
+# GitHub Actions ONLY. This file also gets mirrored to Gitea, whose Actions read
+# .github/workflows too - the job guard below (github.com host check) makes Gitea
+# skip it instead of failing on GitHub-only actions.
+#
+# The firmware .bin + .minisig are gitignored (too big to commit), so this job
+# pulls them from the latest GitHub Release into the site before publishing, so
+# the flasher and the in-browser signature check have real files to serve.
+name: pages
+
+on:
+  push:
+    branches: [main]
+  release:
+    types: [published]     # a new release refreshes the bundled firmware
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: ${{ contains(github.server_url, 'github.com') }}
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    env:
+      # Set these repo secrets to auto-purge Cloudflare's cache after deploy.
+      CF_ZONE: ${{ secrets.CLOUDFLARE_ZONE_ID }}
+      CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Bundle the signed firmware from the latest release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          mkdir -p site/flash site/downloads
+          # Best-effort: before the first release there's nothing to fetch, and
+          # the site must still deploy (the badges fall back to "Signed release"
+          # and the flasher simply has no image until a release exists).
+          if gh release download --dir /tmp/rel \
+               --pattern 'ghosthid-firmware.bin' \
+               --pattern 'ghosthid-firmware.bin.minisig' 2>/dev/null; then
+            cp /tmp/rel/ghosthid-firmware.bin         site/downloads/ghosthid-firmware.bin
+            cp /tmp/rel/ghosthid-firmware.bin.minisig site/downloads/ghosthid-firmware.bin.minisig
+            # The flasher serves the same bytes under its own name; a minisign
+            # signature is over the content, so the firmware .minisig verifies
+            # ghosthid-s3.bin unchanged.
+            cp /tmp/rel/ghosthid-firmware.bin         site/flash/ghosthid-s3.bin
+            cp /tmp/rel/ghosthid-firmware.bin.minisig site/flash/ghosthid-s3.bin.minisig
+            echo "bundled firmware from the latest release"
+          else
+            echo "no release yet - deploying the site without a firmware image"
+          fi
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - id: deploy
+        uses: actions/deploy-pages@v4
+
+      - name: Purge Cloudflare cache
+        if: ${{ env.CF_ZONE != '' && env.CF_TOKEN != '' }}
+        run: |
+          curl -fsS -X POST \
+            "https://api.cloudflare.com/client/v4/zones/${CF_ZONE}/purge_cache" \
+            -H "Authorization: Bearer ${CF_TOKEN}" \
+            -H "Content-Type: application/json" \
+            --data '{"purge_everything":true}' >/dev/null \
+            && echo "cloudflare cache purged" || echo "cloudflare purge failed (non-fatal)"

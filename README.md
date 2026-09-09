@@ -251,6 +251,33 @@ make dist        # -> dist/ghosthid-esp32-s2-key/
 
 If your runner uses different labels, change `runs-on` in the workflow.
 
+## Publishing (GitHub + ghosthid.app)
+
+Development and CI live on Gitea; GitHub is the public mirror that hosts the
+site and the downloadable releases.
+
+* **Code sync** - a Gitea push-mirror pushes every branch and tag to
+  `github.com/infamy/GhostHID` automatically (the PAT it uses needs `repo` +
+  `workflow` scope so it can carry `.github/workflows`).
+* **Releases** - built and signed locally, never in GitHub Actions:
+
+  ```bash
+  scripts/github_release.sh v0.9.1     # build, package, minisign, gh release
+  ```
+
+  It needs `pio`, `minisign`, `gh` (authenticated), and `ghosthid.key` in the
+  repo root. The tag should already be on GitHub (push it to Gitea; the mirror
+  carries it over).
+* **Site** - `.github/workflows/pages.yml` deploys `site/` to GitHub Pages on
+  every push to `main` and on each published release. It pulls the signed
+  firmware `.bin` + `.minisig` from the latest release into `site/flash/` and
+  `site/downloads/` first, so the browser flasher and the in-browser signature
+  check have real files to serve. Point the repo's **Settings -> Pages ->
+  Source** at **GitHub Actions** once.
+
+`.app` forces HTTPS, which is what the WebCrypto signature check needs, so the
+verified-lock badge is real in production.
+
 ## Verifying a release
 
 Release artifacts are signed with [minisign](https://jedisct1.github.io/minisign/).
