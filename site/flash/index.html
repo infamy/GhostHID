@@ -48,7 +48,7 @@
 
 <main>
   <h1><span class="g">Ghost</span>HID <span style="font-size:14px;color:var(--dim)">firmware flasher</span></h1>
-  <p class="sub">Flash the board straight from this page - no drivers, no toolchain.</p>
+  <p class="sub">Flash the board straight from this page. No drivers, no toolchain.</p>
 
   <div class="unsupported" id="nowebserial">
     Your browser can't flash over USB. Use <b>desktop Chrome or Edge</b> (Web Serial isn't
@@ -68,19 +68,19 @@
     <h2>Before you click Install</h2>
     <ol>
       <li>Use a <b>data</b> USB-C/USB cable (not charge-only) into the board's <b>native USB</b> port.</li>
-      <li>Put the board in <b>download mode</b> - hold <kbd>BOOT</kbd>, tap <kbd>RST</kbd>, release <kbd>BOOT</kbd>.
+      <li>Put the board in <b>download mode</b>: hold <kbd>BOOT</kbd>, tap <kbd>RST</kbd>, release <kbd>BOOT</kbd>.
           <span class="note">(If the board has only a BOOT button, hold it while plugging the cable in.)</span></li>
       <li>Click <b>Install</b> above and pick the serial port in the dialog.</li>
       <li>When it finishes, tap <kbd>RST</kbd> once to run GhostHID.</li>
     </ol>
-    <p class="warn">A fresh flash erases stored settings (Wi-Fi, token) - that's expected for a new device.</p>
+    <p class="warn">A fresh flash erases stored settings (Wi-Fi, token). That's expected for a new device.</p>
   </section>
 
   <section>
     <h2>After flashing</h2>
     <ol>
       <li>The board raises its own Wi-Fi AP: <code>GhostHID-XXXX</code> (default password <code>ghosthid-setup</code>).</li>
-      <li>On the S3-LCD board, the screen shows a <b>QR code</b> - scan it with your phone camera to join the AP.</li>
+      <li>On the S3-LCD board, the screen shows a <b>QR code</b>. Scan it with your phone camera to join the AP.</li>
       <li>Join the AP and open <code>http://192.168.4.1/</code> to set your Wi-Fi, token, and KVM options.</li>
     </ol>
     <p class="note">Change the AP password and pairing token before putting it on a shared network.</p>
@@ -115,23 +115,23 @@
       var res = await Promise.all([ fetch("./ghosthid-s3.bin"),
                                     fetch("./ghosthid-s3.bin.minisig") ]);
       if (!res[0].ok || !res[1].ok) {
-        set("", "&#128272; Signed release - signature not published here yet.");
+        set("", "&#128272; Signed release. Signature not published here yet.");
         return;
       }
       var bin = new Uint8Array(await res[0].arrayBuffer());
       var sigText = await res[1].text();
       var r = await window.MinisignVerify.verify(bin, sigText, window.GHOSTHID_PUBKEY);
       if (r.ok) {
-        set("ok", "&#128274; <b>Signed &amp; verified</b> - " +
-                  "<span class='tc'>" + esc(r.trustedComment) + "</span>");
+        set("ok", "&#128274; <b>Signed &amp; verified</b> " +
+                  "<span class='tc'>(" + esc(r.trustedComment) + ")</span>");
       } else if (r.reason === "unavailable") {
-        set("", "&#128272; Signed release - this browser can't verify (needs Web Crypto).");
+        set("", "&#128272; Signed release. This browser can't verify (needs Web Crypto).");
       } else {
-        set("bad", "&#9888;&#65039; <b>Signature check FAILED</b> - do not flash this " +
+        set("bad", "&#9888;&#65039; <b>Signature check FAILED</b>. Do not flash this " +
                    "(" + esc(r.reason) + ").");
       }
     } catch (e) {
-      set("", "&#128272; Signed release - couldn't verify here (" +
+      set("", "&#128272; Signed release. Couldn't verify here (" +
               esc(e && e.message || e) + ").");
     }
   }

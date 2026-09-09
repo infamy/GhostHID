@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>GhostHID - a keyboard & mouse for any computer, over your network</title>
-<meta name="description" content="GhostHID turns a thumb-sized ESP32-S3 USB stick into a keyboard and mouse for any computer - driven from your phone, your browser, or your desktop's screen edge. Nothing to install on the target.">
+<title>GhostHID: a keyboard & mouse for any computer, over your network</title>
+<meta name="description" content="GhostHID turns a thumb-sized ESP32-S3 USB stick into a keyboard and mouse for any computer, driven from your phone, your browser, or your desktop's screen edge. Nothing to install on the target.">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><path fill='%2300e5ff' d='M15 55 L15 26 A17 17 0 0 1 49 26 L49 55 L49 48 L46 48 L46 55 L41 55 L41 48 L39 48 L39 55 L33 55 L33 48 L29 48 L29 55 L26 55 L26 48 L23 48 L23 55 Z'/><rect x='24' y='24' width='5' height='10' rx='1.5' fill='%2301050b'/><rect x='35' y='24' width='5' height='10' rx='1.5' fill='%2301050b'/></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -227,8 +227,8 @@ footer a{color:var(--dim)}
     <div>
       <span class="eyebrow">Network keyboard &amp; mouse · on a stick</span>
       <h1>Ghost<b>HID</b></h1>
-      <p class="lede">A thumb-sized USB stick that becomes a real keyboard and mouse for <em>any</em> computer - driven from your phone, your browser, or your desktop's screen edge.</p>
-      <p class="lede2">Plug it into the target. Control it over Wi-Fi. There is nothing to install on the machine you're controlling - to its USB port, GhostHID simply <em>is</em> a keyboard and mouse.</p>
+      <p class="lede">A thumb-sized USB stick that becomes a real keyboard and mouse for <em>any</em> computer, driven from your phone, your browser, or your desktop's screen edge.</p>
+      <p class="lede2">Plug it into the target. Control it over Wi-Fi. There is nothing to install on the machine you're controlling. To its USB port, GhostHID simply <em>is</em> a keyboard and mouse.</p>
       <div class="cta">
         <a class="btn" href="#start">Flash it in your browser</a>
         <a class="btn ghost" href="#what">How it works →</a>
@@ -247,8 +247,8 @@ footer a{color:var(--dim)}
   <div class="wrap">
     <span class="eyebrow">How it works</span>
     <h2>Yes, there's a keyboard plugged in.</h2>
-    <p>The computer is sure of it - to its USB port, GhostHID is a plain keyboard and mouse, no driver or agent required. What it can't tell is that the keystrokes are arriving over Wi-Fi: from the web app on your phone, or from your own desktop, a screen-edge away.</p>
-    <p class="secure">🔒 Screen sessions run over <b>mutual TLS</b> - the server's certificate is captured and confirmed on first connect, nothing to paste. Encryption included.</p>
+    <p>The computer is sure of it. To its USB port, GhostHID is a plain keyboard and mouse, no driver or agent required. What it can't tell is that the keystrokes are arriving over Wi-Fi: from the web app on your phone, or from your own desktop, a screen-edge away.</p>
+    <p class="secure">🔒 Screen sessions run over <b>mutual TLS</b>. The server's certificate is captured and confirmed on first connect, nothing to paste. Encryption included.</p>
   </div>
 </section>
 
@@ -257,14 +257,14 @@ footer a{color:var(--dim)}
     <div class="head">
       <span class="eyebrow">What it does</span>
       <h2>One stick, a lot of reach.</h2>
-      <p>Built for the moments you can't - or shouldn't - install anything on the target: a headless box, a locked-down machine, a KVM, a friend's PC, the podium laptop.</p>
+      <p>Built for the moments you can't (or shouldn't) install anything on the target: a headless box, a locked-down machine, a KVM, a friend's PC, the podium laptop.</p>
     </div>
     <div class="grid">
       <div class="card"><div class="n">01</div><h3>Control from any browser</h3><p>A phone-friendly web app: live typing, every key and combo, a trackpad, sticky modifiers. No app to install on either end.</p></div>
       <div class="card"><div class="n">02</div><h3>Your desktop's edge</h3><p>Join a Deskflow / Barrier / Input Leap layout as a screen and move your pointer straight onto the target. Nothing runs on the target.</p></div>
-      <div class="card"><div class="n">03</div><h3>It talks back</h3><p>Reads the host's lock-LED reports - Caps / Num / Scroll - plus a "the target is really driving me" signal, shown on the screen and in the web UI.</p></div>
-      <div class="card"><div class="n">04</div><h3>Presenter mode</h3><p>Next / back / black-screen with two timers - total talk and per-slide - like a hardware clicker, from your phone. Presets for Slides, Keynote, PowerPoint.</p></div>
-      <div class="card"><div class="n">05</div><h3>Media &amp; system keys</h3><p>Volume, mute, play/pause, next/prev, brightness - plus sleep, wake and power, as a full consumer-control collection.</p></div>
+      <div class="card"><div class="n">03</div><h3>It talks back</h3><p>Reads the host's own lock-LED state (Caps / Num / Scroll), so you can see on the screen and in the web UI that your input is really landing on the target.</p></div>
+      <div class="card"><div class="n">04</div><h3>Presenter mode</h3><p>Next / back / black-screen with two timers (total talk and per-slide), like a hardware clicker from your phone. Presets for Slides, Keynote, PowerPoint.</p></div>
+      <div class="card"><div class="n">05</div><h3>Media &amp; system keys</h3><p>Volume, mute, play/pause, next/prev, brightness, plus sleep, wake and power, as a full consumer-control collection.</p></div>
       <div class="card"><div class="n">06</div><h3>On-device screen</h3><p>A 1.47" LCD shows a Wi-Fi join QR, the IP and live status; an RGB LED reads its state across the room.</p></div>
     </div>
     <div class="more"><b>And under the hood:</b> trust-on-first-use TLS certificates · up to four controllers at once · one-click config export to clone a fleet of boards · browser OTA updates · a generic USB keyboard ID so it doesn't trip endpoint security · release-everything-on-disconnect safety.</div>
@@ -276,15 +276,15 @@ footer a{color:var(--dim)}
     <div class="head">
       <span class="eyebrow">See it</span>
       <h2>The whole thing is a web app.</h2>
-      <p>Served straight off the device. Open it from anything with a browser - no store, no sign-in.</p>
+      <p>Served straight off the device. Open it from anything with a browser. No store, no sign-in.</p>
     </div>
     <div class="shots">
-      <div class="shot"><figure><div class="frame"><img src="img/ui-control.jpg" alt="GhostHID Control tab - live typing, keys, trackpad and the target's own lock-LED feedback" loading="lazy" width="800" alt="GhostHID control tab: keyboard, trackpad and target feedback" loading="lazy"></div>
-        <figcaption><div class="k">Control</div><div class="d">Type, click, scroll - and watch the target's own lock LEDs confirm it's landing.</div></figcaption></figure></div>
-      <div class="shot"><figure><div class="frame"><img src="img/ui-present.jpg" alt="GhostHID Present tab - next/back with total and per-slide timers" loading="lazy" width="800" alt="GhostHID presenter mode with total and per-slide timers" loading="lazy"></div>
-        <figcaption><div class="k">Present</div><div class="d">Big next/back, total and per-slide timers - a presenter remote that lives in your pocket.</div></figcaption></figure></div>
-      <div class="shot"><figure><div class="frame"><img src="img/ui-settings.jpg" alt="GhostHID Settings tab - Wi-Fi, the screen-client link and trust-on-first-use TLS" loading="lazy" width="800" alt="GhostHID settings: Wi-Fi, screen client and encryption" loading="lazy"></div>
-        <figcaption><div class="k">Settings</div><div class="d">Wi-Fi, the screen-client link, and TLS that trusts the server on first connect - no cert files to paste.</div></figcaption></figure></div>
+      <div class="shot"><figure><div class="frame"><img src="img/ui-control.jpg" alt="GhostHID Control tab: live typing, keys, trackpad and the target's own lock-LED feedback" loading="lazy" width="800" alt="GhostHID control tab: keyboard, trackpad and target feedback" loading="lazy"></div>
+        <figcaption><div class="k">Control</div><div class="d">Type, click, scroll, and watch the target's own lock LEDs confirm it's landing.</div></figcaption></figure></div>
+      <div class="shot"><figure><div class="frame"><img src="img/ui-present.jpg" alt="GhostHID Present tab: next/back with total and per-slide timers" loading="lazy" width="800" alt="GhostHID presenter mode with total and per-slide timers" loading="lazy"></div>
+        <figcaption><div class="k">Present</div><div class="d">Big next/back, total and per-slide timers: a presenter remote that lives in your pocket.</div></figcaption></figure></div>
+      <div class="shot"><figure><div class="frame"><img src="img/ui-settings.jpg" alt="GhostHID Settings tab: Wi-Fi, the screen-client link and trust-on-first-use TLS" loading="lazy" width="800" alt="GhostHID settings: Wi-Fi, screen client and encryption" loading="lazy"></div>
+        <figcaption><div class="k">Settings</div><div class="d">Wi-Fi, the screen-client link, and TLS that trusts the server on first connect. No cert files to paste.</div></figcaption></figure></div>
     </div>
   </div>
 </section>
@@ -300,27 +300,27 @@ footer a{color:var(--dim)}
       <div class="lead">
         <span class="eyebrow">Flagship</span>
         <h3>Sealed mode: lock it down, leave it in place.</h3>
-        <p>For a device you deploy and walk away from. One command locks it, and the pairing token stops being a master key - undoing it takes physical hands on the board, not just the token or the network.</p>
+        <p>For a device you deploy and walk away from. One command locks it, and the pairing token stops being a master key. Undoing it takes physical hands on the board, not just the token or the network.</p>
       </div>
       <ul>
-        <li><b>Off the bus.</b> Sealed, it enumerates as a keyboard only - the serial console isn't even there to probe.</li>
+        <li><b>Off the bus.</b> Sealed, it enumerates as a keyboard only. The serial console isn't even there to probe.</li>
         <li><b>Read-only over the wire.</b> No config changes, no firmware updates, no plaintext screen sessions.</li>
         <li><b>Physical to undo.</b> Hold BOOT on the device to bring the console back, then your token. Two factors, both at the board.</li>
       </ul>
     </div>
     <div class="grid">
-      <div class="card"><div class="n">✓</div><h3>Encrypted both ways</h3><p>Screen sessions run over mutual TLS. The server's certificate is captured and confirmed on first connect - no keys to paste, and no silent plaintext fallback.</p></div>
-      <div class="card"><div class="n">✓</div><h3>The token never travels</h3><p>Controllers prove they know the pairing token with a challenge-response handshake - the token itself never crosses the wire. From there, every keystroke and mouse move is carried in a signed, counted envelope, so input can't be forged, tampered with, or replayed.</p></div>
+      <div class="card"><div class="n">✓</div><h3>Encrypted both ways</h3><p>Screen sessions run over mutual TLS. The server's certificate is captured and confirmed on first connect. No keys to paste, and no silent plaintext fallback.</p></div>
+      <div class="card"><div class="n">✓</div><h3>The token never travels</h3><p>Controllers prove they know the pairing token with a challenge-response handshake, so the token itself never crosses the wire. From there, every keystroke and mouse move is carried in a signed, counted envelope, so input can't be forged, tampered with, or replayed.</p></div>
       <div class="card"><div class="n">✓</div><h3>No shared default</h3><p>Every board generates its own random pairing token and access-point password on first boot. There's nothing to look up and reuse across devices.</p></div>
-      <div class="card"><div class="n">✓</div><h3>Resists guessing</h3><p>Tokens are checked in constant time, with an escalating lockout after repeated failures - on the web control channel and the firmware-update endpoint alike.</p></div>
-      <div class="card"><div class="n">✓</div><h3>Never a stuck key</h3><p>If a controller drops - lost Wi-Fi, a closed tab - the device releases every held key and button on the target. Guaranteed by the layering, not left to chance.</p></div>
+      <div class="card"><div class="n">✓</div><h3>Resists guessing</h3><p>Tokens are checked in constant time, with an escalating lockout after repeated failures, on the web control channel and the firmware-update endpoint alike.</p></div>
+      <div class="card"><div class="n">✓</div><h3>Never a stuck key</h3><p>If a controller drops (lost Wi-Fi, a closed tab), the device releases every held key and button on the target. Guaranteed by the layering, not left to chance.</p></div>
       <div class="card"><div class="n">✓</div><h3>Stays on your network</h3><p>No cloud, no account, no telemetry. The web app is served straight off the device; nothing it does leaves your LAN.</p></div>
-      <div class="card"><div class="n">✓</div><h3>Nothing hidden</h3><p>A generic USB keyboard ID so it doesn't trip endpoint security - and MIT-licensed firmware, web UI and hardware you can read end to end.</p></div>
-      <div class="card"><div class="n">✓</div><h3>Signed, reproducible builds</h3><p>Releases are signed with minisign so you can verify a build before it ever touches a machine, and the toolchain and every library are pinned - a given commit always compiles to the same bytes.</p></div>
-      <div class="card"><div class="n">✓</div><h3>No clipboard crossing</h3><p>GhostHID is a keyboard and mouse, not a clipboard peer. It opts out of clipboard sharing at the protocol level, so whatever you copy on your computer is never sent to the device - nothing to leak, nothing to buffer.</p></div>
+      <div class="card"><div class="n">✓</div><h3>Nothing hidden</h3><p>A generic USB keyboard ID so it doesn't trip endpoint security, plus MIT-licensed firmware, web UI and hardware you can read end to end.</p></div>
+      <div class="card"><div class="n">✓</div><h3>Signed, reproducible builds</h3><p>Releases are signed with minisign so you can verify a build before it ever touches a machine, and the toolchain and every library are pinned, so a given commit always compiles to the same bytes.</p></div>
+      <div class="card"><div class="n">✓</div><h3>No clipboard crossing</h3><p>GhostHID is a keyboard and mouse, not a clipboard peer. It opts out of clipboard sharing at the protocol level, so whatever you copy on your computer is never sent to the device. Nothing to leak, nothing to buffer.</p></div>
     </div>
     <div class="more" style="display:flex;gap:18px;align-items:center;flex-wrap:wrap;justify-content:space-between">
-      <span>We publish the whole picture - the full threat model, every deliberate trade-off, and the list of things this <b style="color:var(--fg)">deliberately doesn't defend against</b>.</span>
+      <span>We publish the whole picture: the full threat model, every deliberate trade-off, and the list of things this <b style="color:var(--fg)">deliberately doesn't defend against</b>.</span>
       <a class="btn ghost" href="security/">Read the security posture →</a>
     </div>
   </div>
@@ -331,17 +331,17 @@ footer a{color:var(--dim)}
     <div>
       <span class="eyebrow">The hardware</span>
       <h2 style="font-size:clamp(28px,4.6vw,44px);margin-top:12px">A USB-A stick you can print a home for.</h2>
-      <p class="dim" style="margin-top:16px;font-size:16.5px">It runs on the Waveshare ESP32-S3-LCD-1.47 - dual-core, native USB, a colour screen and an RGB LED, in a board the size of a chunky flash drive. The repo ships a parametric case with the ghost as a two-colour inlay.</p>
+      <p class="dim" style="margin-top:16px;font-size:16.5px">It runs on the Waveshare ESP32-S3-LCD-1.47: dual-core, native USB, a colour screen and an RGB LED, in a board the size of a chunky flash drive. The repo ships a parametric case with the ghost as a two-colour inlay.</p>
       <ul>
-        <li><b>Plugs in directly.</b> Integrated USB-A plug - no cable, no dongle.</li>
+        <li><b>Plugs in directly.</b> Integrated USB-A plug. No cable, no dongle.</li>
         <li><b>Dual-core headroom.</b> The screen session and the web server never fight for the radio.</li>
-        <li><b>Printable case.</b> OpenSCAD + STL + a ready-to-slice 3MF, measured off the board's STEP model - with a proper BOOT button.</li>
+        <li><b>Printable case.</b> OpenSCAD + STL + a ready-to-slice 3MF, measured off the board's STEP model, with a proper BOOT button.</li>
         <li><b>Yours to change.</b> MIT-licensed firmware, web UI and hardware, all in one repo.</li>
       </ul>
     </div>
     <div class="art">
       <img src="img/case-back.png" alt="Printed case back with the two-colour GhostHID ghost">
-      <img src="img/case-exploded.png" alt="GhostHID case, exploded - bottom cradle and LCD bezel">
+      <img src="img/case-exploded.png" alt="GhostHID case, exploded: bottom cradle and LCD bezel">
     </div>
   </div>
 </section>
@@ -349,7 +349,7 @@ footer a{color:var(--dim)}
 <section id="flow" style="background:var(--bg2);border-block:1px solid var(--line)">
   <div class="wrap">
     <div class="head"><span class="eyebrow">The shape of it</span><h2>Layered so it stays honest.</h2>
-      <p>Each layer knows only its neighbour. The network never touches USB; the HID layer never learns where a command came from - so a stuck key is impossible by construction.</p></div>
+      <p>Each layer knows only its neighbour. The network never touches USB; the HID layer never learns where a command came from, so a stuck key is impossible by construction.</p></div>
     <div class="flow">
       <div class="step"><div class="t">Phone / browser / Deskflow</div><p>A keystroke or a pointer move, as JSON or the Synergy protocol.</p></div>
       <div class="step"><div class="a">→</div></div>
@@ -365,13 +365,13 @@ footer a{color:var(--dim)}
     <div class="head">
       <span class="eyebrow">Get started</span>
       <h2>Flash one in about a minute.</h2>
-      <p>Plug a board in over USB and flash it in your browser - or grab the firmware and the printable case directly.</p>
+      <p>Plug a board in over USB and flash it in your browser, or grab the firmware and the printable case directly.</p>
     </div>
     <div class="grid dl">
       <a class="card dlcard" href="flash/" data-flasher>
         <div class="ic">⚡</div>
         <h3>Flash in your browser</h3>
-        <p>Web Serial - nothing to install. Plug in over USB, pick the port, done.
+        <p>Web Serial. Nothing to install. Plug in over USB, pick the port, done.
            <span class="meta">Chrome or Edge · ESP32-S3</span></p>
         <span class="go">Open the flasher →</span>
       </a>
@@ -387,7 +387,7 @@ footer a{color:var(--dim)}
       <a class="card dlcard" href="downloads/ghosthid-case.3mf" download>
         <div class="ic"><svg viewBox="0 0 64 64" width="24" height="24" aria-hidden="true"><path fill="#00e5ff" d="M15 55 L15 26 A17 17 0 0 1 49 26 L49 55 L49 48 L46 48 L46 55 L41 55 L41 48 L39 48 L39 55 L33 55 L33 48 L29 48 L29 55 L26 55 L26 48 L23 48 L23 55 Z"/><rect x="24" y="24" width="5" height="10" rx="1.5" fill="#01050b"/><rect x="35" y="24" width="5" height="10" rx="1.5" fill="#01050b"/></svg></div>
         <h3>Printable case</h3>
-        <p>All three parts in one file - pick a filament for the case and the ghost.
+        <p>All three parts in one file. Pick a filament for the case and the ghost.
            <span class="meta">ghosthid-case.3mf · two-colour</span></p>
         <span class="go">Download .3mf →</span>
       </a>
