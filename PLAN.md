@@ -834,7 +834,7 @@ ghosthid/
 │
 ├── scripts/                     packaging and release helpers
 ├── assets/                      logo and repository avatar
-├── .gitea/workflows/            CI and release
+├── .github/workflows/           CI and release (shared Gitea + GitHub)
 │
 ├── CHANGELOG.md
 ├── LICENSE

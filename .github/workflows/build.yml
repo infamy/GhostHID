@@ -20,6 +20,7 @@ jobs:
   firmware:
     name: firmware
     runs-on: ubuntu-latest
+    if: ${{ !contains(github.server_url, 'github.com') }}
     steps:
       - uses: actions/checkout@v4
 
@@ -80,6 +81,7 @@ jobs:
   tests:
     name: unit tests
     runs-on: ubuntu-latest
+    if: ${{ !contains(github.server_url, 'github.com') }}
     steps:
       - uses: actions/checkout@v4
 
@@ -112,6 +114,7 @@ jobs:
   web:
     name: web UI
     runs-on: ubuntu-latest
+    if: ${{ !contains(github.server_url, 'github.com') }}
     container:
       image: node:20-alpine
     steps:

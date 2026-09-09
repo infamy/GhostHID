@@ -145,7 +145,10 @@ midway.
 
 ## CI
 
-Gitea Actions workflows live in `.gitea/workflows/`.
+CI workflows live in `.github/workflows/`, shared by both hosts: Gitea and
+GitHub each run only the workflows meant for them (a `github.server_url`
+guard on every job skips the others), so there is no separate `.gitea/`
+folder to keep in sync.
 
 * **`build.yml`** runs on every push and pull request: the firmware builds, and
   the embedded web UI is checked to parse as JavaScript, balance its tags, and
