@@ -259,14 +259,13 @@ Verify before flashing:
 
 ```bash
 # GhostHID release signing key (public):
-minisign -Vm ghosthid-firmware.bin -P RWSGHOSTHIDPUBKEYPLACEHOLDERREPLACEBEFORELAUNCH000000
+minisign -Vm ghosthid-firmware.bin -P RWQ8OFKZ/bzNW+xvD/z/McEtIaw4Pux+kLjLXgA5ISnrkmGs13vQYWxu
 ```
 
-Or keep the key in a file and use `-p`:
+The same key ships in the repo as [`ghosthid.pub`](ghosthid.pub), so from a clone
+you can point `-p` straight at it:
 
 ```bash
-echo "untrusted comment: GhostHID release signing key
-RWSGHOSTHIDPUBKEYPLACEHOLDERREPLACEBEFORELAUNCH000000" > ghosthid.pub
 minisign -Vm ghosthid-esp32-s3-lcd147.zip -p ghosthid.pub
 ```
 
