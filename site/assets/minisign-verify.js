@@ -147,7 +147,7 @@
       return { ok: false, reason: 'crypto', message: 'Verification failed to run: ' + (e && e.message || e) };
     }
     if (okFile && okComment) return { ok: true, reason: 'ok', trustedComment: sig.trustedComment, message: 'Signature verified.' };
-    return { ok: false, reason: 'invalid', message: 'Signature does NOT match — do not trust this file.' };
+    return { ok: false, reason: 'invalid', message: 'Signature does NOT match - do not trust this file.' };
   }
 
   var api = { verify: verify, blake2b512: blake2b512 };

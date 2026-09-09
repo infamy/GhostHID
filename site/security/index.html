@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Security — GhostHID</title>
+<title>Security - GhostHID</title>
 <meta name="description" content="GhostHID's security posture and threat model: what it defends, what it deliberately does not, and the reasoning behind every decision. Published in full.">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><path fill='%2300e5ff' d='M15 55 L15 26 A17 17 0 0 1 49 26 L49 55 L49 48 L46 48 L46 55 L41 55 L41 48 L39 48 L39 55 L33 55 L33 48 L29 48 L29 55 L26 55 L26 48 L23 48 L23 55 Z'/><rect x='24' y='24' width='5' height='10' rx='1.5' fill='%2301050b'/><rect x='35' y='24' width='5' height='10' rx='1.5' fill='%2301050b'/></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -147,7 +147,7 @@ footer a{color:var(--dim)}
 <div class="wrap hero">
   <span class="eyebrow">Security</span>
   <h1>The whole picture,<br>including the bad parts.</h1>
-  <p class="lede">This is our complete security posture and threat model. Not a summary — the same document our own reviewers read.</p>
+  <p class="lede">This is our complete security posture and threat model. Not a summary - the same document our own reviewers read.</p>
   <p class="sub">A device that types into other people's computers should not ask you to take its security on faith. Everything below is published because you cannot stay inside a boundary nobody described to you.</p>
 </div>
 
@@ -177,10 +177,10 @@ footer a{color:var(--dim)}
       <p>GhostHID is a keyboard. Anyone who can drive it can type into a logged-in session, and typing into a logged-in session is the same thing as running commands there.</p>
       <div class="callout">
         <div class="k">The sentence everything follows from</div>
-        <p>This is not a device where a security failure means someone wiggles your mouse. <strong>An authentication failure here is full compromise of the target machine</strong> — no driver, no agent, no EDR hook, no audit trail, behind a USB identity chosen to look like the keyboard already on the desk.</p>
+        <p>This is not a device where a security failure means someone wiggles your mouse. <strong>An authentication failure here is full compromise of the target machine</strong> - no driver, no agent, no EDR hook, no audit trail, behind a USB identity chosen to look like the keyboard already on the desk.</p>
         <p>We design from that sentence, not from a softer one. If a control would not hold against “the attacker gets a shell”, we do not call it a boundary.</p>
       </div>
-      <p>Plug this into machines you administer. That is not a legal disclaimer — it is the boundary the design actually assumes, and the rest of this page explains exactly where it sits.</p>
+      <p>Plug this into machines you administer. That is not a legal disclaimer - it is the boundary the design actually assumes, and the rest of this page explains exactly where it sits.</p>
     </section>
 
     <div class="rule"></div>
@@ -194,13 +194,13 @@ footer a{color:var(--dim)}
           <tr><td>Radio range → the device's own AP</td><td>WPA2 with a per-device random passphrase, set on first boot</td></tr>
           <tr><td>The AP or your LAN → the WebSocket</td><td>Pairing token on every command; browser-origin and <code>Host</code> checks; auth attempts throttled</td></tr>
           <tr><td>A screen server → HID input</td><td>Mutual TLS with the server's certificate pinned, when <code>kvm_tls</code> is on</td></tr>
-          <tr class="none"><td>The target machine → the device</td><td><strong>Nothing while unsealed</strong> — deliberate, see non-goal 1. <strong>Sealed:</strong> no serial interface exists on the bus at all.</td></tr>
+          <tr class="none"><td>The target machine → the device</td><td><strong>Nothing while unsealed</strong> - deliberate, see non-goal 1. <strong>Sealed:</strong> no serial interface exists on the bus at all.</td></tr>
         </tbody>
       </table>
       <p>Three details there are the ones reviewers ask about.</p>
       <p><strong>The token gates commands, not the connection.</strong> A peer that reaches the socket still cannot type, read config, push firmware or export settings. Refusing at the command layer rather than the door is what makes “reached the socket” a non-event.</p>
       <p><strong>WebSockets ignore the browser's same-origin policy</strong>, so a page you never opened could otherwise reach the device from your own browser. The handshake's <code>Origin</code> is checked against the device's real address, and the <code>Host</code> header is cross-checked to blunt DNS rebinding.</p>
-      <p><strong>Secrets are write-only across the network.</strong> The Wi-Fi passphrase, AP passphrase and pairing token can be set but never read back — the API reports only whether each is set, and the serial console masks them. This holds against the network. It does not hold against someone holding the board.</p>
+      <p><strong>Secrets are write-only across the network.</strong> The Wi-Fi passphrase, AP passphrase and pairing token can be set but never read back - the API reports only whether each is set, and the serial console masks them. This holds against the network. It does not hold against someone holding the board.</p>
     </section>
 
     <div class="rule"></div>
@@ -213,12 +213,12 @@ footer a{color:var(--dim)}
         <li><strong>A drive-by from another web page.</strong> Origin and <code>Host</code> are checked explicitly, because WebSockets are not covered by the same-origin policy. A page you did not open cannot reach the socket.</li>
         <li><strong>Token guessing.</strong> Repeated auth failures trip an escalating cooldown and drop the connection; an unauthenticated connection that squats the client slot is timed out. Guesses cannot be sprayed at line rate, and the slot cannot be held against you.</li>
         <li><strong>An unauthenticated peer on your network.</strong> The token gates every HID command, every config read and write, the firmware-update endpoint and the config export.</li>
-        <li><strong>Recovering the token, or forging input, from the network.</strong> The token is never transmitted — a controller proves it with a challenge-response handshake over a fresh random nonce. Once authenticated, every input command carries a MAC and a monotonic counter, so a peer who captures traffic can't replay it, tamper with it, or synthesise input of their own.</li>
+        <li><strong>Recovering the token, or forging input, from the network.</strong> The token is never transmitted - a controller proves it with a challenge-response handshake over a fresh random nonce. Once authenticated, every input command carries a MAC and a monotonic counter, so a peer who captures traffic can't replay it, tamper with it, or synthesise input of their own.</li>
         <li><strong>Reading your secrets back out over the network.</strong> Credentials are write-only, as above.</li>
         <li><strong>A rogue screen server.</strong> With <code>kvm_tls</code> on, the connection is mutual TLS against a certificate you pinned. Nothing else can feed input down that path.</li>
-        <li><strong>Keys stuck down on the target.</strong> Three independent layers — the disconnect handler releases everything immediately; a watchdog releases everything if a controller holds input then goes silent for 750&nbsp;ms; and the BOOT button is a physical panic release that needs no network at all.</li>
-        <li><strong>A failed update.</strong> Dual-slot OTA — an interrupted upload leaves the running firmware untouched.</li>
-        <li><strong>The target machine taking over the device — once sealed.</strong> A sealed device enumerates <em>HID-only</em>: there is no serial interface on the USB bus for a process on the target to talk to. Undoing it takes a five-second physical BOOT hold, a reboot, and an explicit unseal command — and the window is one-shot, so a device left alone comes back HID-only on the next boot. This is the answer to non-goal 1, and the reason to seal anything you deploy and walk away from.</li>
+        <li><strong>Keys stuck down on the target.</strong> Three independent layers - the disconnect handler releases everything immediately; a watchdog releases everything if a controller holds input then goes silent for 750&nbsp;ms; and the BOOT button is a physical panic release that needs no network at all.</li>
+        <li><strong>A failed update.</strong> Dual-slot OTA - an interrupted upload leaves the running firmware untouched.</li>
+        <li><strong>The target machine taking over the device - once sealed.</strong> A sealed device enumerates <em>HID-only</em>: there is no serial interface on the USB bus for a process on the target to talk to. Undoing it takes a five-second physical BOOT hold, a reboot, and an explicit unseal command - and the window is one-shot, so a device left alone comes back HID-only on the next boot. This is the answer to non-goal 1, and the reason to seal anything you deploy and walk away from.</li>
       </ul>
     </section>
 
@@ -229,11 +229,11 @@ footer a{color:var(--dim)}
       <h2>What it does not defend against</h2>
       <p>Non-goals, not oversights. Anyone deploying this should be able to recite them.</p>
       <ol class="nongoals">
-        <li><b>The machine you plug it into — unless the device is sealed.</b> On an unsealed device the USB serial console has no authentication, so any process on the target can reconfigure it: repoint the Wi-Fi, change or clear the pairing token, factory-reset it. It cannot read your passwords, but it can take the device over across the USB boundary. <b>Sealing closes this</b> by removing the serial interface from the bus entirely. Treat an unsealed device plugged into a machine you do not administer as that machine's device.</li>
-        <li><b>Anyone who has the token.</b> It is a bearer credential — no per-user identity, no revocation beyond changing it, and no record of who used it.</li>
-        <li><b>Reading what a session sends.</b> The token itself is safe on the wire — since 0.9.0 it's proven by challenge-response and never transmitted, and input travels in a MAC'd, counted envelope that can't be forged or replayed. What isn't encrypted is the <em>content</em>: the transport is still <code>ws://</code> / <code>http://</code>, so a peer who already holds the AP passphrase and captures the traffic can read what a session does — the keys you send — without being able to recover the token or inject input. A TLS control plane would close this; it's the accepted residual gap.</li>
+        <li><b>The machine you plug it into - unless the device is sealed.</b> On an unsealed device the USB serial console has no authentication, so any process on the target can reconfigure it: repoint the Wi-Fi, change or clear the pairing token, factory-reset it. It cannot read your passwords, but it can take the device over across the USB boundary. <b>Sealing closes this</b> by removing the serial interface from the bus entirely. Treat an unsealed device plugged into a machine you do not administer as that machine's device.</li>
+        <li><b>Anyone who has the token.</b> It is a bearer credential - no per-user identity, no revocation beyond changing it, and no record of who used it.</li>
+        <li><b>Reading what a session sends.</b> The token itself is safe on the wire - since 0.9.0 it's proven by challenge-response and never transmitted, and input travels in a MAC'd, counted envelope that can't be forged or replayed. What isn't encrypted is the <em>content</em>: the transport is still <code>ws://</code> / <code>http://</code>, so a peer who already holds the AP passphrase and captures the traffic can read what a session does - the keys you send - without being able to recover the token or inject input. A TLS control plane would close this; it's the accepted residual gap.</li>
         <li><b>Local flash extraction.</b> Storage is not encrypted and secure boot is not enabled, deliberately, so the Wi-Fi passphrase, pairing token and TLS private key are readable by anyone who can put the board into download mode. Treat the token as also granting “dump every secret”.</li>
-        <li><b>Firmware you choose to flash — by design.</b> This is a bring-your-own-board project: the device runs whatever image you give it. The token is therefore the power to install firmware.</li>
+        <li><b>Firmware you choose to flash - by design.</b> This is a bring-your-own-board project: the device runs whatever image you give it. The token is therefore the power to install firmware.</li>
         <li><b>A screen server reached with <code>kvm_tls</code> off.</b> Plain TCP, no authentication of the peer. The setting exists for bench use; leaving it off in the field hands a keyboard to whoever can win a DNS race.</li>
         <li><b>An image that boots but breaks networking.</b> There is no automatic rollback, so recovery is physical.</li>
       </ol>
@@ -244,11 +244,11 @@ footer a{color:var(--dim)}
     <section id="beliefs">
       <span class="eyebrow">05</span>
       <h2>Why it's built this way</h2>
-      <p>Seven principles. Each is listed with what it cost or caused — a principle that never forced a trade-off is decoration.</p>
+      <p>Seven principles. Each is listed with what it cost or caused - a principle that never forced a trade-off is decoration.</p>
       <ol class="principles">
         <li>
           <h3>Start from the worst case, not the demo</h3>
-          <p>The threat we model is arbitrary command execution, because that is what the device <em>is</em>. That framing is why the token gates every command rather than merely the connection, why token comparison is constant-time, and why the update path is treated as equal in severity to the keystroke path — installing firmware and typing a command are the same privilege here.</p>
+          <p>The threat we model is arbitrary command execution, because that is what the device <em>is</em>. That framing is why the token gates every command rather than merely the connection, why token comparison is constant-time, and why the update path is treated as equal in severity to the keystroke path - installing firmware and typing a command are the same privilege here.</p>
         </li>
         <li>
           <h3>No two devices share a secret</h3>
@@ -260,15 +260,15 @@ footer a{color:var(--dim)}
         </li>
         <li>
           <h3>The owner owns the board</h3>
-          <p>This is a bring-your-own-ESP32 project, and the device must never refuse to run an image its owner flashed. That single commitment rules out the two controls a checklist would demand — secure boot and on-device signature enforcement — and we are comfortable with that, for the reasons below.</p>
+          <p>This is a bring-your-own-ESP32 project, and the device must never refuse to run an image its owner flashed. That single commitment rules out the two controls a checklist would demand - secure boot and on-device signature enforcement - and we are comfortable with that, for the reasons below.</p>
         </li>
         <li>
           <h3>If it cannot hold, don't call it a boundary</h3>
-          <p>We have rejected security features on these grounds and written down why, rather than shipping them for the feature list. An arm/disarm model was dropped as incompatible with the unattended use case. A proposed keystroke-filtering mode is documented as <em>friction and a tripwire, not a boundary</em> — including which bypass path stays open, and why closing it would be worse.</p>
+          <p>We have rejected security features on these grounds and written down why, rather than shipping them for the feature list. An arm/disarm model was dropped as incompatible with the unattended use case. A proposed keystroke-filtering mode is documented as <em>friction and a tripwire, not a boundary</em> - including which bypass path stays open, and why closing it would be worse.</p>
         </li>
         <li>
           <h3>A stuck key is a security bug</h3>
-          <p>The worst thing this device can physically do to a target is hold a modifier down. That gets three <em>independent</em> layers, not one — any of them can fail without the other two caring.</p>
+          <p>The worst thing this device can physically do to a target is hold a modifier down. That gets three <em>independent</em> layers, not one - any of them can fail without the other two caring.</p>
         </li>
         <li>
           <h3>Publish the gaps</h3>
@@ -285,24 +285,24 @@ footer a{color:var(--dim)}
       <p>Six places we did not do the obvious thing. The reasoning matters more than the conclusion.</p>
 
       <h3>No secure boot, no flash encryption</h3>
-      <p>Locking the board to signed images only defends against a physical attacker replacing firmware — a threat this device <strong>already concedes</strong>, because anyone holding the board can read storage regardless. The cost is burning one-way fuses, bricking on a mistake, and permanently converting a bring-your-own board into an appliance its owner cannot modify. Paying an irreversible price to partially cover a threat we have already accepted is a bad trade.</p>
+      <p>Locking the board to signed images only defends against a physical attacker replacing firmware - a threat this device <strong>already concedes</strong>, because anyone holding the board can read storage regardless. The cost is burning one-way fuses, bricking on a mistake, and permanently converting a bring-your-own board into an appliance its owner cannot modify. Paying an irreversible price to partially cover a threat we have already accepted is a bad trade.</p>
 
       <h3>Signed releases, zero on-device enforcement</h3>
       <p>Release artifacts will be signed so anyone who wants provenance can verify a download is genuinely ours before flashing it. Verification is operator-side and opt-in. On-device enforcement was considered and rejected twice over: it would defeat the build-your-own premise, and it buys little even on its own terms, since updating already requires the token and the token already grants full keyboard control. Trust for whoever wants it; lock-in for nobody.</p>
-      <span class="status">Specified, not yet shipped — a gate before first release</span>
+      <span class="status">Specified, not yet shipped - a gate before first release</span>
 
       <h3>The USB identity is generic, and we say why</h3>
-      <p>The device presents a generic keyboard identity rather than an Espressif one, so the target cannot practically distinguish it from the keyboard already plugged in. That is the product working as intended, and it is also precisely the risk. The two are not separable, so we do not present it as a security feature — it is stated as what makes the deployment boundary matter.</p>
+      <p>The device presents a generic keyboard identity rather than an Espressif one, so the target cannot practically distinguish it from the keyboard already plugged in. That is the product working as intended, and it is also precisely the risk. The two are not separable, so we do not present it as a security feature - it is stated as what makes the deployment boundary matter.</p>
 
-      <h3>The serial console is open for bootstrap — and removable afterwards</h3>
-      <p>A brand-new board has to be configurable by someone holding it, so the console starts open. The dangerous commands — changing Wi-Fi, changing or clearing the token, factory reset, entering the bootloader — sit behind an unlock gate once a token is set. A full console password was proposed and downgraded on purpose: physical or USB access already implies reading storage, so a password there protects nothing real while making first-run setup worse.</p>
-      <p>Sealing is the real answer, and it is a stronger one than a password. Rather than protecting the console, it <em>deletes</em> it: the interface is never added to the USB descriptor, so a sealed device offers the target nothing to attack. That constraint is genuinely hardware-shaped — an interface can only join the descriptor before the USB stack starts — which is why sealing takes effect across a reboot rather than at runtime, and why unsealing needs physical hands rather than a network command.</p>
+      <h3>The serial console is open for bootstrap - and removable afterwards</h3>
+      <p>A brand-new board has to be configurable by someone holding it, so the console starts open. The dangerous commands - changing Wi-Fi, changing or clearing the token, factory reset, entering the bootloader - sit behind an unlock gate once a token is set. A full console password was proposed and downgraded on purpose: physical or USB access already implies reading storage, so a password there protects nothing real while making first-run setup worse.</p>
+      <p>Sealing is the real answer, and it is a stronger one than a password. Rather than protecting the console, it <em>deletes</em> it: the interface is never added to the USB descriptor, so a sealed device offers the target nothing to attack. That constraint is genuinely hardware-shaped - an interface can only join the descriptor before the USB stack starts - which is why sealing takes effect across a reboot rather than at runtime, and why unsealing needs physical hands rather than a network command.</p>
 
       <h3>Credentials on the screen need a physical press</h3>
       <p>The pairing token is shown on the LCD only on a page reached by physically pressing BOOT, and it reverts to the status page after 60 seconds. Hiding it entirely was considered and rejected: it is the only recovery path on a device whose stored config survives a reflash. Requiring physical presence to reveal a credential is the correct shape.</p>
 
       <h3>The token stays off the wire; session content is not yet encrypted</h3>
-      <p>As of 0.9.0 the pairing token is never transmitted: a controller proves it knows the token with a challenge-response handshake — the device sends a random nonce, the client returns <code>HMAC-SHA256(token, nonce)</code>, and only the proof crosses the wire. Every keystroke and mouse move then rides in a MAC'd envelope with a monotonic counter, so input can't be forged, tampered with, or replayed. The remaining gap, stated as non-goal 3, is confidentiality of the <em>content</em>: the transport is still <code>ws://</code> / <code>http://</code>, so a peer with the AP passphrase who captures the traffic can read what a session sends — though not recover the token or inject input. Closing it needs a TLS control plane, recorded as an accepted limitation rather than papered over.</p>
+      <p>As of 0.9.0 the pairing token is never transmitted: a controller proves it knows the token with a challenge-response handshake - the device sends a random nonce, the client returns <code>HMAC-SHA256(token, nonce)</code>, and only the proof crosses the wire. Every keystroke and mouse move then rides in a MAC'd envelope with a monotonic counter, so input can't be forged, tampered with, or replayed. The remaining gap, stated as non-goal 3, is confidentiality of the <em>content</em>: the transport is still <code>ws://</code> / <code>http://</code>, so a peer with the AP passphrase who captures the traffic can read what a session sends - though not recover the token or inject input. Closing it needs a TLS control plane, recorded as an accepted limitation rather than papered over.</p>
     </section>
 
     <div class="rule"></div>
@@ -325,7 +325,7 @@ footer a{color:var(--dim)}
     <section id="defenders">
       <span class="eyebrow">08</span>
       <h2>If you defend machines</h2>
-      <p>If you are protecting computers rather than driving them remotely, this device is blocked the way any unexpected HID is blocked — USB device-authorisation policy. <code>USBGuard</code> on Linux, device-installation restrictions by device ID on Windows, an MDM-enforced allowlist on macOS.</p>
+      <p>If you are protecting computers rather than driving them remotely, this device is blocked the way any unexpected HID is blocked - USB device-authorisation policy. <code>USBGuard</code> on Linux, device-installation restrictions by device ID on Windows, an MDM-enforced allowlist on macOS.</p>
       <p>The general control is <em>do not accept a newly-enumerated keyboard on a machine that already has one</em>, and it works against GhostHID exactly as well as it works against anything else in this category. The generic USB identity does not evade it, because that control does not depend on recognising the specific device.</p>
       <p>We would rather you know that than not.</p>
     </section>
@@ -339,7 +339,7 @@ footer a{color:var(--dim)}
       <p>Two habits are worth naming because they are unusual.</p>
       <p><strong>Withdrawn findings keep their reasoning.</strong> The arm/disarm model, the console password and hiding the on-screen token are all written up as <em>why not</em>, permanently. A reviewer can disagree with the conclusion and argue against the actual argument rather than guessing at it.</p>
       <p><strong>Fixes that introduced follow-ups say so.</strong> One update-path fix created an ownership-cleanup problem that became its own tracked finding and its own fix, and that lineage is in the document. A review doc that only records wins is not a review doc.</p>
-      <p>Where things stand today: no open line-level findings. What remains is proposed hardening — a wear-aware audit log, the keystroke tripwire, a test harness for the safety-critical invariants — tracked as design work rather than as defects, because calling design work a defect is how backlogs start lying to you.</p>
+      <p>Where things stand today: no open line-level findings. What remains is proposed hardening - a wear-aware audit log, the keystroke tripwire, a test harness for the safety-critical invariants - tracked as design work rather than as defects, because calling design work a defect is how backlogs start lying to you.</p>
       <p>The known weak spots, in the order they should worry you: <strong>the plaintext control plane</strong>, <strong>the absence of any audit trail</strong>, and <strong>the untested safety invariants</strong>. All three are on this page, and none of them are secrets.</p>
     </section>
 
@@ -348,7 +348,7 @@ footer a{color:var(--dim)}
     <section id="report">
       <span class="eyebrow">10</span>
       <h2>Reporting a problem</h2>
-      <p>Report privately to the maintainer rather than opening a public issue, and expect the finding to be tracked by name — fixed with a version, accepted with reasoning, or withdrawn with the argument. Findings that change the picture above will change this page too.</p>
+      <p>Report privately to the maintainer rather than opening a public issue, and expect the finding to be tracked by name - fixed with a version, accepted with reasoning, or withdrawn with the argument. Findings that change the picture above will change this page too.</p>
       <p>The full documents this page is drawn from live in the repository: the security posture, the threat model, and the working review state. <a href="#" data-repo>Read the source →</a></p>
     </section>
 
@@ -357,7 +357,7 @@ footer a{color:var(--dim)}
 
 <footer>
   <div class="wrap">
-    <span>GhostHID — MIT licensed. No cloud, no account, no telemetry.</span>
+    <span>GhostHID - MIT licensed. No cloud, no account, no telemetry.</span>
     <nav>
       <a href="../">Overview</a>
       <a href="../#start">Flash</a>
