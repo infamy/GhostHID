@@ -12,10 +12,18 @@ webflasher/*.bin
 site/flash/*.bin
 site/downloads/*.bin
 
-# minisign release signing key - NEVER commit. Held by the operator; CI reads it
-# from the MINISIGN_KEY secret. The .pub key is public and lives in the README.
+# Private keys and secrets - NEVER commit. The minisign signing key is held by
+# the operator; CI reads it from the MINISIGN_KEY secret. Public keys (*.pub, and
+# ghosthid.pub specifically) ARE committed - they're how releases get verified.
 ghosthid.key
+*.key
 *.sec
+*.pem
+*.p12
+*.pfx
+# minisign secret keys sometimes carry this extension
+*.minisign.key
+!*.pub
 
 # Internal line-level review - working state, never published.
 SECURITY-REVIEW.md
