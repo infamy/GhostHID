@@ -8,9 +8,14 @@ firmware/src/web/WebAssets.h
 dist/
 webflasher/*.bin
 
-# site: large build artifacts (populated from a release for hosting)
+# site: large build artifacts (populated from a release for hosting). Copy each
+# firmware .bin together with its .minisig so the download pages can verify the
+# signature in the browser - a .bin without its matching .minisig just shows
+# "Signed release" instead of the verified lock.
 site/flash/*.bin
+site/flash/*.minisig
 site/downloads/*.bin
+site/downloads/*.minisig
 
 # Private keys and secrets - NEVER commit. The minisign signing key is held by
 # the operator; CI reads it from the MINISIGN_KEY secret. Public keys (*.pub, and

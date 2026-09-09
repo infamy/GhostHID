@@ -32,6 +32,18 @@
   esp-web-install-button{--esp-tools-button-color:#00e5ff;--esp-tools-button-text-color:#02121a}
   esp-web-install-button button{background:var(--accent);color:#02121a;border:0;border-radius:6px;
       font:600 15px var(--mono);padding:12px 28px;cursor:pointer}
+  .sig{display:flex;align-items:center;gap:9px;justify-content:center;width:100%;
+       font-size:13px;border-radius:6px;padding:10px 12px;border:1px solid var(--line);
+       background:#040b14;color:var(--dim);transition:border-color .3s,background .3s,color .3s}
+  .sig b{color:inherit}
+  .sig .tc{color:var(--dim);font-style:normal}
+  .sig.ok{border-color:#12603f;background:#03170f;color:var(--ok)}
+  .sig.ok .tc{color:#6fd8a8}
+  .sig.bad{border-color:#5a1220;background:#180610;color:var(--bad)}
+  .sig .spin{width:12px;height:12px;border:2px solid var(--line);border-top-color:var(--accent);
+       border-radius:50%;display:inline-block;animation:spin .8s linear infinite;flex:none}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  @media (prefers-reduced-motion:reduce){.sig .spin{animation:none}}
 </style>
 
 <main>
@@ -46,6 +58,10 @@
   <section class="flash">
     <esp-web-install-button manifest="./manifest.json"></esp-web-install-button>
     <div class="note">For the ESP32-S3 (Waveshare LCD-1.47). It verifies the chip before flashing.</div>
+    <div class="sig" id="sig" role="status" aria-live="polite">
+      <span class="spin" aria-hidden="true"></span>
+      <span>Checking the firmware signature&hellip;</span>
+    </div>
   </section>
 
   <section>
@@ -74,6 +90,8 @@
 </main>
 
 <script type="module" src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js?module"></script>
+<script src="../assets/ghosthid-pubkey.js"></script>
+<script src="../assets/minisign-verify.js"></script>
 <script>
   // esp-web-tools sets `install-supported`/`install-unsupported` attributes on
   // its button once it checks Web Serial; surface a clear message when unsupported.
@@ -81,6 +99,41 @@
     if (!("serial" in navigator)) {
       document.getElementById("nowebserial").style.display = "block";
     }
+    verifyFirmware();
   });
+
+  function esc(s){ return String(s).replace(/[&<>"]/g, function(c){
+    return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]; }); }
+
+  // Fetch the exact image esp-web-tools will flash, plus its minisign signature,
+  // and verify it in the browser against the release public key. Same-origin, so
+  // no CORS. The .minisig sits next to the .bin (dropped there at publish time).
+  async function verifyFirmware(){
+    var el = document.getElementById("sig");
+    function set(cls, html){ el.className = "sig " + cls; el.innerHTML = html; }
+    try {
+      var res = await Promise.all([ fetch("./ghosthid-s3.bin"),
+                                    fetch("./ghosthid-s3.bin.minisig") ]);
+      if (!res[0].ok || !res[1].ok) {
+        set("", "&#128272; Signed release &mdash; signature not published here yet.");
+        return;
+      }
+      var bin = new Uint8Array(await res[0].arrayBuffer());
+      var sigText = await res[1].text();
+      var r = await window.MinisignVerify.verify(bin, sigText, window.GHOSTHID_PUBKEY);
+      if (r.ok) {
+        set("ok", "&#128274; <b>Signed &amp; verified</b> &mdash; " +
+                  "<span class='tc'>" + esc(r.trustedComment) + "</span>");
+      } else if (r.reason === "unavailable") {
+        set("", "&#128272; Signed release &mdash; this browser can't verify (needs Web Crypto).");
+      } else {
+        set("bad", "&#9888;&#65039; <b>Signature check FAILED</b> &mdash; do not flash this " +
+                   "(" + esc(r.reason) + ").");
+      }
+    } catch (e) {
+      set("", "&#128272; Signed release &mdash; couldn't verify here (" +
+              esc(e && e.message || e) + ").");
+    }
+  }
 </script>
 </html>

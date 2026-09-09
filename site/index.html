@@ -136,6 +136,15 @@ section{padding:clamp(56px,9vw,104px) 0;position:relative}
 .dlcard h3{color:var(--fg)}
 .dlcard .go{margin-top:auto;padding-top:16px;color:var(--cyan);font-family:var(--mono);font-size:13.5px;font-weight:700}
 .dlcard .meta{display:block;margin-top:8px;font-family:var(--mono);font-size:11.5px;color:var(--faint)}
+.sigbadge{display:inline-flex;align-items:center;gap:7px;margin-top:12px;padding:6px 10px;
+  border:1px solid var(--line);border-radius:999px;font-family:var(--mono);font-size:11.5px;
+  color:var(--dim);background:rgba(0,229,255,.03);align-self:flex-start;transition:all .3s}
+.sigbadge .spin{width:10px;height:10px;border:2px solid var(--line);border-top-color:var(--cyan);
+  border-radius:50%;display:inline-block;animation:spin .8s linear infinite;flex:none}
+.sigbadge.ok{border-color:#155b3e;background:rgba(77,255,166,.06);color:#7fe3b3}
+.sigbadge.bad{border-color:#6a1626;background:rgba(255,92,122,.07);color:#ff8098}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.sigbadge .spin{animation:none}}
 
 /* screenshots */
 .shots{display:grid;grid-template-columns:repeat(3,1fr);gap:22px;align-items:start}
@@ -371,6 +380,8 @@ footer a{color:var(--dim)}
         <h3>Firmware</h3>
         <p>The build for OTA updates from the web UI, or manual flashing.
            <span class="meta">ghosthid-firmware.bin · ~1.3 MB</span></p>
+        <span class="sigbadge" id="binsig" role="status" aria-live="polite">
+          <span class="spin" aria-hidden="true"></span>Checking signature&hellip;</span>
         <span class="go">Download .bin →</span>
       </a>
       <a class="card dlcard" href="downloads/ghosthid-case.3mf" download>
@@ -408,12 +419,45 @@ footer a{color:var(--dim)}
   </div>
 </footer>
 
+<script src="assets/ghosthid-pubkey.js"></script>
+<script src="assets/minisign-verify.js"></script>
 <script>
   // Wire the repo / flasher links here once the public URLs are set.
   var REPO = "";      // e.g. https://your.gitea/infamy/ghosthid
   var FLASHER = "";   // e.g. https://your.host/ghosthid/flash/
   document.querySelectorAll("[data-repo]").forEach(function(a){ if(REPO) a.href=REPO; });
   document.querySelectorAll("[data-flasher]").forEach(function(a){ if(FLASHER) a.href=FLASHER; });
+
+  // Verify the downloadable firmware's minisign signature in the browser, against
+  // the release public key. Deferred until the download card scrolls into view so
+  // we don't pull ~1.3 MB for visitors who never reach it. Same-origin => no CORS.
+  (function () {
+    var el = document.getElementById("binsig");
+    if (!el || !window.MinisignVerify) return;
+    var esc = function (s) { return String(s).replace(/[&<>"]/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
+    function set(cls, html) { el.className = "sigbadge " + cls; el.innerHTML = html; }
+    var started = false;
+    async function run() {
+      if (started) return; started = true;
+      try {
+        var res = await Promise.all([ fetch("downloads/ghosthid-firmware.bin"),
+                                      fetch("downloads/ghosthid-firmware.bin.minisig") ]);
+        if (!res[0].ok || !res[1].ok) { set("", "&#128272; Signed release"); return; }
+        var bin = new Uint8Array(await res[0].arrayBuffer());
+        var r = await window.MinisignVerify.verify(bin, await res[1].text(), window.GHOSTHID_PUBKEY);
+        if (r.ok) set("ok", "&#128274; Signed &amp; verified");
+        else if (r.reason === "unavailable") set("", "&#128272; Signed release");
+        else set("bad", "&#9888;&#65039; Signature failed");
+      } catch (e) { set("", "&#128272; Signed release"); }
+    }
+    if ("IntersectionObserver" in window) {
+      var io = new IntersectionObserver(function (ents) {
+        ents.forEach(function (e) { if (e.isIntersecting) { io.disconnect(); run(); } });
+      }, { rootMargin: "200px" });
+      io.observe(el);
+    } else { run(); }
+  })();
 </script>
 </body>
 </html>
