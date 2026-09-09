@@ -98,8 +98,7 @@ make test       # host unit tests
 ```
 
 [CONTRIBUTING.md](CONTRIBUTING.md) has the full build, flash, test, and porting
-guide, plus how the code is laid out. Design notes and open problems are in
-[PLAN.md](PLAN.md), and the changelog is [CHANGELOG.md](CHANGELOG.md). Issues and
+guide, plus how the code is laid out, and the changelog is [CHANGELOG.md](CHANGELOG.md). Issues and
 pull requests are welcome. Please report a security finding to the maintainer
 privately rather than in a public issue.
 

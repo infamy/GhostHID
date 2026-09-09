@@ -3,7 +3,7 @@
 The board is a Waveshare ESP32-S3-LCD-1.47 on a USB-A stick. It presents a
 composite USB keyboard, relative mouse, and absolute pointer to the target, and
 relays input over Wi-Fi. This guide covers building, flashing, testing, and the
-code layout. Design notes and open problems live in [PLAN.md](PLAN.md).
+code layout.
 
 ## Build
 
@@ -110,7 +110,7 @@ The partition table is dual-slot (`app0` / `app1` + `otadata`). The incoming
 image is written to the inactive slot, and `otadata` only switches once it
 validates, so a dropped link or a power cut mid-upload leaves the running
 firmware untouched. An image that boots but breaks networking still needs USB
-recovery; there is no automatic rollback yet (see PLAN.md "Known Gaps").
+recovery; there is no automatic rollback yet.
 
 ## Testing
 

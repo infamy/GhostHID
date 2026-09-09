@@ -35,3 +35,6 @@ SECURITY-REVIEW.md
 
 # Internal ops runbook - private infra, never published.
 OPERATIONS.md
+
+# Internal design notes / roadmap - Gitea-side working doc, not published.
+PLAN.md

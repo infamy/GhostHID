@@ -127,7 +127,7 @@ These are non-goals, not oversights. Know them before you deploy.
    field.
 
 7. **An image that boots but breaks networking.** There is no automatic rollback, so
-   recovery is physical. See *Known Gaps* in [PLAN.md](PLAN.md).
+   recovery is physical.
 
 ### Current gaps
 
