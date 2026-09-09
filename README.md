@@ -23,12 +23,19 @@ setup as a screen and just move your pointer onto it.
 
 **Status:** v0.9.0, working end to end.
 
+**Supported hardware:** one board for now, the
+[**Waveshare ESP32-S3-LCD-1.47**](https://www.waveshare.com/esp32-s3-lcd-1.47.htm),
+a USB-A stick with a 1.47-inch colour LCD. That is the board the release build
+and `ghosthid.app` target. Other native-USB ESP32-S3 boards are a porting
+exercise (see [CONTRIBUTING.md](CONTRIBUTING.md#porting)), not a supported build.
+
 ## Flash it
 
 The easiest way is the browser flasher at **[ghosthid.app](https://ghosthid.app)**
 (desktop Chrome or Edge, over USB). It verifies the chip, checks the firmware
-signature, and writes it in about a minute. Building and flashing from source is
-covered in [CONTRIBUTING.md](CONTRIBUTING.md).
+signature, and writes it in about a minute. It flashes the supported board, the
+Waveshare ESP32-S3-LCD-1.47. Building and flashing from source is covered in
+[CONTRIBUTING.md](CONTRIBUTING.md).
 
 A fresh flash erases stored settings, which is expected for a new device.
 
