@@ -61,6 +61,34 @@ lock you out.
 The full WebSocket protocol is documented on the device itself under the About
 tab, so anyone who can reach the page can write a client.
 
+### Configuring it over USB instead
+
+Everything on the Settings tab can also be set over the cable, which is the
+easier path on a headless setup, when there is no phone to hand, or to fix a
+mistyped SSID without joining the AP. Open GhostHID's USB serial port at 115200
+from the machine it is plugged into and type `help`:
+
+```
+> wifi my-network            # network to join (empty disables joining)
+> wifipass hunter2           # password for that network
+> token AB2C9XKF             # pairing token (6-48 chars, empty disables auth)
+> appass something-better    # GhostHID's own AP password (8-63)
+> reboot                     # changes save immediately, apply on reboot
+```
+
+`show` prints the current settings and both addresses. `name` sets the device
+name (AP SSID and mDNS name), `ap always|fallback` decides whether the AP stays
+up while the network is joined, `kvm` configures the Deskflow/Barrier screen
+client, and `seal` / `reset` do what they say. Values run to the end of the
+line, so SSIDs and passwords with spaces are fine.
+
+Two things to know. Once a pairing token is set, changing a security setting
+(Wi-Fi, token, `trustcert`, `reset`) needs `unlock <token>` first, so a
+compromised target machine cannot reconfigure the device through the cable it is
+plugged into. And a sealed device has no serial port at all — the CDC interface
+is never added to the USB descriptor — so this console does not exist until it
+is unsealed.
+
 ## Security
 
 GhostHID is a keyboard, so anyone who can drive it can type into a logged-in
