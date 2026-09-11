@@ -178,6 +178,41 @@ section{padding:clamp(56px,9vw,104px) 0;position:relative}
 .flow .step p{color:var(--dim);font-size:14px;margin:8px 0 0}
 .flow .step .a{color:var(--faint);font-family:var(--mono);font-size:22px}
 
+/* getting started */
+.steps{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+@media(max-width:960px){.steps{grid-template-columns:1fr 1fr}}
+@media(max-width:560px){.steps{grid-template-columns:1fr}}
+.steps .card{display:flex;flex-direction:column}
+.steps .num{font-family:var(--mono);font-size:13px;font-weight:700;color:var(--cyan);
+  width:30px;height:30px;border-radius:999px;border:1px solid rgba(0,229,255,.35);
+  background:rgba(0,229,255,.06);display:flex;align-items:center;justify-content:center;flex:none}
+.steps h3{font-size:19px;margin:16px 0 8px}
+.steps p{color:var(--dim);font-size:14.5px;margin:0;line-height:1.6}
+.steps p b{color:var(--fg);font-weight:500}
+.steps .go{margin-top:auto;padding-top:16px;font-family:var(--mono);font-size:13px;
+  font-weight:700;color:var(--cyan)}
+.ways{margin-top:16px;display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(max-width:820px){.ways{grid-template-columns:1fr}}
+.way{border:1px solid var(--line);border-radius:14px;background:var(--panel);
+  padding:clamp(20px,3vw,28px)}
+.way .eyebrow{font-size:11px;letter-spacing:.24em}
+.way h3{font-size:19px;margin:12px 0 10px}
+.way p{color:var(--dim);font-size:14.5px;line-height:1.6;margin:0}
+.way p b{color:var(--fg);font-weight:500}
+.way p + p{margin-top:10px}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:8px 16px;align-items:baseline;
+  margin:16px 0 0;font-family:var(--mono)}
+.kv .k{font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--faint)}
+.kv .v{font-size:14px;color:var(--cyan);font-weight:700;word-break:break-all}
+.term{margin:16px 0 0;padding:14px 16px;border:1px solid var(--line);border-radius:10px;
+  background:var(--bg);font-family:var(--mono);font-size:12.5px;line-height:1.85;
+  color:var(--dim);overflow-x:auto;white-space:pre}
+.term b{color:var(--fg);font-weight:400}
+.term .c{color:var(--faint)}
+.wayfoot{margin-top:16px;font-family:var(--mono);font-size:12.5px;color:var(--faint);
+  border-top:1px dashed var(--line);padding-top:14px}
+.wayfoot b{color:var(--dim);font-weight:400}
+
 /* CTA band */
 .band{border:1px solid var(--line);border-radius:20px;
   background:radial-gradient(120% 160% at 50% 0%,rgba(0,229,255,.14),transparent 60%),var(--panel);
@@ -217,7 +252,7 @@ footer a{color:var(--dim)}
       <a href="#hardware">Hardware</a>
       <a href="#start">Get started</a>
     </nav>
-    <a class="btn" href="#start">Flash it</a>
+    <a class="btn" href="#downloads">Flash it</a>
   </div>
 </header>
 
@@ -230,7 +265,7 @@ footer a{color:var(--dim)}
       <p class="lede">A thumb-sized USB stick that becomes a real keyboard and mouse for <em>any</em> computer, driven from your phone, your browser, or your desktop's screen edge.</p>
       <p class="lede2">Plug it into the target. Control it over Wi-Fi. There is nothing to install on the machine you're controlling. To its USB port, GhostHID simply <em>is</em> a keyboard and mouse.</p>
       <div class="cta">
-        <a class="btn" href="#start">Flash it in your browser</a>
+        <a class="btn" href="#start">Get started</a>
         <a class="btn ghost" href="#what">How it works →</a>
       </div>
     </div>
@@ -364,6 +399,73 @@ footer a{color:var(--dim)}
   <div class="wrap">
     <div class="head">
       <span class="eyebrow">Get started</span>
+      <h2>From a bare board to typing.</h2>
+      <p>Four steps to your first keystroke, then two ways to make it yours. No accounts, no cloud, and no software on the machine you're driving &mdash; the only thing you install is the firmware, and that happens in your browser.</p>
+    </div>
+
+    <div class="steps">
+      <div class="card">
+        <span class="num">1</span>
+        <h3>Flash the board</h3>
+        <p>Plug a <b>Waveshare ESP32-S3-LCD-1.47</b> into your own computer and run the browser flasher. It checks the chip, verifies the firmware signature, and writes it over USB.</p>
+        <a class="go" href="flash/" data-flasher>Open the flasher &rarr;</a>
+      </div>
+      <div class="card">
+        <span class="num">2</span>
+        <h3>Move it to the target</h3>
+        <p>Unplug it and put it in the USB port of the machine you want to drive. That machine sees <b>a keyboard, a mouse and an absolute pointer</b> — no driver, no agent, no network of its own.</p>
+      </div>
+      <div class="card">
+        <span class="num">3</span>
+        <h3>Join its Wi-Fi</h3>
+        <p>On a fresh flash GhostHID brings up its own access point. The on-board LCD shows <b>a QR code</b>: scan it with your phone to join, or pick the network by hand.</p>
+      </div>
+      <div class="card">
+        <span class="num">4</span>
+        <h3>Open it and type</h3>
+        <p>The screen shows the address. Open it in any browser for live typing, a key pad, sticky modifiers, a trackpad, presenter and media keys. Built for touch, so a phone works as well as a laptop.</p>
+        <a class="go" href="#see">See the screens &rarr;</a>
+      </div>
+    </div>
+
+    <div class="head" style="max-width:640px;margin:52px 0 20px">
+      <span class="eyebrow">Then &middot; two ways</span>
+      <h2 style="font-size:clamp(24px,3.6vw,34px)">Put it on your own network.</h2>
+      <p>The setup AP is fine for a one-off, but most people move GhostHID onto their Wi-Fi and set a pairing token. Do it from the web UI, or over the USB cable &mdash; whichever you can reach.</p>
+    </div>
+
+    <div class="ways">
+      <div class="way">
+        <span class="eyebrow">Over its own Wi-Fi</span>
+        <h3>The Settings tab</h3>
+        <p>Join the device's access point &mdash; scan the QR code on the LCD, or pick the network by hand &mdash; then open it in a browser and use <b>Settings</b>: your Wi-Fi, a pairing token, the AP password, the device name.</p>
+        <div class="kv">
+          <span class="k">SSID</span><span class="v">ghosthid-XXXX</span>
+          <span class="k">Password</span><span class="v">ghosthid-setup</span>
+        </div>
+        <p class="wayfoot">The suffix comes from the board's MAC, so <b>every stick is its own network</b>. Change that password.</p>
+      </div>
+
+      <div class="way">
+        <span class="eyebrow">Over the USB cable</span>
+        <h3>The serial console</h3>
+        <p>No phone, no radio, nothing to join: open GhostHID's USB serial port at <b>115200</b> from the machine it's plugged into and type <b>help</b>. Useful for a headless setup, or to fix a Wi-Fi typo without touching the AP.</p>
+        <div class="term"><span class="c">&gt;</span> <b>wifi my-network</b>
+<span class="c">&gt;</span> <b>wifipass hunter2</b>
+<span class="c">&gt;</span> <b>token AB2C9XKF</b>
+<span class="c">&gt;</span> <b>appass something-better</b>
+<span class="c">&gt;</span> <b>reboot</b></div>
+        <p class="wayfoot">Also does <b>kvm</b> (Deskflow), <b>show</b>, <b>seal</b> and <b>reset</b>. Once a token is set, changing security settings needs <b>unlock &lt;token&gt;</b> first &mdash; and a sealed device has no serial port at all.</p>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<section id="downloads">
+  <div class="wrap">
+    <div class="head">
+      <span class="eyebrow">Downloads</span>
       <h2>Flash one in about a minute.</h2>
       <p>Plug the supported board, a Waveshare ESP32-S3-LCD-1.47, into a USB port and flash it in your browser, or grab the firmware and the printable case directly.</p>
     </div>
@@ -407,7 +509,7 @@ footer a{color:var(--dim)}
     <span class="dim">A ghost keyboard for any computer, over your network.</span>
     <nav>
       <a href="#features">Features</a>
-      <a href="#start">Flash</a>
+      <a href="#downloads">Flash</a>
       <a href="#" data-repo>Source</a>
     </nav>
     <span class="made">
