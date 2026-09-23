@@ -16,5 +16,8 @@ extern int      mediaCalls;
 extern int      systemCalls;
 extern uint8_t  lastKeyDown;
 extern bool     ready;        // test-settable USB-ready state
+extern bool     endpointBusy; // test-settable: non-blocking pointer sends refuse
+extern float    lastAbsX;
+extern int32_t  lastRelDx;
 void reset();
 }  // namespace hidhook

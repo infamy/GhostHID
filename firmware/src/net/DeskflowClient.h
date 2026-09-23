@@ -108,6 +108,7 @@ public:
     // Host-test only (never compiled into device firmware): feed one raw protocol
     // message straight to the interpreter so dispatch() can be unit-tested.
     void test_dispatch(const uint8_t *m, size_t len) { dispatch(m, len); }
+    void test_flushPointer() { flushPointer(); }
 #endif
 
 private:
@@ -125,7 +126,10 @@ private:
     bool captureServerCert();                // one probe handshake to grab the peer cert
     bool storePending(const unsigned char *der, size_t derLen);  // DER -> pending PEM+fp
     void freePending();
-    void flushPointer();                     // emit the coalesced pointer position
+    // Emit the coalesced pointer position. Non-blocking by default: if the HID
+    // endpoint is busy the motion stays pending for the next pass. `block`
+    // forces it out (before a click, which must land where the pointer is).
+    void flushPointer(bool block = false);
     void run();                              // task body: serviceOnce forever
     static void taskEntry(void *self);
 
@@ -191,7 +195,8 @@ private:
     // until the host collects it, roughly a USB frame, while the server streams
     // positions faster than that - so sending every one means delivering a
     // backlog of stale positions, which is what stutter is. Only the newest
-    // position matters; relative deltas sum.
+    // position matters; relative deltas sum. A position that could not be sent
+    // (endpoint busy) stays pending here and is overwritten by newer ones.
     bool    haveAbs_ = false;
     int32_t absX_ = 0, absY_ = 0;
     int32_t relDx_ = 0, relDy_ = 0;
