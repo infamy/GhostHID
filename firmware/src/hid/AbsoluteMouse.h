@@ -35,11 +35,6 @@ public:
     // Returns false if the host did not accept the report. Silently discarding
     // this hid whether stepping was our cadence or dropped reports.
     bool moveTo(uint16_t x, uint16_t y, uint8_t buttons);
-
-    // True when the shared HID IN endpoint can take a report right now. Every
-    // HID device here (keyboard, mouse, this) shares one endpoint, so this is
-    // the readiness of all of them.
-    bool endpointReady() { return hid_.ready(); }
     uint32_t dropped() const { return dropped_; }
 
     uint16_t _onGetDescriptor(uint8_t *buffer) override;

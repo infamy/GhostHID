@@ -18,18 +18,12 @@ int     mediaCalls = 0;
 int     systemCalls = 0;
 uint8_t lastKeyDown = 0;
 bool    ready = true;
-bool    endpointBusy = false;
-float   lastAbsX = -1;
-int32_t lastRelDx = 0;
 void reset() {
     releaseAllCalls = keyDownCalls = keyUpCalls = typeTextCalls = 0;
     mouseMoveCalls = mouseAbsCalls = mouseWheelCalls = mouseBtnDownCalls = 0;
     mediaCalls = systemCalls = 0;
     lastKeyDown = 0;
     ready = true;
-    endpointBusy = false;
-    lastAbsX = -1;
-    lastRelDx = 0;
 }
 }  // namespace hidhook
 
@@ -55,30 +49,13 @@ void HidDevice::keyUp(uint8_t key) {
 void HidDevice::tapKey(uint8_t key, uint32_t) { keyDown(key); keyUp(key); }
 void HidDevice::typeText(const char *) { hidhook::typeTextCalls++; }
 
-void HidDevice::mouseMove(int32_t dx, int32_t) { hidhook::mouseMoveCalls++; hidhook::lastRelDx = dx; }
+void HidDevice::mouseMove(int32_t, int32_t) { hidhook::mouseMoveCalls++; }
 void HidDevice::mouseMoveAbsolute(float x, float y) {
     hidhook::mouseAbsCalls++;
-    hidhook::lastAbsX = x;
     absX_ = x < 0 ? 0 : (x > 1 ? 1 : x);
     absY_ = y < 0 ? 0 : (y > 1 ? 1 : y);
 }
 uint32_t HidDevice::droppedReports() const { return 0; }
-bool HidDevice::tryMouseMoveAbsolute(float x, float y) {
-    if (hidhook::endpointBusy) { ++pointerBusy_; return false; }
-    mouseMoveAbsolute(x, y);
-    return true;
-}
-bool HidDevice::tryMouseMoveStep(int32_t &dx, int32_t &dy) {
-    if (dx == 0 && dy == 0) return true;
-    if (hidhook::endpointBusy) { ++pointerBusy_; return false; }
-    const int32_t sx = dx > 127 ? 127 : (dx < -127 ? -127 : dx);
-    const int32_t sy = dy > 127 ? 127 : (dy < -127 ? -127 : dy);
-    hidhook::mouseMoveCalls++;
-    hidhook::lastRelDx = sx;
-    dx -= sx;
-    dy -= sy;
-    return true;
-}
 void HidDevice::mouseButtonDown(MouseButton b) {
     hidhook::mouseBtnDownCalls++;
     heldMouseButtons_ |= (uint8_t)(1u << (uint8_t)b);
