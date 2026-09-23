@@ -116,6 +116,9 @@ void test_dispatch_wheel();
 void test_dispatch_focus_enter_leave_releases();
 void test_dispatch_unknown_code_counted();
 void test_dispatch_fuzz_no_crash();
+void test_dispatch_pointer_pending_while_busy();
+void test_dispatch_relative_one_step_per_pass();
+void test_dispatch_click_flushes_pending_motion();
 
 int main() {
     UNITY_BEGIN();
@@ -218,6 +221,9 @@ int main() {
     RUN_TEST(test_dispatch_focus_enter_leave_releases);
     RUN_TEST(test_dispatch_unknown_code_counted);
     RUN_TEST(test_dispatch_fuzz_no_crash);
+    RUN_TEST(test_dispatch_pointer_pending_while_busy);
+    RUN_TEST(test_dispatch_relative_one_step_per_pass);
+    RUN_TEST(test_dispatch_click_flushes_pending_motion);
 
     return UNITY_END();
 }

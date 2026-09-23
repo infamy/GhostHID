@@ -266,6 +266,25 @@ void HidDevice::mouseMoveAbsolute(float x, float y) {
     reportGap();
 }
 
+bool HidDevice::tryMouseMoveAbsolute(float x, float y) {
+    if (!ready()) return true;   // nothing can be sent; don't hold it pending forever
+    if (!g_absMouse.endpointReady()) { ++pointerBusy_; return false; }
+    mouseMoveAbsolute(x, y);
+    return true;
+}
+
+bool HidDevice::tryMouseMoveStep(int32_t &dx, int32_t &dy) {
+    if (!ready()) { dx = dy = 0; return true; }
+    if (dx == 0 && dy == 0) return true;
+    if (!g_absMouse.endpointReady()) { ++pointerBusy_; return false; }
+    const int8_t sx = clampStep(dx);
+    const int8_t sy = clampStep(dy);
+    sendMouseReport(sx, sy, 0, 0);
+    dx -= sx;
+    dy -= sy;
+    return true;
+}
+
 void HidDevice::mouseButtonDown(MouseButton button) {
     Lock lk(mutex_);
     if (!ready()) return;

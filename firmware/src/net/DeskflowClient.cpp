@@ -698,15 +698,18 @@ void DeskflowClient::run() {
         // downhill". Every 2s over serial (non-blocking): heap, this task's
         // stack headroom, the DMMV rate, refused HID reports, and the slowest
         // serviceOnce pass in the window. A leak shows as falling heap; USB
-        // backpressure as rising drop / worst-pass; a backlog as a low move rate.
+        // backpressure as rising drop / busy / worst-pass; a backlog as a low
+        // move rate. busy counts pointer sends deferred because the host had not
+        // yet collected the previous report (cumulative).
         const uint32_t now = millis();
         if (now - statAt > 2000) {
-            Serial.printf("[stat] heap=%u/%u kb stack=%u move/s=%u drop=%u worstpass=%uus state=%d\r\n",
+            Serial.printf("[stat] heap=%u/%u kb stack=%u move/s=%u drop=%u busy=%u worstpass=%uus state=%d\r\n",
                           (unsigned)(ESP.getFreeHeap() / 1024),
                           (unsigned)(ESP.getMaxAllocHeap() / 1024),
                           (unsigned)uxTaskGetStackHighWaterMark(nullptr),
                           (unsigned)((nMove_ - nMovePrev) / 2),
                           (unsigned)hid_.droppedReports(),
+                          (unsigned)hid_.pointerBusyCount(),
                           (unsigned)worstPassUs, (int)state_);
             statAt = now; nMovePrev = nMove_; worstPassUs = 0;
         }

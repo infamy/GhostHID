@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.9.1
+
+* **Smoother KVM pointer on slow-polling hosts** - pointer motion from a
+  Deskflow / Barrier / Input Leap server no longer waits for the target to
+  collect each HID report. Previously every report blocked (up to 100ms) until
+  the host picked up the last one, so a target that polls slowly - seen on
+  Windows - stalled the screen client and motion lagged behind the hand. Now a
+  busy endpoint leaves the newest position pending for the next 1ms pass, so the
+  pointer jumps straight to where it should be and stale positions are never
+  replayed. Relative motion goes out one report per pass with the remainder
+  carried over. Clicks still flush pending motion first, so they land in place;
+  keys, buttons and scroll are unchanged.
+* The serial `[stat]` line gains `busy=`, the count of pointer sends deferred
+  because the host had not yet collected the previous report.
+
 ## 0.9.0
 
 First public release. Builds on the sealed-mode and stability work of the 0.8.x
