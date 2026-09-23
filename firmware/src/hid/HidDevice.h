@@ -135,25 +135,6 @@ public:
     // Absolute reports the host refused. Should stay at zero.
     uint32_t droppedReports() const;
 
-    // Non-blocking pointer motion, for the screen client's hot path. The blocking
-    // calls above wait for the host to collect each report (up to 100ms in the
-    // framework); a host that polls slowly then stalls the caller and the stream
-    // of positions backs up behind it, which is felt as lag. These instead return
-    // false WITHOUT sending when the HID endpoint is still busy with the previous
-    // report, so the caller keeps the motion pending and retries next pass with
-    // whatever is newest by then.
-    //
-    // tryMouseMoveAbsolute: same arguments as mouseMoveAbsolute.
-    // tryMouseMoveStep: sends at most ONE relative report (each axis clamped to
-    // the report's range) and subtracts what it sent from dx/dy, leaving the
-    // remainder for the next call.
-    bool tryMouseMoveAbsolute(float x, float y);
-    bool tryMouseMoveStep(int32_t &dx, int32_t &dy);
-
-    // Times a non-blocking pointer call found the endpoint busy. High counts mean
-    // the host is polling slower than motion arrives.
-    uint32_t pointerBusyCount() const { return pointerBusy_; }
-
     void mouseButtonDown(MouseButton button);
     void mouseButtonUp(MouseButton button);
     void mouseClick(MouseButton button, uint32_t holdMs = 20);
@@ -232,7 +213,6 @@ private:
     bool    begun_ = false;
     float   absX_ = 0.5f;
     float   absY_ = 0.5f;
-    volatile uint32_t pointerBusy_ = 0;
 };
 
 }  // namespace ghosthid

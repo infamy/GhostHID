@@ -73,9 +73,9 @@ void DeskflowClient::dispatch(const uint8_t *m, size_t len) {
             default: return;
         }
         ++nBtn_;
-        // Flush first, blocking: a click has to happen where the pointer now
-        // is, not where it was before the pending motion was applied.
-        flushPointer(true);
+        // Flush first: a click has to happen where the pointer now is, not
+        // where it was before the pending motion was applied.
+        flushPointer();
         if (down) hid_.mouseButtonDown(b); else hid_.mouseButtonUp(b);
         return;
     }
@@ -188,28 +188,16 @@ uint8_t DeskflowClient::forgetKey(uint16_t button) {
     return 0;
 }
 
-void DeskflowClient::flushPointer(bool block) {
+void DeskflowClient::flushPointer() {
     if (haveAbs_) {
         const float w = config_.deskflowWidth() > 0 ? config_.deskflowWidth() : 1;
         const float h = config_.deskflowHeight() > 0 ? config_.deskflowHeight() : 1;
-        const float x = (float)absX_ / w, y = (float)absY_ / h;
-        if (block) {
-            hid_.mouseMoveAbsolute(x, y);
-            haveAbs_ = false;
-        } else if (hid_.tryMouseMoveAbsolute(x, y)) {
-            haveAbs_ = false;
-        }
-        // else: endpoint busy - leave it pending; the next pass sends the newest.
+        hid_.mouseMoveAbsolute((float)absX_ / w, (float)absY_ / h);
+        haveAbs_ = false;
     }
     if (relDx_ != 0 || relDy_ != 0) {
-        if (block) {
-            hid_.mouseMove(relDx_, relDy_);
-            relDx_ = relDy_ = 0;
-        } else {
-            // One report per pass; the remainder (and anything that arrives
-            // meanwhile) is summed and sent on later passes.
-            hid_.tryMouseMoveStep(relDx_, relDy_);
-        }
+        hid_.mouseMove(relDx_, relDy_);
+        relDx_ = relDy_ = 0;
     }
 }
 

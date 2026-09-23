@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.9.2
+
+* **Reverts the 0.9.1 KVM pointer change.** It caused intermittent failures of
+  key combinations (a modifier plus a key, e.g. Alt+1) over Deskflow on a
+  Windows target, and on closer reading it did not remove the wait it was meant
+  to. The input path is back to exactly 0.9.0's, and the `busy=` field is gone
+  from `[stat]`. If you are on 0.9.1, update.
+
 ## 0.9.1
 
 * **Smoother KVM pointer on slow-polling hosts** - pointer motion from a
