@@ -108,10 +108,29 @@ void CommandProcessor::endSession(uint32_t clientId) {
     if (sessionCount_ > 0) --sessionCount_;
     // A controller vanishing must NEVER leave a key held on the target - the
     // worst failure this device can produce. Held keys can't be attributed to a
-    // specific controller (the HID state is shared), so any disconnect releases
-    // everything while anything is held: a spurious release for the controllers
-    // that remain is far better than a key stuck down (H8).
-    if (hid_.anythingHeld()) hid_.releaseAll();
+    // specific controller, so any disconnect releases everything while any
+    // controller holds input: a spurious release for the controllers that remain
+    // is far better than a key stuck down (H8). Input the screen client holds is
+    // not ours to release - it has its own backstops.
+    if (webHolds()) {
+        hid_.releaseAll();
+        clearWebHolds();
+    }
+}
+
+bool CommandProcessor::webHolds() const {
+    if (webButtons_ != 0) return true;
+    for (uint8_t b : webKeys_) if (b != 0) return true;
+    return false;
+}
+
+void CommandProcessor::clearWebHolds() {
+    memset(webKeys_, 0, sizeof(webKeys_));
+    webButtons_ = 0;
+}
+
+bool CommandProcessor::kvmActive() const {
+    return deskflow_ != nullptr && deskflow_->connected();
 }
 
 bool CommandProcessor::authenticated(uint32_t clientId) const {
@@ -125,17 +144,20 @@ uint32_t CommandProcessor::millisSinceLastMessage() const {
 
 bool CommandProcessor::serviceWatchdog(uint32_t timeoutMs) {
     if (sessionCount_ == 0) return false;
-    if (!hid_.anythingHeld()) return false;      // nothing to protect against
+    // Only input a controller pressed. Keys the screen client holds are not
+    // guarded by the web heartbeat (see webKeys_).
+    if (!webHolds()) return false;
     if (millisSinceLastMessage() < timeoutMs) return false;
 
     hid_.releaseAll();
+    clearWebHolds();
     return true;
 }
 
 void CommandProcessor::setLocked(bool locked, const char *reason) {
     locked_ = locked;
     lockReason_ = (reason != nullptr) ? reason : "";
-    if (locked_) { lockedAtMs_ = millis(); hid_.releaseAll(); }
+    if (locked_) { lockedAtMs_ = millis(); hid_.releaseAll(); clearWebHolds(); }
 }
 
 bool CommandProcessor::consumeDisconnectRequest() {
@@ -451,6 +473,15 @@ CommandResult CommandProcessor::handleMessage(uint32_t clientId, const char *jso
             return CommandResult::BadRequest;
         }
     }
+    // While the screen client is connected it owns the keyboard and mouse. Mixing
+    // manual input in fights it (and an idle web tab's watchdog used to release
+    // the server's held keys). release_all is not input and still works.
+    if (isInput && kvmActive()) {
+        reply(outResponse, outSize,
+              "{\"type\":\"error\",\"error\":\"input disabled while the screen "
+              "client (Deskflow/Barrier/Synergy) is connected\"}");
+        return CommandResult::BadRequest;
+    }
     if (isInput && locked_) {
         reply(outResponse, outSize,
               "{\"type\":\"error\",\"error\":\"%s\"}", lockReason_);
@@ -473,7 +504,13 @@ CommandResult CommandProcessor::handleMessage(uint32_t clientId, const char *jso
             return CommandResult::BadRequest;
         }
         const bool pressed = doc["pressed"] | true;
-        if (pressed) hid_.keyDown(code); else hid_.keyUp(code);
+        if (pressed) {
+            hid_.keyDown(code);
+            webKeys_[code >> 3] |= (uint8_t)(1u << (code & 7));
+        } else {
+            hid_.keyUp(code);
+            webKeys_[code >> 3] &= (uint8_t)~(1u << (code & 7));
+        }
         return CommandResult::Ok;
     }
 
@@ -534,7 +571,9 @@ CommandResult CommandProcessor::handleMessage(uint32_t clientId, const char *jso
             return CommandResult::BadRequest;
         }
         const bool pressed = doc["pressed"] | true;
-        if (pressed) hid_.mouseButtonDown(button); else hid_.mouseButtonUp(button);
+        const uint8_t bit = (uint8_t)(1u << (uint8_t)button);
+        if (pressed) { hid_.mouseButtonDown(button); webButtons_ |= bit; }
+        else         { hid_.mouseButtonUp(button);   webButtons_ &= (uint8_t)~bit; }
         return CommandResult::Ok;
     }
 
@@ -598,6 +637,7 @@ CommandResult CommandProcessor::handleMessage(uint32_t clientId, const char *jso
     // --- safety -------------------------------------------------------------
     if (strcmp(type, "release_all") == 0) {
         hid_.releaseAll();
+        clearWebHolds();
         return CommandResult::Ok;
     }
 

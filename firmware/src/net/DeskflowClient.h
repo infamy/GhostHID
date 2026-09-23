@@ -108,6 +108,7 @@ public:
     // Host-test only (never compiled into device firmware): feed one raw protocol
     // message straight to the interpreter so dispatch() can be unit-tested.
     void test_dispatch(const uint8_t *m, size_t len) { dispatch(m, len); }
+    void test_setConnected(bool on) { state_ = on ? State::Active : State::Idle; }
 #endif
 
 private:

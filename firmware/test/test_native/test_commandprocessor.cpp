@@ -256,3 +256,68 @@ void test_response_too_large_is_wellformed() {
     TEST_ASSERT_TRUE(strstr(tiny, "too large") != nullptr);
     TEST_ASSERT_EQUAL_CHAR('}', tiny[strlen(tiny) - 1]);   // closed brace = valid JSON
 }
+
+// ---- screen client coexistence -----------------------------------------------
+
+#include "net/DeskflowClient.h"
+
+// While the screen client is connected, web input is refused; release_all and
+// ping still work.
+void test_kvm_connected_blocks_web_input() {
+    SETUP_PROC(); DeskflowClient df(hid, cfg); p.attachDeskflow(&df); AUTHED(1);
+    df.test_setConnected(true);
+    send(p, 1, "{\"type\":\"key\",\"key\":\"a\",\"pressed\":true}");
+    TEST_ASSERT_TRUE(replied("input disabled while the screen client"));
+    TEST_ASSERT_EQUAL_INT(0, hidhook::keyDownCalls);
+    send(p, 1, "{\"type\":\"mouse_move\",\"dx\":5,\"dy\":5}");
+    TEST_ASSERT_EQUAL_INT(0, hidhook::mouseMoveCalls);
+    const int before = hidhook::releaseAllCalls;
+    send(p, 1, "{\"type\":\"release_all\"}");
+    TEST_ASSERT_TRUE(hidhook::releaseAllCalls > before);
+    send(p, 1, "{\"type\":\"ping\"}");
+    TEST_ASSERT_TRUE(replied("\"pong\""));
+    df.test_setConnected(false);                       // server gone -> web works again
+    send(p, 1, "{\"type\":\"key\",\"key\":\"a\",\"pressed\":true}");
+    TEST_ASSERT_EQUAL_INT(1, hidhook::keyDownCalls);
+}
+
+// The bug: an idle web tab (pings throttled past the 750ms timeout) released a
+// key the screen client was holding, so a held key produced one press.
+void test_watchdog_ignores_input_held_by_screen_client() {
+    SETUP_PROC(); AUTHED(1);
+    hid.keyDown('a');                                  // held by the screen client
+    g_test_millis += 5000;                             // web tab silent
+    TEST_ASSERT_FALSE(p.serviceWatchdog(750));
+    TEST_ASSERT_TRUE(hid.anythingHeld());
+}
+
+// ...but still releases what the web controller itself pressed.
+void test_watchdog_releases_web_held_input() {
+    SETUP_PROC(); AUTHED(1);
+    send(p, 1, "{\"type\":\"key\",\"key\":\"a\",\"pressed\":true}");
+    g_test_millis += 5000;
+    TEST_ASSERT_TRUE(p.serviceWatchdog(750));
+    TEST_ASSERT_FALSE(hid.anythingHeld());
+    TEST_ASSERT_FALSE(p.serviceWatchdog(750));         // cleared; fires once
+}
+
+// Once the web controller lets go, its watchdog has nothing to guard.
+void test_watchdog_idle_after_web_release() {
+    SETUP_PROC(); AUTHED(1);
+    send(p, 1, "{\"type\":\"mouse_button\",\"button\":\"left\",\"pressed\":true}");
+    send(p, 1, "{\"type\":\"mouse_button\",\"button\":\"left\",\"pressed\":false}");
+    hid.keyDown('a');                                  // screen client holds a key
+    g_test_millis += 5000;
+    TEST_ASSERT_FALSE(p.serviceWatchdog(750));
+    TEST_ASSERT_TRUE(hid.anythingHeld());
+}
+
+// A web tab closing must not release the screen client's held keys.
+void test_web_disconnect_leaves_screen_client_keys() {
+    SETUP_PROC(); AUTHED(1);
+    hid.keyDown('a');
+    const int before = hidhook::releaseAllCalls;
+    p.endSession(1);
+    TEST_ASSERT_EQUAL_INT(before, hidhook::releaseAllCalls);
+    TEST_ASSERT_TRUE(hid.anythingHeld());
+}

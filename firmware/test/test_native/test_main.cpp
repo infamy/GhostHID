@@ -105,6 +105,11 @@ void test_keyid_special_keys();
 void test_keyid_unmapped_is_zero();
 void test_keyid_high_bit_fallback();
 void test_keyid_fuzz_full_range();
+void test_kvm_connected_blocks_web_input();
+void test_watchdog_ignores_input_held_by_screen_client();
+void test_watchdog_releases_web_held_input();
+void test_watchdog_idle_after_web_release();
+void test_web_disconnect_leaves_screen_client_keys();
 // --- DeskflowClient::dispatch ---
 void test_dispatch_key_down_up();
 void test_dispatch_unknown_keyid_ignored();
@@ -208,6 +213,11 @@ int main() {
     RUN_TEST(test_keyid_high_bit_fallback);
     RUN_TEST(test_keyid_fuzz_full_range);
 
+    RUN_TEST(test_kvm_connected_blocks_web_input);
+    RUN_TEST(test_watchdog_ignores_input_held_by_screen_client);
+    RUN_TEST(test_watchdog_releases_web_held_input);
+    RUN_TEST(test_watchdog_idle_after_web_release);
+    RUN_TEST(test_web_disconnect_leaves_screen_client_keys);
     RUN_TEST(test_dispatch_key_down_up);
     RUN_TEST(test_dispatch_unknown_keyid_ignored);
     RUN_TEST(test_dispatch_short_key_msg_ignored);

@@ -252,6 +252,11 @@ select{background:#0e1a29;color:var(--fg);border:1px solid var(--line);border-ra
     computer it is plugged into has not enumerated it over USB — unplugged,
     asleep, or a charge-only port.
   </div>
+  <div id="kvmlock" hidden style="margin:0 0 12px;padding:10px 12px;border:1px solid var(--warn);
+       border-radius:6px;background:#241a0a;color:var(--warn);font-size:13px">
+    ⚠ The screen server is connected, so keyboard and mouse input from this page is
+    disabled. Release all still works. Turn the screen client off in Settings to type here.
+  </div>
   <div id="multi" hidden style="margin:0 0 12px;padding:10px 12px;border:1px solid var(--warn);
        border-radius:6px;background:#241a0a;color:var(--warn);font-size:13px">
     ⚠ <b id="multi_n"></b> controllers are connected — your input and theirs both reach the
@@ -804,7 +809,8 @@ Body: raw firmware.bin
       <h2>Errors</h2>
       <pre>{"type":"error","error":"unauthenticated"}
 {"type":"error","error":"unknown key"}
-{"type":"error","error":"usb not ready - target has not enumerated GhostHID …"}</pre>
+{"type":"error","error":"usb not ready - target has not enumerated GhostHID …"}
+{"type":"error","error":"input disabled while the screen client (Deskflow/Barrier/Synergy) is connected"}</pre>
     </section>
 
     <section>
@@ -862,6 +868,8 @@ function setState(ok,msg){
 var kvmServerName = "";
 function setKvmBadge(code){
   var el=$("#kvm");
+  // Mirrors the device: web input is refused while the screen client is connected.
+  var lk=$("#kvmlock"); if(lk) lk.hidden = !(code===2 || code===3);
   if(code===0){ el.hidden=true; return; }
   el.hidden=false;
   var name = kvmServerName || "Synergy";

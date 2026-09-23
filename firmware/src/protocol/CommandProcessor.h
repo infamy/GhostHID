@@ -111,6 +111,22 @@ private:
     int  findSession(uint32_t clientId) const;  // index, or -1 if not connected
 
     uint32_t lastMessageMs_ = 0;
+
+    // Input pressed through THIS processor (web UI / API) and not yet released.
+    // HidDevice's held state is shared with the screen client, so the web
+    // watchdog and disconnect release must key off this, not anythingHeld():
+    // otherwise an idle web tab (browsers throttle its 250ms ping to ~1s in the
+    // background) releases keys the Deskflow server is holding, and a held key
+    // stops after one press.
+    uint8_t  webKeys_[32] = {};         // bitmap over the 8-bit keycode space
+    uint8_t  webButtons_ = 0;           // bit per MouseButton
+    bool webHolds() const;
+    void clearWebHolds();
+
+    // True while the screen client (Deskflow/Barrier/Synergy) is connected. Web
+    // input is refused then, so the two never fight over the same keyboard.
+    bool kvmActive() const;
+
     bool     rebootRequested_ = false;
     bool     locked_ = false;
     uint32_t lockedAtMs_ = 0;
