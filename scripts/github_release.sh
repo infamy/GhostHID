@@ -38,8 +38,12 @@ echo ">> packaging into dist/"
 rm -rf dist
 ./scripts/package.sh firmware/.pio/build/esp32-s3-lcd147 esp32-s3-lcd147 dist
 ( cd dist && zip -qr ghosthid-esp32-s3-lcd147.zip ghosthid-esp32-s3-lcd147 )
-cp firmware/.pio/build/esp32-s3-lcd147/ghosthid-merged.bin webflasher/ghosthid-s3.bin
-zip -qr dist/ghosthid-webflasher.zip webflasher
+# Stage the flasher in dist/ so its manifest can carry this version (the
+# committed one is a placeholder) without touching the tree.
+cp -r webflasher dist/webflasher
+cp firmware/.pio/build/esp32-s3-lcd147/ghosthid-merged.bin dist/webflasher/ghosthid-s3.bin
+sed -i.bak -E "s/(\"version\": )\"[^\"]*\"/\1\"$VER\"/" dist/webflasher/manifest.json && rm dist/webflasher/manifest.json.bak
+( cd dist && zip -qr ghosthid-webflasher.zip webflasher )
 cp firmware/.pio/build/esp32-s3-lcd147/ghosthid-merged.bin dist/ghosthid-firmware.bin
 
 echo ">> signing with minisign"
