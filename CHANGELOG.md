@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.9.3
+
+* **An idle web tab no longer releases keys held over Deskflow.** The web
+  controller's watchdog released every held key when a background tab's
+  throttled ping arrived late, so a held key over Deskflow stopped after one
+  press and combos like Alt+1 lost their modifier. The watchdog and disconnect
+  release now only let go of keys the web controller itself pressed.
+* **Web input is locked out while the screen client is connected.** Keys, text,
+  mouse, media and system commands from the web UI are refused while Deskflow is
+  driving the target; release-all, ping, status and settings still work. The
+  web UI shows a banner while locked out.
+
 ## 0.9.2
 
 * **Reverts the 0.9.1 KVM pointer change.** It caused intermittent failures of
