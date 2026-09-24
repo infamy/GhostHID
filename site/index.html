@@ -543,8 +543,18 @@ footer a{color:var(--dim)}
     async function run() {
       if (started) return; started = true;
       try {
-        var res = await Promise.all([ fetch("downloads/ghosthid-firmware.bin"),
-                                      fetch("downloads/ghosthid-firmware.bin.minisig") ]);
+        // Same image as the flasher; its manifest carries the content-hash query that
+        // keeps a cached old .bin from pairing with a newer .minisig.
+        var q = "";
+        try {
+          var m = await (await fetch("flash/manifest.json", { cache: "no-store" })).json();
+          var p = m.builds[0].parts[0].path;
+          if (p.indexOf("?") >= 0) q = p.slice(p.indexOf("?"));
+        } catch (e) {}
+        if (q) document.querySelectorAll('a[href="downloads/ghosthid-firmware.bin"]')
+                 .forEach(function (a) { a.href = "downloads/ghosthid-firmware.bin" + q; });
+        var res = await Promise.all([ fetch("downloads/ghosthid-firmware.bin" + q),
+                                      fetch("downloads/ghosthid-firmware.bin.minisig" + q) ]);
         if (!res[0].ok || !res[1].ok) { set("", "&#128272; Signed release"); return; }
         var bin = new Uint8Array(await res[0].arrayBuffer());
         var r = await window.MinisignVerify.verify(bin, await res[1].text(), window.GHOSTHID_PUBKEY);

@@ -64,10 +64,15 @@ jobs:
             cp /tmp/rel/ghosthid-firmware.bin         site/flash/ghosthid-s3.bin
             cp /tmp/rel/ghosthid-firmware.bin.minisig site/flash/ghosthid-s3.bin.minisig
             # The flasher shows the manifest's version; keep it in step with the image.
-            python3 - "${TAG#v}" <<'EOF'
+            # The image path carries a content hash so a new release is a new URL:
+            # browsers and Cloudflare otherwise hold the old .bin for hours while the
+            # uncached .minisig is new, and the in-browser check fails.
+            H="$(sha256sum /tmp/rel/ghosthid-firmware.bin | cut -c1-16)"
+            python3 - "${TAG#v}" "$H" <<'EOF'
           import json, sys
           p = "site/flash/manifest.json"
           m = json.load(open(p)); m["version"] = sys.argv[1]
+          m["builds"][0]["parts"][0]["path"] = "ghosthid-s3.bin?v=" + sys.argv[2]
           open(p, "w").write(json.dumps(m, indent=2) + "\n")
           EOF
             echo "bundled firmware from $TAG"

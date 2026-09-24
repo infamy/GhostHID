@@ -99,6 +99,10 @@
     if (!("serial" in navigator)) {
       document.getElementById("nowebserial").style.display = "block";
     }
+    // Fresh manifest on every visit (it names the hash-versioned image), so the
+    // installer and the signature check below always see the same bytes.
+    document.querySelector("esp-web-install-button")
+      .setAttribute("manifest", "./manifest.json?t=" + Date.now());
     verifyFirmware();
   });
 
@@ -112,8 +116,17 @@
     var el = document.getElementById("sig");
     function set(cls, html){ el.className = "sig " + cls; el.innerHTML = html; }
     try {
-      var res = await Promise.all([ fetch("./ghosthid-s3.bin"),
-                                    fetch("./ghosthid-s3.bin.minisig") ]);
+      // The manifest's part path is "ghosthid-s3.bin?v=<hash>"; the .minisig takes
+      // the same query so a cached one can't pair with a newer image.
+      var path = "ghosthid-s3.bin";
+      try {
+        var m = await (await fetch("./manifest.json", { cache: "no-store" })).json();
+        path = m.builds[0].parts[0].path;
+      } catch (e) {}
+      var q = path.indexOf("?") < 0 ? "" : path.slice(path.indexOf("?"));
+      var file = path.split("?")[0];
+      var res = await Promise.all([ fetch("./" + file + q),
+                                    fetch("./" + file + ".minisig" + q) ]);
       if (!res[0].ok || !res[1].ok) {
         set("", "&#128272; Signed release. Signature not published here yet.");
         return;
