@@ -42,13 +42,18 @@ jobs:
       - name: Bundle the signed firmware from the latest release
         env:
           GH_TOKEN: ${{ github.token }}
+          # On a release event, fetch that exact tag: "latest" can still resolve
+          # to the previous release for a few seconds after publishing.
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
           set -eu
           mkdir -p site/flash site/downloads
+          TAG="${RELEASE_TAG:-}"
+          [ -n "$TAG" ] || TAG="$(gh release view --json tagName -q .tagName 2>/dev/null || true)"
           # Best-effort: before the first release there's nothing to fetch, and
           # the site must still deploy (the badges fall back to "Signed release"
           # and the flasher simply has no image until a release exists).
-          if gh release download --dir /tmp/rel \
+          if [ -n "$TAG" ] && gh release download "$TAG" --dir /tmp/rel \
                --pattern 'ghosthid-firmware.bin' \
                --pattern 'ghosthid-firmware.bin.minisig' 2>/dev/null; then
             cp /tmp/rel/ghosthid-firmware.bin         site/downloads/ghosthid-firmware.bin
@@ -58,7 +63,14 @@ jobs:
             # ghosthid-s3.bin unchanged.
             cp /tmp/rel/ghosthid-firmware.bin         site/flash/ghosthid-s3.bin
             cp /tmp/rel/ghosthid-firmware.bin.minisig site/flash/ghosthid-s3.bin.minisig
-            echo "bundled firmware from the latest release"
+            # The flasher shows the manifest's version; keep it in step with the image.
+            python3 - "${TAG#v}" <<'EOF'
+          import json, sys
+          p = "site/flash/manifest.json"
+          m = json.load(open(p)); m["version"] = sys.argv[1]
+          open(p, "w").write(json.dumps(m, indent=2) + "\n")
+          EOF
+            echo "bundled firmware from $TAG"
           else
             echo "no release yet - deploying the site without a firmware image"
           fi
