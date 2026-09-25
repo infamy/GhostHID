@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.9.4.1
+
+* **Fixes a 0.9.4 regression: the status display polled the Wi-Fi driver
+  about 500 times a second** for the signal strength shown on the LCD Info page.
+  It now reads it every 2 seconds, which is still faster than that page redraws.
+
 ## 0.9.4
 
 * **Less lag over Deskflow.** Measured end to end on a unit that lagged: the
