@@ -39,7 +39,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Pages keeps ONE deployment per commit: a second deploy of the same SHA
+      # reports success but the first one's files stay live. A release pushes
+      # main and its tag together, so the push deploy (bundling the PREVIOUS
+      # release) would win over the release deploy of that same commit. When the
+      # pushed commit is tagged, leave it to the release event.
+      - name: Leave tagged commits to the release deploy
+        id: gate
+        if: github.event_name == 'push'
+        run: |
+          if git ls-remote --tags origin | grep -qE "^${GITHUB_SHA}[[:space:]]+refs/tags/v"; then
+            echo "commit is tagged - the release event deploys it"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Bundle the signed firmware from the latest release
+        if: steps.gate.outputs.skip != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           # On a release event, fetch that exact tag: "latest" can still resolve
@@ -81,14 +96,16 @@ jobs:
           fi
 
       - uses: actions/upload-pages-artifact@v3
+        if: steps.gate.outputs.skip != 'true'
         with:
           path: site
 
       - id: deploy
+        if: steps.gate.outputs.skip != 'true'
         uses: actions/deploy-pages@v4
 
       - name: Purge Cloudflare cache
-        if: ${{ env.CF_ZONE != '' && env.CF_TOKEN != '' }}
+        if: ${{ steps.gate.outputs.skip != 'true' && env.CF_ZONE != '' && env.CF_TOKEN != '' }}
         run: |
           curl -fsS -X POST \
             "https://api.cloudflare.com/client/v4/zones/${CF_ZONE}/purge_cache" \
