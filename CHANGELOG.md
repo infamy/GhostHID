@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.9.4
+
+* **Less lag over Deskflow.** Measured end to end on a unit that lagged: the
+  server sends a move every ~8ms, but the dongle added up to 13ms per pass on top
+  of what the network delivered. All of this is on the dongle; pointer and key
+  behaviour are unchanged.
+  * Joins the strongest access point for the SSID instead of the first one it
+    hears (the default fast scan could pick a distant node in a multi-AP
+    network).
+  * 20MHz channels, full transmit power, and modem sleep kept off across every
+    radio mode change.
+  * The TLS screen-client connection reads everything waiting on the socket in
+    one call instead of one call per piece of each record.
+* **Lag is now measurable.** The serial `[stat]` line adds `gap` (longest
+  silence between moves), `burst` (most moves arriving at once), `hitch` (a stall
+  followed by a burst: lag as felt), `rssi` and `ch`; a new `[lat]` line splits
+  where a pass spends its time. The status API adds `wifi_rssi`, `wifi_channel`,
+  `wifi_bssid`, `kvm_gap_ms`, `kvm_burst` and `kvm_hitches`, and the LCD Info
+  page shows signal strength and channel (amber below -70dBm).
+
 ## 0.9.3
 
 * **An idle web tab no longer releases keys held over Deskflow.** The web
