@@ -246,10 +246,18 @@ void serviceDisplay() {
     st.version    = GHOSTHID_VERSION;
     st.heapFreeKb = ESP.getFreeHeap() / 1024;
     st.uptimeSec  = millis() / 1000;
-    if (WiFi.status() == WL_CONNECTED) {
-        st.rssi    = WiFi.RSSI();
-        st.channel = WiFi.channel();
+    // loop() runs this every ~2ms; asking the Wi-Fi driver that often is wasted
+    // work on the radio's core. The Info page only redraws every 5s anyway.
+    static int rssi = 0, channel = 0;
+    static uint32_t wifiAt = 0;
+    if (wifiAt == 0 || millis() - wifiAt > 2000) {
+        wifiAt = millis();
+        const bool up = WiFi.status() == WL_CONNECTED;
+        rssi    = up ? WiFi.RSSI()    : 0;
+        channel = up ? WiFi.channel() : 0;
     }
+    st.rssi    = rssi;
+    st.channel = channel;
     st.capsLock   = hid.capsLock();
     st.numLock    = hid.numLock();
     st.scrollLock = hid.scrollLock();
