@@ -317,7 +317,13 @@ void Display::drawInfoPage(const DisplayStatus &s) {
     snprintf(b, sizeof(b), "%uh%02um", (unsigned)(up / 3600), (unsigned)((up % 3600) / 60));
     line(y, "up   ", b, C_WHITE); y += dy;
 
-    line(y, "ip   ", (s.staIp && s.staIp[0]) ? s.staIp : "AP only", C_WHITE);
+    line(y, "ip   ", (s.staIp && s.staIp[0]) ? s.staIp : "AP only", C_WHITE); y += dy;
+
+    // Signal strength: below about -70dBm the link retries enough to be felt.
+    if (s.rssi != 0) {
+        snprintf(b, sizeof(b), "%ddBm ch%d", s.rssi, s.channel);
+        line(y, "wifi ", b, s.rssi < -70 ? C_AMBER : C_WHITE);
+    }
     buttonHint("page");
 }
 
@@ -442,7 +448,7 @@ void Display::update(const DisplayStatus &s) {
              s.version,
              s.capsLock ? 1 : 0, s.numLock ? 1 : 0, s.scrollLock ? 1 : 0,
              s.sealed ? 1 : 0, s.unsealArmed ? 1 : 0,
-             page_ == Page::Info ? (unsigned)(s.uptimeSec / 30) : 0u);  // Info: refresh ~2x/min
+             page_ == Page::Info ? (unsigned)(s.uptimeSec / 5) : 0u);   // Info: refresh every 5s (live RSSI)
     static char lastSig[224] = {0};
     if (!dirty_ && strcmp(sig, lastSig) == 0) return;
 

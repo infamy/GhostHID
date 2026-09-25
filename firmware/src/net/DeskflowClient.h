@@ -21,6 +21,7 @@
 #include <WiFiClientSecure.h>
 
 #include "DeviceIdentity.h"
+#include "FastTlsClient.h"
 #include <stdint.h>
 
 namespace ghosthid {
@@ -104,6 +105,14 @@ public:
     // the two together are what crashed a device mid-use.
     void suspend();
 
+    // Link-stall figures from the last 2s [stat] window (see lastMoveMs_):
+    // longest gap between moves (ms), most moves in one pass, hitches; plus the
+    // hitch total since boot.
+    uint32_t statGapMs()   const { return lastGapMs_; }
+    uint32_t statBurst()   const { return lastBurst_; }
+    uint32_t statHitches() const { return lastHitches_; }
+    uint32_t totalHitches() const { return totalHitches_; }
+
 #ifdef GHOSTHID_NATIVE_TEST
     // Host-test only (never compiled into device firmware): feed one raw protocol
     // message straight to the interpreter so dispatch() can be unit-tested.
@@ -138,7 +147,7 @@ private:
     // at whichever is in use.
     DeviceIdentity    identity_;
     WiFiClient        plain_;
-    WiFiClientSecure  tls_;
+    FastTlsClient     tls_;   // buffered receive - see FastTlsClient.h
     Client           *sock_ = nullptr;
 
     State    state_ = State::Idle;
@@ -172,6 +181,22 @@ private:
     char *caCopy_ = nullptr;
     char     lastError_[128] = {};
     uint32_t nMove_ = 0, nKey_ = 0, nBtn_ = 0, nOther_ = 0;
+
+    // Link-stall measurement, from what actually reaches us. Mouse motion arrives
+    // every few ms and this task drains every 1ms, so a pass normally sees one
+    // move at most. Many moves in ONE pass means they queued somewhere on the
+    // way (a Wi-Fi retry, a TCP retransmit) and landed together - the freeze-
+    // then-jump that is felt as lag. A hand pausing makes a gap but no burst,
+    // so a hitch needs both. Window values reset with each [stat] line; the
+    // last* copies hold the previous window for the status API.
+    uint32_t lastMoveMs_ = 0;
+    uint32_t winGapMs_ = 0, winBurst_ = 0, winHitches_ = 0;
+    uint32_t lastGapMs_ = 0, lastBurst_ = 0, lastHitches_ = 0, totalHitches_ = 0;
+    // Where a slow pass spends its time, worst pass in the [stat] window (us):
+    // socket read + TLS decode, message handling (incl. key/button reports), and
+    // the coalesced pointer report waiting on the USB host.
+    uint32_t winReadUs_ = 0, winDispUs_ = 0, winHidUs_ = 0;
+    uint32_t winMsgs_ = 0;                      // messages read
     char     lastUnhandled_[8] = {};
     char     lastKeyRaw_[40] = {};
     char     lastKeyDownRaw_[40] = {};

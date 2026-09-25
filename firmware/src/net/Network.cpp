@@ -6,6 +6,7 @@
 #include <ESPAsyncWebServer.h>
 #include <ESPmDNS.h>
 #include <esp_mac.h>
+#include <esp_wifi.h>
 #include <Update.h>
 #include <new>
 
@@ -520,6 +521,19 @@ void onOtaDone(AsyncWebServerRequest *request) {
 
 void Network::attachDeskflow(DeskflowClient *c) { g_deskflow = c; }
 
+// Radio settings for a latency-critical link, re-applied after every WiFi.mode()
+// change since a mode switch can bring the driver back up with its defaults.
+//  - 20MHz channels. 40MHz on 2.4GHz overlaps neighbouring networks, and every
+//    collision is a retransmit - felt as a pointer hitch.
+//  - Full transmit power, set explicitly rather than trusting the default.
+//  - Modem sleep off (see beginRadio).
+static void tuneRadio() {
+    WiFi.setSleep(false);
+    esp_wifi_set_bandwidth(WIFI_IF_STA, WIFI_BW_HT20);
+    esp_wifi_set_bandwidth(WIFI_IF_AP, WIFI_BW_HT20);
+    WiFi.setTxPower(WIFI_POWER_19_5dBm);
+}
+
 void Network::beginRadio() {
     g_network   = this;
     g_processor = &processor_;
@@ -538,6 +552,7 @@ void Network::beginRadio() {
     // 154ms worst case on the same link. An input device cannot afford that.
     // Costs steady-state current, which is acceptable on USB power.
     WiFi.setSleep(false);
+    tuneRadio();
 
     char suffix[5];
     deviceSuffix(suffix);
@@ -549,6 +564,12 @@ void Network::beginRadio() {
     startAp();
 
     if (wantStation) {
+        // Scan every channel and join the strongest access point for this SSID.
+        // The default fast scan joins the FIRST one it hears, which in a mesh or
+        // multi-AP network can be a distant node - a weak link that retries
+        // constantly and shows up as lag, while everything else looks fine.
+        WiFi.setScanMethod(WIFI_ALL_CHANNEL_SCAN);
+        WiFi.setSortMethod(WIFI_CONNECT_AP_BY_SIGNAL);
         WiFi.begin(config_.staSsid(), config_.staPassword());
         const uint32_t start = millis();
         while (WiFi.status() != WL_CONNECTED &&
@@ -557,7 +578,9 @@ void Network::beginRadio() {
         }
         if (WiFi.status() == WL_CONNECTED) {
             snprintf(staIp_, sizeof(staIp_), "%s", WiFi.localIP().toString().c_str());
-            Serial.printf("[wifi] STA %s : up (%s)\r\n", config_.staSsid(), staIp_);
+            Serial.printf("[wifi] STA %s : up (%s) bssid=%s ch=%d rssi=%d\r\n",
+                          config_.staSsid(), staIp_, WiFi.BSSIDstr().c_str(),
+                          (int)WiFi.channel(), (int)WiFi.RSSI());
             staStableSince_ = millis();
         } else {
             // Not fatal: the AP above is already serving.
@@ -677,6 +700,7 @@ void Network::stopAp() {
     if (!apActive_) return;
     WiFi.softAPdisconnect(true);
     WiFi.mode(WIFI_STA);
+    tuneRadio();
     apActive_ = false;
     apIp_[0] = '\0';
     Serial.println("[wifi] AP  down - station is up, radio is now dedicated to it");
@@ -708,6 +732,7 @@ void Network::serviceRadio() {
         if (!apActive_) {
             Serial.println("[wifi] STA lost - raising the AP again");
             WiFi.mode(WIFI_AP_STA);
+            tuneRadio();
             startAp();
         }
     }

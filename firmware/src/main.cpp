@@ -246,6 +246,10 @@ void serviceDisplay() {
     st.version    = GHOSTHID_VERSION;
     st.heapFreeKb = ESP.getFreeHeap() / 1024;
     st.uptimeSec  = millis() / 1000;
+    if (WiFi.status() == WL_CONNECTED) {
+        st.rssi    = WiFi.RSSI();
+        st.channel = WiFi.channel();
+    }
     st.capsLock   = hid.capsLock();
     st.numLock    = hid.numLock();
     st.scrollLock = hid.scrollLock();

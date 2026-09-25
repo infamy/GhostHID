@@ -622,7 +622,11 @@ void DeskflowClient::serviceOnce() {
         }
         // Both transports: Nagle batching is wrong for a stream of tiny input
         // events, and the TLS socket was previously left with it enabled.
-        if (config_.deskflowTls()) tls_.setNoDelay(true);
+        if (config_.deskflowTls()) {
+            tls_.setNoDelay(true);
+            tls_.enableRxBuffer();
+            Serial.printf("[deskflow] cipher %s\r\n", tls_.cipherSuite());
+        }
         else                       plain_.setNoDelay(true);
         state_ = State::Handshaking;
         lastTrafficMs_ = millis();
@@ -641,21 +645,47 @@ void DeskflowClient::serviceOnce() {
     // any of it queued shows up directly as lag. The cap only exists so a
     // pathological peer cannot hold this task forever.
     int guard = 256;
-    while (guard-- > 0 && sock_->available() >= 4) {
+    uint32_t moves = 0, gapBefore = 0;
+    uint32_t readUs = 0, dispUs = 0;
+    for (;;) {
+        const uint32_t r0 = micros();
+        const bool more = guard-- > 0 && sock_->available() >= 4;
+        if (!more) { readUs += micros() - r0; break; }
         if (!readMessage(buf, sizeof(buf), len)) return;
+        readUs += micros() - r0;
+        ++winMsgs_;
+        if (len >= 4 && (memcmp(buf, "DMMV", 4) == 0 || memcmp(buf, "DMRM", 4) == 0)) {
+            const uint32_t now = millis();
+            if (moves++ == 0 && lastMoveMs_ != 0) gapBefore = now - lastMoveMs_;
+            lastMoveMs_ = now;
+        }
         // Drained an oversized frame (a clipboard chunk). Stop batching and return
         // so the rest of serviceOnce() runs between chunks - flushPointer(), and
         // crucially the normal pump on the NEXT pass, which is the only safe point
         // to echo a keep-alive the server interleaves between chunks. Never write
         // from inside a drain; do it here at a whole-message boundary.
         if (len == 0) break;
+        const uint32_t d0 = micros();
         if (state_ == State::Handshaking) handshake(buf, len);
         else                              dispatch(buf, len);
+        dispUs += micros() - d0;
+    }
+    if (readUs > winReadUs_) winReadUs_ = readUs;
+    if (dispUs > winDispUs_) winDispUs_ = dispUs;
+
+    // Stall bookkeeping (see lastMoveMs_). Gaps over 1s are the hand stopping.
+    if (moves > 0) {
+        if (gapBefore < 1000 && gapBefore > winGapMs_) winGapMs_ = gapBefore;
+        if (moves > winBurst_) winBurst_ = moves;
+        if (moves >= 6 && gapBefore >= 50) { ++winHitches_; ++totalHitches_; }
     }
 
     // One pointer report per pass, carrying the newest position. This is the
     // difference between tracking the pointer and chasing it.
+    const uint32_t h0 = micros();
     flushPointer();
+    const uint32_t hidUs = micros() - h0;
+    if (hidUs > winHidUs_) winHidUs_ = hidUs;
 
     // Held-input backstop. If something is down and the server has gone silent
     // (a crash, a power cut, Wi-Fi loss - no TCP FIN), release it well before
@@ -701,14 +731,28 @@ void DeskflowClient::run() {
         // backpressure as rising drop / worst-pass; a backlog as a low move rate.
         const uint32_t now = millis();
         if (now - statAt > 2000) {
-            Serial.printf("[stat] heap=%u/%u kb stack=%u move/s=%u drop=%u worstpass=%uus state=%d\r\n",
+            // gap/burst/hitch: link stalls as felt (see lastMoveMs_). rssi/ch: the
+            // station link; a weak or crowded one is the usual cause of hitches.
+            Serial.printf("[stat] heap=%u/%u kb stack=%u move/s=%u drop=%u worstpass=%uus state=%d "
+                          "gap=%ums burst=%u hitch=%u/%u rssi=%d ch=%d\r\n",
                           (unsigned)(ESP.getFreeHeap() / 1024),
                           (unsigned)(ESP.getMaxAllocHeap() / 1024),
                           (unsigned)uxTaskGetStackHighWaterMark(nullptr),
                           (unsigned)((nMove_ - nMovePrev) / 2),
                           (unsigned)hid_.droppedReports(),
-                          (unsigned)worstPassUs, (int)state_);
+                          (unsigned)worstPassUs, (int)state_,
+                          (unsigned)winGapMs_, (unsigned)winBurst_,
+                          (unsigned)winHitches_, (unsigned)totalHitches_,
+                          (int)WiFi.RSSI(), (int)WiFi.channel());
+            // Separate line: the USB CDC buffer truncates one long write.
+            Serial.printf("[lat] rd=%uus disp=%uus hid=%uus msgs=%u\r\n",
+                          (unsigned)winReadUs_, (unsigned)winDispUs_, (unsigned)winHidUs_,
+                          (unsigned)winMsgs_);
             statAt = now; nMovePrev = nMove_; worstPassUs = 0;
+            lastGapMs_ = winGapMs_; lastBurst_ = winBurst_; lastHitches_ = winHitches_;
+            winGapMs_ = winBurst_ = winHitches_ = 0;
+            winReadUs_ = winDispUs_ = winHidUs_ = 0;
+            winMsgs_ = 0;
         }
         vTaskDelayUntil(&last, 1);     // one tick, and it does not drift
     }

@@ -28,6 +28,8 @@ struct DisplayStatus {
     const char *version     = "";
     uint32_t    heapFreeKb  = 0;
     uint32_t    uptimeSec   = 0;
+    int         rssi        = 0;        // station signal, dBm; 0 when not joined
+    int         channel     = 0;
     bool        capsLock    = false;    // host lock-LED state (feedback from target)
     bool        numLock     = false;
     bool        scrollLock  = false;

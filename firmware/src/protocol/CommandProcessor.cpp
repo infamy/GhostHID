@@ -15,6 +15,9 @@
 #include "crypto/Hmac.h"
 #include "net/DeskflowClient.h"
 #include "net/TlsArena.h"
+#ifndef GHOSTHID_NATIVE_TEST
+#include <WiFi.h>
+#endif
 
 extern uint32_t g_heapAfterBoot, g_heapAfterWifi, g_heapAfterServer;
 extern bool g_bootComplete;
@@ -440,6 +443,18 @@ CommandResult CommandProcessor::handleMessage(uint32_t clientId, const char *jso
         out["last_key_raw"]     = deskflow_ ? deskflow_->lastKeyRaw()      : "";
         out["last_keydown_raw"] = deskflow_ ? deskflow_->lastKeyDownRaw()  : "";
         out["last_other_raw"]   = deskflow_ ? deskflow_->lastOtherRaw()    : "";
+        // Link quality and stalls, so lag can be diagnosed from the web UI. The
+        // kvm_* figures cover the last 2s window (see DeskflowClient::lastMoveMs_).
+#ifndef GHOSTHID_NATIVE_TEST
+        if (WiFi.status() == WL_CONNECTED) {
+            out["wifi_rssi"]    = (int)WiFi.RSSI();
+            out["wifi_channel"] = (int)WiFi.channel();
+            out["wifi_bssid"]   = WiFi.BSSIDstr();
+        }
+#endif
+        out["kvm_gap_ms"]      = (unsigned)(deskflow_ ? deskflow_->statGapMs()    : 0);
+        out["kvm_burst"]       = (unsigned)(deskflow_ ? deskflow_->statBurst()    : 0);
+        out["kvm_hitches"]     = (unsigned)(deskflow_ ? deskflow_->totalHitches() : 0);
         out["hid_dropped"]     = (unsigned)hid_.droppedReports();
         out["tls_reserved"]    = (unsigned)TlsArena::reservedBytes();
         out["tls_blocks_lent"] = (unsigned)TlsArena::inUse();
